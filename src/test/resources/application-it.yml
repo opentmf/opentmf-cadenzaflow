@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:18.0-alpine:///db
+    hikari:
+      schema: public
+
+plugin.identity.keycloak:
+  client-id: camunda-identity-service
+  client-secret: A0IywtglmzU69s0fD2044EDer4iptaGG
+  use-username-as-camunda-user-id: false
+  use-email-as-camunda-user-id: true
+  use-group-path-as-camunda-group-id: true
+  administrator-group-name: camunda-admin
+  cache-enabled: true
+
+management:
+  server:
+    port: -1
+
+opentmf:
+  security:
+    secure-endpoints:
+      - method: GET
+        path: /engine-rest/**
+        roles:
+          - ebu-federation-reader
+          - ebu-federation-writer
+          - ebu-federation-admin
+      - method: POST
+        path: /engine-rest/**
+        roles:
+          - ebu-federation-writer
+          - admin
+      - method: PUT
+        path: /engine-rest/**
+        roles:
+          - ebu-federation-writer
+          - ebu-federation-admin
+      - method: DELETE
+        path: /engine-rest/**
+        roles:
+          - ebu-federation-writer
+          - ebu-federation-admin

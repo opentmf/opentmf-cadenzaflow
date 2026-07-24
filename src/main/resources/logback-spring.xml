@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<include resource="org/springframework/boot/logging/logback/defaults.xml" />
+
+	<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>
+		<then>
+			<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+				<encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+					<format>logstash</format>
+				</encoder>
+			</appender>
+		</then>
+		<else>
+			<include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+		</else>
+	</if>
+
+	<!-- Spring Framework -->
+	<logger name="org.springframework" level="INFO" />
+
+	<!-- OpenTMF -->
+	<logger name="org.opentmf" level="TRACE" />
+	<logger name="org.opentmf.cadenzaflow.config.sso.AuthorizeTokenFilter" level="INFO" />
+
+	<!-- Camunda -->
+	<logger name="org.cadenzaflow" level="INFO" />
+	<logger name="cockpit" level="INFO" />
+	<logger name="admin" level="INFO" />
+	<logger name="tasklist" level="INFO" />
+	<logger name="welcome" level="INFO" />
+
+	<!-- INFO: disable request / response logging of Camunda Server
+	     DEBUG: Enable (only for testing and/or troubleshooting purposes) -->
+	<logger name="org.glassfish.jersey.logging.LoggingFeature" level="INFO" />
+
+	<root level="INFO">
+		<appender-ref ref="CONSOLE" />
+	</root>
+
+</configuration>

@@ -1,0 +1,621 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.opentmf.cadenzaflow</groupId>
+  <artifactId>opentmf-cadenza-flow</artifactId>
+  <name>opentmf-cadenza-flow</name>
+  <version>1.2.0-SNAPSHOT</version>
+
+  <description>
+    An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
+    (the maintained Camunda 7 fork) with the public Spin, and OpenID auth for Keycloak plugins,
+    as well as OpenTMF's "openid-rbac-security" library.
+  </description>
+
+  <url>https://github.com/opentmf/opentmf-cadenza-flow</url>
+
+  <organization>
+    <name>PiA Group</name>
+    <url>https://www.pia-group.net/</url>
+  </organization>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+      <comments>A permissive open-source license</comments>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>gokhanus</id>
+      <name>Gokhan Demir</name>
+      <email>gokhan@opentmf.org</email>
+    </developer>
+    <developer>
+      <id>yusuf-bozkurt</id>
+      <name>Yusuf Bozkurt</name>
+      <email>yusuf.bozkurt@pia-team.com</email>
+    </developer>
+    <developer>
+      <id>cezmi-aslan</id>
+      <name>Cezmi Aslan</name>
+      <email>cezmi.aslan@pia-team.com</email>
+    </developer>
+    <developer>
+      <id>abdullahbeker</id>
+      <name>Abdullah Beker</name>
+      <email>abdullah.beker@dnext-technology.com</email>
+    </developer>
+  </developers>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <java.version>25</java.version>
+    <maven.compiler.source>${java.version}</maven.compiler.source>
+    <maven.compiler.target>${java.version}</maven.compiler.target>
+
+    <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+
+    <!-- Application dependencies -->
+    <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
+    <spring-boot.version>4.0.7</spring-boot.version>
+    <!--
+      CadenzaFlow 1.2.0+ Spring Boot 4 starters are not yet published to Maven Central
+      (Central has only up to 1.1.0, without the starter-4 modules). Until the CadenzaFlow
+      project releases them, build them locally from
+      https://github.com/cadenzaflow/cadenzaflow-bpm-platform master: mvn install -DskipTests
+    -->
+    <cadenzaflow.version>1.2.0</cadenzaflow.version>
+    <cadenzaflow-keycloak.version>1.0.1-SNAPSHOT</cadenzaflow-keycloak.version>
+    <cadenzaflow-incident-logger.version>1.0.0-SNAPSHOT</cadenzaflow-incident-logger.version>
+    <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
+    <graalvm.version>25.1.3</graalvm.version>
+
+    <archunit.version>1.4.2</archunit.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <testcontainers-keycloak.version>4.2.1</testcontainers-keycloak.version>
+
+    <!-- Maven plugins -->
+    <sonar-plugin.version>5.7.0.6970</sonar-plugin.version>
+    <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+    <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
+    <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+    <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
+    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
+    <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+
+    <!-- Sonar properties -->
+    <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
+
+    <!-- AWS-IAM related properties -->
+    <aws-msk-iam-auth.version>2.3.5</aws-msk-iam-auth.version>
+    <awssdk-sts.version>2.42.8</awssdk-sts.version>
+    <aws-advanced-jdbc-wrapper.version>3.2.0</aws-advanced-jdbc-wrapper.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
+    </dependency>
+
+    <!-- CadenzaFlow Dependencies (Spring Boot 4 starters) -->
+    <dependency>
+      <groupId>org.cadenzaflow.bpm.springboot</groupId>
+      <artifactId>cadenzaflow-bpm-spring-boot-starter-rest-4</artifactId>
+      <version>${cadenzaflow.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.cadenzaflow.bpm.springboot</groupId>
+      <artifactId>cadenzaflow-bpm-spring-boot-starter-webapp-4</artifactId>
+      <version>${cadenzaflow.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.cadenzaflow.spin</groupId>
+      <artifactId>cadenzaflow-spin-dataformat-json-jackson</artifactId>
+      <version>${cadenzaflow.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.cadenzaflow.bpm</groupId>
+      <artifactId>cadenzaflow-engine-plugin-spin</artifactId>
+      <version>${cadenzaflow.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.cadenzaflow.bpm.extension</groupId>
+      <artifactId>cadenzaflow-keycloak</artifactId>
+      <version>${cadenzaflow-keycloak.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.opentmf.cadenzaflow</groupId>
+      <artifactId>cadenzaflow-incident-logger</artifactId>
+      <version>${cadenzaflow-incident-logger.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.graalvm.js</groupId>
+      <artifactId>js-scriptengine</artifactId>
+      <version>${graalvm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.graalvm.js</groupId>
+      <artifactId>js</artifactId>
+      <version>${graalvm.version}</version>
+      <type>pom</type>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- OpenTMF OpenID Security (2.x line = Spring Boot 4) -->
+    <dependency>
+      <groupId>org.opentmf.security</groupId>
+      <artifactId>openid-rbac-security</artifactId>
+      <version>${openid-rbac-security.version}</version>
+    </dependency>
+
+    <!-- Database dependencies -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Monitoring dependencies -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- Logging dependencies -->
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- Test dependencies -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>${archunit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.dasniko</groupId>
+      <artifactId>testcontainers-keycloak</artifactId>
+      <version>${testcontainers-keycloak.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Optional dependencies -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <optional>true</optional>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!--
+      banner.txt is Maven-filtered at build time with '@' delimiters only (see the
+      maven-resources-plugin configuration below): @...@ tokens resolve during the build
+      (e.g. @project.version@), while ${...} tokens survive the build and are resolved by
+      Spring's banner rendering at runtime (e.g. ${java.runtime.version}). Other resources
+      are NOT filtered to avoid breaking binary content. spring-boot-starter-parent wires
+      all this implicitly; we use BOM-only, so it is declared here explicitly.
+    -->
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>banner.txt</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>banner.txt</exclude>
+        </excludes>
+      </resource>
+    </resources>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.sonarsource.scanner.maven</groupId>
+          <artifactId>sonar-maven-plugin</artifactId>
+          <version>${sonar-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>${maven-resources-plugin.version}</version>
+        <configuration>
+          <!-- '@' only, so ${...} placeholders in banner.txt survive for Spring's
+               runtime banner resolution instead of being consumed by Maven filtering -->
+          <delimiters>
+            <delimiter>@</delimiter>
+          </delimiters>
+          <useDefaultDelimiters>false</useDefaultDelimiters>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-maven</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>25</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>3.9.0</version>
+                </requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <configuration>
+          <skip>${spring-boot.repackage.skip}</skip>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
+        <configuration>
+          <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${maven-failsafe-plugin.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-release-plugin</artifactId>
+        <version>${maven-release-plugin.version}</version>
+        <configuration>
+          <releaseProfiles>release</releaseProfiles>
+          <goals>deploy</goals>
+          <tagNameFormat>@{project.version}</tagNameFormat>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>coverage-check</id>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <haltOnFailure>false</haltOnFailure>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <minimum>80%</minimum>
+                      <value>COVEREDRATIO</value>
+                    </limit>
+                    <limit>
+                      <counter>INSTRUCTION</counter>
+                      <minimum>80%</minimum>
+                      <value>COVEREDRATIO</value>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <minimum>80%</minimum>
+                      <value>COVEREDRATIO</value>
+                    </limit>
+                    <limit>
+                      <counter>CLASS</counter>
+                      <maximum>0</maximum>
+                      <value>MISSEDCOUNT</value>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- Profile to create a local Docker image -->
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>${maven-source-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>${maven-javadoc-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+                <configuration>
+                  <failOnWarnings>false</failOnWarnings>
+                  <failOnError>false</failOnError>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${maven-gpg-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>${central-publishing-maven-plugin.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>publish-to-central</publishingServerId>
+              <autoPublish>true</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>aws-iam</id>
+      <dependencies>
+        <dependency>
+          <groupId>software.amazon.msk</groupId>
+          <artifactId>aws-msk-iam-auth</artifactId>
+          <version>${aws-msk-iam-auth.version}</version>
+          <scope>runtime</scope>
+        </dependency>
+        <!-- AWS JDBC wrapper driver -->
+        <dependency>
+          <groupId>software.amazon.jdbc</groupId>
+          <artifactId>aws-advanced-jdbc-wrapper</artifactId>
+          <version>${aws-advanced-jdbc-wrapper.version}</version>
+          <scope>runtime</scope>
+        </dependency>
+        <!-- Required for IRSA / WebIdentity credentials on Java -->
+        <dependency>
+          <groupId>software.amazon.awssdk</groupId>
+          <artifactId>sts</artifactId>
+          <version>${awssdk-sts.version}</version>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>repackage</id>
+      <properties>
+        <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
+      </properties>
+    </profile>
+    <profile>
+      <id>docker</id>
+      <properties>
+        <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>exec-maven-plugin</artifactId>
+            <version>${exec-maven-plugin.version}</version>
+            <executions>
+              <!-- Remove existing docker image from local repo -->
+              <execution>
+                <id>docker-clean</id>
+                <phase>clean</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>docker</executable>
+                  <workingDirectory>${project.basedir}</workingDirectory>
+                  <arguments>
+                    <argument>image</argument>
+                    <argument>rm</argument>
+                    <argument>--force</argument>
+                    <argument>local/${project.artifactId}:${project.version}</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+
+              <!-- Create new docker image -->
+              <execution>
+                <id>docker-build</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>docker</executable>
+                  <workingDirectory>${project.basedir}</workingDirectory>
+                  <arguments>
+                    <argument>build</argument>
+                    <argument>-t</argument>
+                    <argument>local/${project.artifactId}:${project.version}</argument>
+                    <argument>.</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!--
+      Local SonarQube scan profile. Talks to a developer-managed local SonarQube
+      (not SonarCloud). Project history accumulates across scans; profile stays
+      small and does not own the SonarQube lifecycle.
+
+      Developer prerequisites (one-time setup):
+        1. Run a SonarQube Community container reachable at http://localhost:9000
+           (image: sonarqube:community).
+        2. In the SonarQube UI, create a project with key
+           org.opentmf.cadenzaflow:opentmf-cadenza-flow and generate an analysis token.
+        3. Export the token as SONAR_TOKEN - the scanner reads it natively.
+
+      Then on each scan:
+        mvn -P sonar clean verify
+
+      Build fails on quality-gate != OK. Do NOT combine with the `docker` profile
+      (which skips tests) - Sonar needs the test run + JaCoCo coverage.
+    -->
+    <profile>
+      <id>sonar</id>
+      <properties>
+        <sonar.host.url>http://localhost:9000</sonar.host.url>
+        <sonar.projectKey>org.opentmf.cadenzaflow:opentmf-cadenza-flow</sonar.projectKey>
+        <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.sonarsource.scanner.maven</groupId>
+            <artifactId>sonar-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>sonar-scan</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sonar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+  <scm>
+    <url>https://github.com/opentmf/opentmf-cadenza-flow</url>
+    <connection>scm:git:git@github.com:opentmf/opentmf-cadenza-flow.git</connection>
+    <developerConnection>scm:git:git@github.com:opentmf/opentmf-cadenza-flow.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
+
+</project>

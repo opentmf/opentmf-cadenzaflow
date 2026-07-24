@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpm-platform xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns="http://www.camunda.org/schema/1.0/BpmPlatform"
+  xsi:schemaLocation="http://www.camunda.org/schema/1.0/BpmPlatform http://www.camunda.org/schema/1.0/BpmPlatform ">
+
+  <job-executor>
+    <job-acquisition name="default"/>
+  </job-executor>
+
+  <process-engine name="default">
+    <job-acquisition>default</job-acquisition>
+
+    <properties>
+      <property name="jobExecutorDeploymentAware">false</property>
+    </properties>
+
+    <plugins>
+      <plugin>
+        <class>org.cadenzaflow.spin.plugin.impl.SpinProcessEnginePlugin</class>
+      </plugin>
+    </plugins>
+  </process-engine>
+
+</bpm-platform>

@@ -1,0 +1,68 @@
+---
+spring:
+  autoconfigure:
+    exclude:
+    - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+
+  application:
+    name: OpenTmfCadenzaFlow
+  config:
+    import:
+      - config-cadenzaflow.yml
+      - config-security.yml
+  servlet:
+    multipart:
+      enabled: false
+  datasource:
+    url: jdbc:postgresql://postgresql:5432/db?useUnicode=yes&characterEncoding=UTF-8&currentSchema=cadenzaflow
+    username: cadenzaflow
+    hikari:
+      schema: cadenzaflow
+      auto-commit: false
+      connection-timeout: 30000
+      idle-timeout: 1800000
+      max-lifetime: 2400000
+      minimum-idle: 2
+      maximum-pool-size: 10
+      pool-name: cadenzaflow-pool
+
+server:
+  port: 8080
+  servlet:
+    context-path: /cadenzaflow/v1
+    jsp:
+      registered: false
+  shutdown: graceful
+  ssl:
+    enabled: false
+  tomcat:
+    max-http-form-post-size: 10MB
+  max-http-request-header-size: 8KB
+
+management:
+  endpoints:
+    access:
+      default: read_only
+    web:
+      exposure:
+        include:
+          - health
+          - metrics
+          - loggers
+          - env
+  endpoint:
+    env:
+      show-values: when_authorized
+      roles:
+        - write
+        - ENTERPRISE-GUI/ADMIN_ALL
+        - ENTERPRISE-API/ADMIN_ALL
+    loggers:
+      access: unrestricted
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  server:
+    base-path: /
+    port: 16000

@@ -1,0 +1,75 @@
+---
+# Browser-facing Keycloak URL. Defaults to the server-to-server issuer URL.
+# Override via KEYCLOAK_URL_AUTH when browsers reach Keycloak at a different
+# address than the application (e.g. Citrix, split-DNS, external Ingress).
+keycloak.url.auth: ${plugin.identity.keycloak.keycloak-issuer-url}
+
+cadenzaflow.bpm:
+  authorization:
+    enabled: true
+  database:
+    type: postgres
+    schema-update: true
+    schema-name: ${spring.datasource.hikari.schema}
+    table-prefix: ${spring.datasource.hikari.schema}.
+  filter:
+    create: All tasks
+  generic-properties:
+    properties:
+      historyTimeToLive: P92D
+      legacyJobRetryBehaviorEnabled: true
+      # History cleanup - without a batch window the cleanup job is never
+      # scheduled and TTLs are decorative. Times are in the JVM timezone,
+      # which the Docker image pins to UTC. Cleanup jobs are cluster-safe:
+      # they are acquired via the shared database, so multiple pods never
+      # run the same job twice, and degree-of-parallelism is cluster-wide.
+      historyCleanupBatchWindowStartTime: "01:00"
+      historyCleanupBatchWindowEndTime: "05:00"
+      historyCleanupDegreeOfParallelism: 2
+      batchOperationHistoryTimeToLive: P30D
+  oauth2:
+    sso-logout:
+      enabled: true
+      postLogoutRedirectUri: "{baseUrl}/app/"
+  webapp:
+    application-path: /
+    header-security:
+      content-security-policy-value: "base-uri 'self';
+                                        script-src $NONCE 'strict-dynamic' 'unsafe-eval' https: 'self' 'unsafe-inline';
+                                        style-src 'unsafe-inline' 'self';
+                                        connect-src ${keycloak.url.auth} 'self';
+                                        default-src 'self';
+                                        img-src 'self' data:;
+                                        block-all-mixed-content;form-action 'self';
+                                        frame-ancestors 'none';object-src 'none';
+                                        sandbox allow-forms allow-scripts allow-same-origin allow-popups allow-downloads"
+
+plugin.identity.keycloak:
+  keycloak-issuer-url: http://keycloak.iam-dev.svc.cluster.local/realms/devtest
+  keycloak-admin-url: http://keycloak.iam-dev.svc.cluster.local/admin/realms/devtest
+  client-id: xxx
+  client-secret: xxx
+  use-username-as-camunda-user-id: false
+  use-email-as-camunda-user-id: true
+  use-group-path-as-camunda-group-id: true
+  administrator-group-name: camunda-admin
+  cache-enabled: true
+
+spring.security.oauth2:
+  client:
+    registration:
+      keycloak:
+        provider: keycloak
+        client-id: ${plugin.identity.keycloak.client-id}
+        client-secret: ${plugin.identity.keycloak.client-secret}
+        authorization-grant-type: authorization_code
+        redirect-uri: "{baseUrl}/{action}/oauth2/code/{registrationId}"
+        scope: openid, profile, email
+    provider:
+      keycloak:
+        authorization-uri: ${keycloak.url.auth}/protocol/openid-connect/auth
+        token-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/token
+        jwk-set-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/certs
+        user-info-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/userinfo
+        user-name-attribute: ${opentmf.security.user-claim}
+
