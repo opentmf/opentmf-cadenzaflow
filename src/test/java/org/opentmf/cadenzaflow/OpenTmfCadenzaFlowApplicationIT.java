@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.time.Duration;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +25,14 @@ class OpenTmfCadenzaFlowApplicationIT {
           .withAdminUsername("admin")
           .withAdminPassword("admin")
           .withRealmImportFile("realm/dsync-realm.json")
-          .waitingFor(Wait.forHttp("/realms/dsync/.well-known/openid-configuration"));
+          // Pin the wait to the HTTP port: without forPort, HttpWaitStrategy polls an
+          // arbitrary exposed port, and hitting the TLS (8443) or management (9000)
+          // port fails with connection EOF forever. Keycloak with a realm import also
+          // needs well over the default 60s on slower machines, hence the timeout.
+          .waitingFor(
+              Wait.forHttp("/realms/dsync/.well-known/openid-configuration")
+                  .forPort(8080)
+                  .withStartupTimeout(Duration.ofMinutes(5)));
 
   @DynamicPropertySource
   static void registerProps(DynamicPropertyRegistry r) {
