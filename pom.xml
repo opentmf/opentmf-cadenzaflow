@@ -70,7 +70,6 @@
     <cadenzaflow.version>1.2.0</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.1</cadenzaflow-keycloak.version>
-    <cadenzaflow-incident-logger.version>1.0.0-SNAPSHOT</cadenzaflow-incident-logger.version>
     <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
     <graalvm.version>25.1.3</graalvm.version>
 
@@ -159,12 +158,6 @@
       <groupId>org.cadenzaflow.bpm.extension</groupId>
       <artifactId>cadenzaflow-keycloak-4</artifactId>
       <version>${cadenzaflow-keycloak.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.opentmf.cadenzaflow</groupId>
-      <artifactId>cadenzaflow-incident-logger</artifactId>
-      <version>${cadenzaflow-incident-logger.version}</version>
-      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>org.graalvm.js</groupId>

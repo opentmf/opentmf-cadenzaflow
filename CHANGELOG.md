@@ -23,7 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Engine configuration prefix follows the fork: `camunda.bpm.*` → `cadenzaflow.bpm.*`
   (file renamed to `config-cadenzaflow.yml`); default context path `/camunda/v7` →
   `/cadenzaflow/v1`; default schema/user `camunda7` → `cadenzaflow`.
-- `camunda7-incident-logger` replaced by `cadenzaflow-incident-logger` 1.0.0: the 2.x
-  (Spring Boot 4) line of the old library is built against CIB seven, which is
-  binary-incompatible with CadenzaFlow's renamed packages; the new library is the same
-  simple design built against the CadenzaFlow 1.2.0 engine.
+- `camunda7-incident-logger` library replaced by a built-in incident-logging engine
+  plugin (`org.opentmf.cadenzaflow.config.incident`): the 2.x (Spring Boot 4) line of
+  the old library is built against CIB seven, which is binary-incompatible with
+  CadenzaFlow's renamed packages, and the logic is two small CadenzaFlow-specific
+  classes - not worth a separate library. Incidents without an execution id (e.g.
+  from process instance version migrations) are not logged.

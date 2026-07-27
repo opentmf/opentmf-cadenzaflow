@@ -20,7 +20,7 @@ This project uses OpenTMF's [openid-rbac-security](https://github.com/opentmf/op
 The default openid-rbac-security configuration requires read or write access for GET, write access for POST, PUT, and DELETE endpoints. These defaults can be overridden. Please see [config-security.yml](src/main/resources/config-security.yml) for initial configuration.
 
 ## Incident Logging
-OpenTMF's CadenzaFlow Incident Logger (`org.opentmf.cadenzaflow:cadenzaflow-incident-logger`) is used to write a log statement when a failed task has zero retry counts. It only logs — engine incident behavior is unchanged.
+A built-in process engine plugin (`org.opentmf.cadenzaflow.config.incident`) writes a WARN log statement when a failed task has zero retry counts. It only logs — engine incident behavior is unchanged. Incidents without an execution entity (e.g. raised during process instance version migrations) are intentionally not logged.
 
 ## Workflow Variables Longer Than 4KB
 With the help of the public Spin plugin, longer than 4KB workflow variables can be used. The Spin plugin is included by default.

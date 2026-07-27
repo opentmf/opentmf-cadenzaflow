@@ -15,5 +15,4 @@
   Java (runtime JVM)         : ${java.runtime.version}
   CadenzaFlow                : @cadenzaflow.version@
   CadenzaFlow Keycloak Plugin: @cadenzaflow-keycloak.version@
-  CadenzaFlow Incident Logger: @cadenzaflow-incident-logger.version@
   OpenID-RBAC-Security       : @openid-rbac-security.version@
