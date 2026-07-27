@@ -1,11 +1,17 @@
 package org.opentmf.cadenzaflow;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -15,7 +21,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@SpringBootTest
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("it")
 class OpenTmfCadenzaFlowApplicationIT {
 
@@ -49,8 +55,40 @@ class OpenTmfCadenzaFlowApplicationIT {
   @Autowired
   private ApplicationContext applicationContext;
 
+  @LocalServerPort
+  private int port;
+
+  private final HttpClient httpClient = HttpClient.newHttpClient();
+
   @Test
   void contextLoads() {
     Assertions.assertNotNull(applicationContext);
+  }
+
+  @Test
+  void engineRestWithoutTokenIsRejected() throws Exception {
+    Assertions.assertEquals(401, get("/engine-rest/task", null).statusCode());
+  }
+
+  @Test
+  void engineRestWithGarbageTokenIsRejected() throws Exception {
+    Assertions.assertEquals(401, get("/engine-rest/task", "Bearer not-a-jwt").statusCode());
+  }
+
+  @Test
+  void whitelistedExternalTaskEndpointBypassesRbac() throws Exception {
+    // /engine-rest/external-task/** is whitelisted in config-security.yml, so the
+    // request must reach the engine REST layer instead of being rejected with 401.
+    Assertions.assertEquals(200, get("/engine-rest/external-task/count", null).statusCode());
+  }
+
+  private HttpResponse<String> get(String path, String authorization) throws Exception {
+    var request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + port + "/cadenzaflow/v1" + path))
+        .GET();
+    if (authorization != null) {
+      request.header("Authorization", authorization);
+    }
+    return httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
   }
 }
