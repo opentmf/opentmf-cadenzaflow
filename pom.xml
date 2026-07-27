@@ -2,8 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.opentmf.cadenzaflow</groupId>
-  <artifactId>opentmf-cadenza-flow</artifactId>
-  <name>opentmf-cadenza-flow</name>
+  <artifactId>opentmf-cadenzaflow</artifactId>
+  <name>opentmf-cadenzaflow</name>
   <version>1.2.0-SNAPSHOT</version>
 
   <description>
@@ -12,7 +12,7 @@
     as well as OpenTMF's "openid-rbac-security" library.
   </description>
 
-  <url>https://github.com/opentmf/opentmf-cadenza-flow</url>
+  <url>https://github.com/opentmf/opentmf-cadenzaflow</url>
 
   <organization>
     <name>PiA Group</name>
@@ -582,7 +582,7 @@
         1. Run a SonarQube Community container reachable at http://localhost:9000
            (image: sonarqube:community).
         2. In the SonarQube UI, create a project with key
-           org.opentmf.cadenzaflow:opentmf-cadenza-flow and generate an analysis token.
+           org.opentmf.cadenzaflow:opentmf-cadenzaflow and generate an analysis token.
         3. Export the token as SONAR_TOKEN - the scanner reads it natively.
 
       Then on each scan:
@@ -595,7 +595,7 @@
       <id>sonar</id>
       <properties>
         <sonar.host.url>http://localhost:9000</sonar.host.url>
-        <sonar.projectKey>org.opentmf.cadenzaflow:opentmf-cadenza-flow</sonar.projectKey>
+        <sonar.projectKey>org.opentmf.cadenzaflow:opentmf-cadenzaflow</sonar.projectKey>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
       </properties>
       <build>
@@ -619,9 +619,9 @@
   </profiles>
 
   <scm>
-    <url>https://github.com/opentmf/opentmf-cadenza-flow</url>
-    <connection>scm:git:git@github.com:opentmf/opentmf-cadenza-flow.git</connection>
-    <developerConnection>scm:git:git@github.com:opentmf/opentmf-cadenza-flow.git</developerConnection>
+    <url>https://github.com/opentmf/opentmf-cadenzaflow</url>
+    <connection>scm:git:git@github.com:opentmf/opentmf-cadenzaflow.git</connection>
+    <developerConnection>scm:git:git@github.com:opentmf/opentmf-cadenzaflow.git</developerConnection>
     <tag>HEAD</tag>
   </scm>
 

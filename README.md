@@ -1,4 +1,4 @@
-# opentmf-cadenza-flow
+# opentmf-cadenzaflow
 An OpenTMF produced Spring Boot 4 microservice that embeds the [CadenzaFlow](https://github.com/cadenzaflow/cadenzaflow-bpm-platform) community edition (the maintained Camunda 7 fork) with the public Spin, and [OpenID auth for Keycloak](https://github.com/cadenzaflow/cadenzaflow-keycloak) plugins, as well as using OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) framework to secure the API endpoints.
 
 This is the successor of [opentmf-camunda7](https://github.com/opentmf/opentmf-camunda7): after Camunda 7 reached community end-of-life with 7.24, CadenzaFlow continues the engine under the `org.cadenzaflow.*` namespace. This service uses CadenzaFlow's Spring Boot **4** starters (`cadenzaflow-bpm-spring-boot-starter-*-4`, Spring Framework 7).
@@ -155,7 +155,7 @@ opentmf:
 
 ## AWS IAM Authentication Support
 
-For deployments on AWS, a dedicated image variant is published with the `-aws` tag suffix (e.g. `opentmf-cadenza-flow:1-aws`). This variant bundles the following runtime libraries:
+For deployments on AWS, a dedicated image variant is published with the `-aws` tag suffix (e.g. `opentmf-cadenzaflow:1-aws`). This variant bundles the following runtime libraries:
 
 | Library | Purpose |
 |---|---|
@@ -191,7 +191,7 @@ mvn -Dmaven.test.skip -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -P dock
 Or directly with Docker:
 
 ```bash
-docker build -f Dockerfile_release --build-arg MAVEN_PROFILES=repackage,aws-iam -t local/opentmf-cadenza-flow:aws .
+docker build -f Dockerfile_release --build-arg MAVEN_PROFILES=repackage,aws-iam -t local/opentmf-cadenzaflow:aws .
 ```
 
 ## Building a Local Docker Image

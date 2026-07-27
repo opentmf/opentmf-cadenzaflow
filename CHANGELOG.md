@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Initial version of `opentmf-cadenza-flow`, derived from `opentmf-camunda7` 24.0.7-SNAPSHOT.
+- Initial version of `opentmf-cadenzaflow`, derived from `opentmf-camunda7` 24.0.7-SNAPSHOT.
 - Embeds CadenzaFlow 1.2.0 (the maintained Camunda 7 fork) via its Spring Boot 4
   starters (`cadenzaflow-bpm-spring-boot-starter-rest-4` / `-webapp-4`), on
   Spring Boot 4.0.7 / Spring Framework 7 / Java 25.
@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - Java package renamed `org.opentmf.camunda` → `org.opentmf.cadenzaflow`; Maven
-  coordinates are now `org.opentmf.cadenzaflow:opentmf-cadenza-flow`.
+  coordinates are now `org.opentmf.cadenzaflow:opentmf-cadenzaflow`.
 - Engine configuration prefix follows the fork: `camunda.bpm.*` → `cadenzaflow.bpm.*`
   (file renamed to `config-cadenzaflow.yml`); default context path `/camunda/v7` →
   `/cadenzaflow/v1`; default schema/user `camunda7` → `cadenzaflow`.
