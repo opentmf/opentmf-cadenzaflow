@@ -3,26 +3,16 @@ An OpenTMF produced Spring Boot 4 microservice that embeds the [CadenzaFlow](htt
 
 This is the successor of [opentmf-camunda7](https://github.com/opentmf/opentmf-camunda7): after Camunda 7 reached community end-of-life with 7.24, CadenzaFlow continues the engine under the `org.cadenzaflow.*` namespace. This service uses CadenzaFlow's Spring Boot **4** starters (`cadenzaflow-bpm-spring-boot-starter-*-4`, Spring Framework 7).
 
-## CadenzaFlow Dependencies (temporary notes)
+## CadenzaFlow Dependencies
 
-CadenzaFlow >= 1.2.0 (including the Spring Boot 4 starters) is not yet on Maven Central,
-but is published on the CadenzaFlow Nexus, which this pom declares as a repository:
-`https://nexus.cadenzaflow.com/repository/cadenzaflow-nexus`. The platform artifacts
-resolve from there without any local build.
-
-The one exception is `cadenzaflow-keycloak`: its released 1.0.1 is compiled against
-spring-web 6 and fails at engine bootstrap on Spring Framework 7
-(`IncompatibleClassChangeError: HttpHeaders does not implement MultiValueMap`).
-Until a spring-web-7-compiled artifact is published, install it locally:
-
-```shell
-git clone --depth 1 https://github.com/cadenzaflow/cadenzaflow-keycloak.git
-cd cadenzaflow-keycloak
-mvn -pl extension clean install -DskipTests -Dversion.spring-web6=7.0.6
-```
-
-(The 1.0.1 sources need no code changes for Spring 7 - only recompilation. Current
-master additionally needs `getStatusCodeValue()` -> `getStatusCode().value()`.)
+CadenzaFlow >= 1.2.0 (including the Spring Boot 4 starters) is not yet on Maven
+Central, but is published on the CadenzaFlow Nexus, which this pom declares as a
+repository: `https://nexus.cadenzaflow.com/repository/cadenzaflow-nexus`. All
+CadenzaFlow artifacts resolve from there, including `cadenzaflow-keycloak-4` -
+the spring-web-7-compiled Keycloak identity plugin line matching the `-4`
+starters. (The non-`-4` `cadenzaflow-keycloak` artifact is compiled against
+spring-web 6 and does NOT work on Spring Framework 7.) When CadenzaFlow reaches
+Maven Central, the repository declaration can be dropped.
 
 ## Secure Endpoints
 This project uses OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) (2.x line, built for Spring Boot 4) to secure its exposed endpoints.

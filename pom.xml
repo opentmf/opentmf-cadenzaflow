@@ -68,17 +68,8 @@
       Nexus - see the <repositories> section below.
     -->
     <cadenzaflow.version>1.2.0</cadenzaflow.version>
-    <!--
-      The cadenzaflow-keycloak 1.0.1 release on the CadenzaFlow Nexus is compiled
-      against spring-web 6 and crashes on Spring Framework 7 at engine bootstrap
-      (IncompatibleClassChangeError: HttpHeaders no longer implements MultiValueMap).
-      Until a spring-web-7-compiled artifact is released, build it locally from
-      https://github.com/cadenzaflow/cadenzaflow-keycloak with:
-        mvn -pl extension clean install -DskipTests -Dversion.spring-web6=7.0.6
-      (source of 1.0.1 needs no code changes; the 1.0.1-SNAPSHOT master additionally
-      needs getStatusCodeValue() -> getStatusCode().value()).
-    -->
-    <cadenzaflow-keycloak.version>1.0.1-SNAPSHOT</cadenzaflow-keycloak.version>
+    <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
+    <cadenzaflow-keycloak.version>1.1.1</cadenzaflow-keycloak.version>
     <cadenzaflow-incident-logger.version>1.0.0-SNAPSHOT</cadenzaflow-incident-logger.version>
     <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
     <graalvm.version>25.1.3</graalvm.version>
@@ -166,7 +157,7 @@
     </dependency>
     <dependency>
       <groupId>org.cadenzaflow.bpm.extension</groupId>
-      <artifactId>cadenzaflow-keycloak</artifactId>
+      <artifactId>cadenzaflow-keycloak-4</artifactId>
       <version>${cadenzaflow-keycloak.version}</version>
     </dependency>
     <dependency>
