@@ -63,12 +63,21 @@
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
     <spring-boot.version>4.0.7</spring-boot.version>
     <!--
-      CadenzaFlow 1.2.0+ Spring Boot 4 starters are not yet published to Maven Central
-      (Central has only up to 1.1.0, without the starter-4 modules). Until the CadenzaFlow
-      project releases them, build them locally from
-      https://github.com/cadenzaflow/cadenzaflow-bpm-platform master: mvn install -DskipTests
+      CadenzaFlow 1.2.0+ (including the Spring Boot 4 starters) is not yet on Maven
+      Central (Central has only up to 1.1.0), but is published on the CadenzaFlow
+      Nexus - see the <repositories> section below.
     -->
     <cadenzaflow.version>1.2.0</cadenzaflow.version>
+    <!--
+      The cadenzaflow-keycloak 1.0.1 release on the CadenzaFlow Nexus is compiled
+      against spring-web 6 and crashes on Spring Framework 7 at engine bootstrap
+      (IncompatibleClassChangeError: HttpHeaders no longer implements MultiValueMap).
+      Until a spring-web-7-compiled artifact is released, build it locally from
+      https://github.com/cadenzaflow/cadenzaflow-keycloak with:
+        mvn -pl extension clean install -DskipTests -Dversion.spring-web6=7.0.6
+      (source of 1.0.1 needs no code changes; the 1.0.1-SNAPSHOT master additionally
+      needs getStatusCodeValue() -> getStatusCode().value()).
+    -->
     <cadenzaflow-keycloak.version>1.0.1-SNAPSHOT</cadenzaflow-keycloak.version>
     <cadenzaflow-incident-logger.version>1.0.0-SNAPSHOT</cadenzaflow-incident-logger.version>
     <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
@@ -112,6 +121,20 @@
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+  <repositories>
+    <!-- CadenzaFlow artifacts not yet published to Maven Central (>= 1.2.0) -->
+    <repository>
+      <id>cadenzaflow-nexus</id>
+      <url>https://nexus.cadenzaflow.com/repository/cadenzaflow-nexus</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
 
   <dependencies>
 
