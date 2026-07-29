@@ -27,21 +27,32 @@ opentmf:
           - writer
           - admin
 
-      # Actuator Endpoints That Require Authorization
-      - method: GET
-        path: /actuator/env
-        roles:
-          - admin
-      - method: GET
-        path: /actuator/env/**
-        roles:
-          - admin
-
     whitelist:
       - /error
       - /cadenzaflow/**
       - /engine-rest/external-task/**
-      - /actuator
-      - /actuator/health/**
-      - /actuator/loggers/**
-      - /actuator/metrics/**
+
+    # Actuator runs on the separate management port (16000); since
+    # openid-rbac-security 2.x it is governed by this dedicated block, not by the
+    # main-port whitelist/secure-endpoints above. Anything not listed here falls
+    # back to other-endpoints: AUTHENTICATED (valid JWT required).
+    management:
+      whitelist:
+        - /actuator
+        - /actuator/health
+        - /actuator/health/**
+        - /actuator/info
+        - /actuator/metrics
+        - /actuator/metrics/**
+        - /actuator/loggers
+        - /actuator/loggers/**
+        - /actuator/prometheus
+      secure-endpoints:
+        - method: GET
+          path: /actuator/env
+          roles:
+            - admin
+        - method: GET
+          path: /actuator/env/**
+          roles:
+            - admin

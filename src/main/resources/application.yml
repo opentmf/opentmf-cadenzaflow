@@ -50,6 +50,7 @@ management:
           - metrics
           - loggers
           - env
+          - prometheus
   endpoint:
     env:
       show-values: when_authorized

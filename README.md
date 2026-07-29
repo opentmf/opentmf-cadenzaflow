@@ -44,6 +44,14 @@ In order to enable request - response logging, set the following logging level t
 ## Use CadenzaFlow UIs Through OpenID Authentication
 No need to setup users to access the CadenzaFlow user interfaces like Cockpit, Tasklist, and Admin. Just use Keycloak's OpenID authentication to access the UIs with the help of the [OpenID auth for Keycloak](https://github.com/cadenzaflow/cadenzaflow-keycloak) plugin.
 
+## Prometheus Metrics
+
+Micrometer's Prometheus registry is included; the scrape endpoint is exposed on the
+management port: `http://<host>:16000/actuator/prometheus`. It is whitelisted for
+scraping (no JWT), like `/actuator/metrics` — the management port is expected to stay
+internal (not exposed through the Ingress). Point your `ServiceMonitor`/scrape config
+at port `16000`, path `/actuator/prometheus`.
+
 ## Deployment Configuration
 
 The application is configured through environment variables. The tables below list the key variables; see [application.yml](src/main/resources/application.yml), [config-cadenzaflow.yml](src/main/resources/config-cadenzaflow.yml), and [config-security.yml](src/main/resources/config-security.yml) for the full set of defaults.
@@ -141,16 +149,20 @@ opentmf:
         roles:
           - writer
           - admin
+```
 
-      # Actuator Endpoints That Require Authorization
-      - method: GET
-        path: /actuator/env
-        roles:
-          - admin
-      - method: GET
-        path: /actuator/env/**
-        roles:
-          - admin
+Actuator endpoints live on the separate management port (16000) and are governed by
+the dedicated `opentmf.security.management` block (openid-rbac-security 2.x), e.g.:
+
+```yaml
+opentmf:
+  security:
+    management:
+      secure-endpoints:
+        - method: GET
+          path: /actuator/env
+          roles:
+            - admin
 ```
 
 ## AWS IAM Authentication Support

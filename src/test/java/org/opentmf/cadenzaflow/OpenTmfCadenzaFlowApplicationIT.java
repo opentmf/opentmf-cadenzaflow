@@ -21,7 +21,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    webEnvironment = WebEnvironment.RANDOM_PORT,
+    // application-it.yml disables the management server; re-enable it on a random
+    // port here so the actuator/prometheus exposure can be verified end-to-end.
+    properties = "management.server.port=0")
 @ActiveProfiles("it")
 class OpenTmfCadenzaFlowApplicationIT {
 
@@ -73,6 +77,32 @@ class OpenTmfCadenzaFlowApplicationIT {
   @Test
   void engineRestWithGarbageTokenIsRejected() throws Exception {
     Assertions.assertEquals(401, get("/engine-rest/task", "Bearer not-a-jwt").statusCode());
+  }
+
+  @Test
+  void prometheusEndpointIsExposedOnManagementPort() throws Exception {
+    var managementPort = applicationContext.getEnvironment().getProperty("local.management.port");
+    var request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + managementPort + "/actuator/prometheus"))
+        .GET()
+        .build();
+    HttpResponse<String> response =
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    Assertions.assertEquals(200, response.statusCode());
+    Assertions.assertTrue(
+        response.body().contains("jvm_memory_used_bytes"),
+        "expected Prometheus exposition format with JVM metrics");
+  }
+
+  @Test
+  void managementEnvEndpointStillRequiresToken() throws Exception {
+    var managementPort = applicationContext.getEnvironment().getProperty("local.management.port");
+    var request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + managementPort + "/actuator/env"))
+        .GET()
+        .build();
+    Assertions.assertEquals(
+        401, httpClient.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
   }
 
   @Test
