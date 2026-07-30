@@ -6,7 +6,9 @@ FROM eclipse-temurin:25-jre-noble AS builder
 WORKDIR /application
 ARG JAR_FILE=target/*.jar
 COPY ${JAR_FILE} application.jar
-RUN java -Djarmode=layertools -jar application.jar extract
+# Spring Boot 4 removed the layertools jarmode; the tools jarmode with
+# --layers --launcher produces the same layered, JarLauncher-ready layout.
+RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --destination extracted
 
 FROM eclipse-temurin:25-jre-noble
 RUN apt-get update && \
@@ -16,10 +18,10 @@ RUN apt-get update && \
     adduser --ingroup java --disabled-password java
 USER java
 WORKDIR /application
-COPY --chown=java:java --from=builder /application/dependencies/ ./
-COPY --chown=java:java --from=builder /application/spring-boot-loader/ ./
-COPY --chown=java:java --from=builder /application/snapshot-dependencies/ ./
-COPY --chown=java:java --from=builder /application/application/ ./
+COPY --chown=java:java --from=builder /application/extracted/dependencies/ ./
+COPY --chown=java:java --from=builder /application/extracted/spring-boot-loader/ ./
+COPY --chown=java:java --from=builder /application/extracted/snapshot-dependencies/ ./
+COPY --chown=java:java --from=builder /application/extracted/application/ ./
 
 ENV SERVER_PORT=8080
 ENV DEBUG_PORT=5005

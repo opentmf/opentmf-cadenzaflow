@@ -4,7 +4,7 @@
   <groupId>org.opentmf.cadenzaflow</groupId>
   <artifactId>opentmf-cadenzaflow</artifactId>
   <name>opentmf-cadenzaflow</name>
-  <version>1.2.0-SNAPSHOT</version>
+  <version>1.0.0-SNAPSHOT</version>
 
   <description>
     An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
@@ -30,24 +30,9 @@
 
   <developers>
     <developer>
-      <id>gokhanus</id>
-      <name>Gokhan Demir</name>
-      <email>gokhan@opentmf.org</email>
-    </developer>
-    <developer>
-      <id>yusuf-bozkurt</id>
-      <name>Yusuf Bozkurt</name>
-      <email>yusuf.bozkurt@pia-team.com</email>
-    </developer>
-    <developer>
       <id>cezmi-aslan</id>
       <name>Cezmi Aslan</name>
       <email>cezmi.aslan@pia-team.com</email>
-    </developer>
-    <developer>
-      <id>abdullahbeker</id>
-      <name>Abdullah Beker</name>
-      <email>abdullah.beker@dnext-technology.com</email>
     </developer>
   </developers>
 
@@ -61,16 +46,21 @@
 
     <!-- Application dependencies -->
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
-    <spring-boot.version>4.0.7</spring-boot.version>
+    <spring-boot.version>4.1.0</spring-boot.version>
     <cadenzaflow.version>1.2.1</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
-    <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
-    <graalvm.version>25.1.3</graalvm.version>
+    <openid-rbac-security.version>2.2.0</openid-rbac-security.version>
+    <graalvm.version>25.2.4</graalvm.version>
+
+    <!-- Overrides the Spring Boot 4.1.0 BOM's 42.7.11: CVE-2026-54291 (HIGH,
+         SCRAM-SHA-256-PLUS downgrade MITM), fixed in 42.7.12. Trivy gates the
+         docker profile on HIGH/CRITICAL. Drop when the BOM catches up. -->
+    <postgresql.version>42.7.12</postgresql.version>
 
     <archunit.version>1.4.2</archunit.version>
     <testcontainers.version>1.21.4</testcontainers.version>
-    <testcontainers-keycloak.version>4.2.1</testcontainers-keycloak.version>
+    <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
     <sonar-plugin.version>5.7.0.6970</sonar-plugin.version>
@@ -88,11 +78,6 @@
 
     <!-- Sonar properties -->
     <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
-
-    <!-- AWS-IAM related properties -->
-    <aws-msk-iam-auth.version>2.3.5</aws-msk-iam-auth.version>
-    <awssdk-sts.version>2.42.8</awssdk-sts.version>
-    <aws-advanced-jdbc-wrapper.version>3.2.0</aws-advanced-jdbc-wrapper.version>
   </properties>
 
   <dependencyManagement>
@@ -167,6 +152,8 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+      <!-- Explicit version overrides the BOM: CVE-2026-54291 (see property) -->
+      <version>${postgresql.version}</version>
       <scope>runtime</scope>
     </dependency>
 
@@ -475,6 +462,11 @@
     </profile>
     <profile>
       <id>aws-iam</id>
+      <properties>
+        <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
+        <awssdk-sts.version>2.49.6</awssdk-sts.version>
+        <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
+      </properties>
       <dependencies>
         <dependency>
           <groupId>software.amazon.msk</groupId>
@@ -508,6 +500,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
+        <trivy-image.version>0.72.0</trivy-image.version>
       </properties>
       <build>
         <plugins>
@@ -550,6 +543,40 @@
                     <argument>-t</argument>
                     <argument>local/${project.artifactId}:${project.version}</argument>
                     <argument>.</argument>
+                  </arguments>
+                </configuration>
+              </execution>
+
+              <!-- Trivy scan of the freshly built image; runs via the official Trivy
+                   container (no local install needed) with the Docker socket mounted.
+                   Any HIGH or CRITICAL finding exits non-zero and fails the build.
+                   The named volume caches the vulnerability DB between runs. -->
+              <execution>
+                <id>trivy-scan</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>exec</goal>
+                </goals>
+                <configuration>
+                  <executable>docker</executable>
+                  <workingDirectory>${project.basedir}</workingDirectory>
+                  <arguments>
+                    <argument>run</argument>
+                    <argument>--rm</argument>
+                    <argument>-v</argument>
+                    <argument>/var/run/docker.sock:/var/run/docker.sock</argument>
+                    <argument>-v</argument>
+                    <argument>trivy-cache:/root/.cache/trivy</argument>
+                    <argument>aquasec/trivy:${trivy-image.version}</argument>
+                    <argument>image</argument>
+                    <!-- default 5m is eaten by the first-run DB downloads -->
+                    <argument>--timeout</argument>
+                    <argument>15m</argument>
+                    <argument>--exit-code</argument>
+                    <argument>1</argument>
+                    <argument>--severity</argument>
+                    <argument>HIGH,CRITICAL</argument>
+                    <argument>local/${project.artifactId}:${project.version}</argument>
                   </arguments>
                 </configuration>
               </execution>
