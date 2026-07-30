@@ -62,14 +62,9 @@
     <!-- Application dependencies -->
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
     <spring-boot.version>4.0.7</spring-boot.version>
-    <!--
-      CadenzaFlow 1.2.0+ (including the Spring Boot 4 starters) is not yet on Maven
-      Central (Central has only up to 1.1.0), but is published on the CadenzaFlow
-      Nexus - see the <repositories> section below.
-    -->
-    <cadenzaflow.version>1.2.0</cadenzaflow.version>
+    <cadenzaflow.version>1.2.1</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
-    <cadenzaflow-keycloak.version>1.1.1</cadenzaflow-keycloak.version>
+    <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <openid-rbac-security.version>2.1.0</openid-rbac-security.version>
     <graalvm.version>25.1.3</graalvm.version>
 
@@ -111,20 +106,6 @@
       </dependency>
     </dependencies>
   </dependencyManagement>
-
-  <repositories>
-    <!-- CadenzaFlow artifacts not yet published to Maven Central (>= 1.2.0) -->
-    <repository>
-      <id>cadenzaflow-nexus</id>
-      <url>https://nexus.cadenzaflow.com/repository/cadenzaflow-nexus</url>
-      <releases>
-        <enabled>true</enabled>
-      </releases>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
-    </repository>
-  </repositories>
 
   <dependencies>
 

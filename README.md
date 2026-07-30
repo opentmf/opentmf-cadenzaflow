@@ -5,14 +5,12 @@ This is the successor of [opentmf-camunda7](https://github.com/opentmf/opentmf-c
 
 ## CadenzaFlow Dependencies
 
-CadenzaFlow >= 1.2.0 (including the Spring Boot 4 starters) is not yet on Maven
-Central, but is published on the CadenzaFlow Nexus, which this pom declares as a
-repository: `https://nexus.cadenzaflow.com/repository/cadenzaflow-nexus`. All
-CadenzaFlow artifacts resolve from there, including `cadenzaflow-keycloak-4` -
+All CadenzaFlow artifacts resolve from Maven Central: the platform (1.2.1+,
+including the Spring Boot 4 starters) and `cadenzaflow-keycloak-4` (1.1.2+) -
 the spring-web-7-compiled Keycloak identity plugin line matching the `-4`
 starters. (The non-`-4` `cadenzaflow-keycloak` artifact is compiled against
-spring-web 6 and does NOT work on Spring Framework 7.) When CadenzaFlow reaches
-Maven Central, the repository declaration can be dropped.
+spring-web 6 and does NOT work on Spring Framework 7.) No extra Maven
+repository declaration is needed.
 
 ## Secure Endpoints
 This project uses OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) (2.x line, built for Spring Boot 4) to secure its exposed endpoints.

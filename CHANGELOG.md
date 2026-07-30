@@ -8,10 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Initial version of `opentmf-cadenzaflow`, derived from `opentmf-camunda7` 24.0.7-SNAPSHOT.
-- Embeds CadenzaFlow 1.2.0 (the maintained Camunda 7 fork) via its Spring Boot 4
+- Embeds CadenzaFlow 1.2.1 (the maintained Camunda 7 fork) via its Spring Boot 4
   starters (`cadenzaflow-bpm-spring-boot-starter-rest-4` / `-webapp-4`), on
   Spring Boot 4.0.7 / Spring Framework 7 / Java 25.
-- Keycloak identity integration via `cadenzaflow-keycloak`; API security via
+- Keycloak identity integration via `cadenzaflow-keycloak-4`; API security via
   OpenTMF `openid-rbac-security` 2.1.0 (Spring Boot 4 line).
 - Carried over from opentmf-camunda7: context-closing GraalJS script engine
   (polyglot context leak fix), OAuth2/OIDC SSO for the Cockpit/Tasklist/Admin/Welcome
