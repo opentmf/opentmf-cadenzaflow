@@ -54,9 +54,9 @@
     <graalvm.version>25.2.4</graalvm.version>
 
     <!-- Overrides the Spring Boot 4.1.0 BOM's 42.7.11: CVE-2026-54291 (HIGH,
-         SCRAM-SHA-256-PLUS downgrade MITM), fixed in 42.7.12. Trivy gates the
+         SCRAM-SHA-256-PLUS downgrade MITM), fixed in 42.7.13. Trivy gates the
          docker profile on HIGH/CRITICAL. Drop when the BOM catches up. -->
-    <postgresql.version>42.7.12</postgresql.version>
+    <postgresql.version>42.7.13</postgresql.version>
 
     <archunit.version>1.4.2</archunit.version>
     <testcontainers.version>1.21.4</testcontainers.version>
@@ -464,7 +464,7 @@
       <id>aws-iam</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk-sts.version>2.49.6</awssdk-sts.version>
+        <awssdk-sts.version>2.50.1</awssdk-sts.version>
         <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencies>
