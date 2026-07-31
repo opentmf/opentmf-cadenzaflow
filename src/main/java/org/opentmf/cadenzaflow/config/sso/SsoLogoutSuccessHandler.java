@@ -20,26 +20,50 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.web.util.UrlUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
- * {@link OidcClientInitiatedLogoutSuccessHandler} with logging.
+ * {@link OidcClientInitiatedLogoutSuccessHandler} that also works without OIDC discovery.
+ *
+ * <p>The parent handler resolves Keycloak's end-session endpoint from the client
+ * registration's provider metadata, which is only populated when the registration is built
+ * from {@code issuer-uri} discovery. This application configures the provider endpoints
+ * explicitly (split-DNS deployments reach Keycloak on an internal URL whose discovery
+ * document advertises the public issuer, so discovery cannot be used) - leaving the
+ * metadata empty and the parent silently redirecting to "/", which the resource-server
+ * chain rejects with 401. This handler instead derives the browser-facing end-session URL
+ * from the configured {@code authorization-uri} (same host the browser already used to log
+ * in) and falls back to the parent's behavior for non-OIDC authentications.
  *
  * @author Abdullah Beker
  */
 public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHandler {
 
   private static final Logger log = LoggerFactory.getLogger(SsoLogoutSuccessHandler.class);
+  private static final String AUTH_ENDPOINT_SUFFIX = "/auth";
+  private static final String LOGOUT_ENDPOINT_SUFFIX = "/logout";
+
+  private final ClientRegistrationRepository clientRegistrationRepository;
+  private final String postLogoutRedirectUri;
 
   public SsoLogoutSuccessHandler(
       ClientRegistrationRepository clientRegistrationRepository,
       OAuth2Properties oAuth2Properties) {
     super(clientRegistrationRepository);
-    this.setPostLogoutRedirectUri(oAuth2Properties.getSsoLogout().getPostLogoutRedirectUri());
+    this.clientRegistrationRepository = clientRegistrationRepository;
+    this.postLogoutRedirectUri = oAuth2Properties.getSsoLogout().getPostLogoutRedirectUri();
+    this.setPostLogoutRedirectUri(this.postLogoutRedirectUri);
   }
 
   @Override
@@ -48,5 +72,52 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
       throws IOException, ServletException {
     log.debug("Initiating SSO logout for '{}'", authentication.getName());
     super.onLogoutSuccess(request, response, authentication);
+  }
+
+  @Override
+  protected String determineTargetUrl(
+      HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
+    if (authentication instanceof OAuth2AuthenticationToken token
+        && token.getPrincipal() instanceof OidcUser oidcUser) {
+      ClientRegistration registration =
+          clientRegistrationRepository.findByRegistrationId(
+              token.getAuthorizedClientRegistrationId());
+      String endSessionEndpoint = endSessionEndpoint(registration);
+      if (endSessionEndpoint != null) {
+        return UriComponentsBuilder.fromUriString(endSessionEndpoint)
+            .queryParam("id_token_hint", oidcUser.getIdToken().getTokenValue())
+            .queryParam("client_id", registration.getClientId())
+            .queryParam("post_logout_redirect_uri", resolvePostLogoutRedirectUri(request))
+            .encode(StandardCharsets.UTF_8)
+            .build()
+            .toUriString();
+      }
+    }
+    return super.determineTargetUrl(request, response, authentication);
+  }
+
+  private static String endSessionEndpoint(ClientRegistration registration) {
+    if (registration == null) {
+      return null;
+    }
+    String authorizationUri = registration.getProviderDetails().getAuthorizationUri();
+    if (authorizationUri == null || !authorizationUri.endsWith(AUTH_ENDPOINT_SUFFIX)) {
+      return null;
+    }
+    return authorizationUri.substring(0, authorizationUri.length() - AUTH_ENDPOINT_SUFFIX.length())
+        + LOGOUT_ENDPOINT_SUFFIX;
+  }
+
+  private String resolvePostLogoutRedirectUri(HttpServletRequest request) {
+    String baseUrl =
+        UriComponentsBuilder.fromUriString(UrlUtils.buildFullRequestUrl(request))
+            .replacePath(request.getContextPath())
+            .replaceQuery(null)
+            .fragment(null)
+            .build()
+            .toUriString();
+    return UriComponentsBuilder.fromUriString(postLogoutRedirectUri)
+        .buildAndExpand(Map.of("baseUrl", baseUrl))
+        .toUriString();
   }
 }

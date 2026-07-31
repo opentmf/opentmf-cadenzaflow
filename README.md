@@ -1,7 +1,7 @@
 # opentmf-cadenzaflow
-An OpenTMF produced Spring Boot 4 microservice that embeds the [CadenzaFlow](https://github.com/cadenzaflow/cadenzaflow-bpm-platform) community edition (the maintained Camunda 7 fork) with the public Spin, and [OpenID auth for Keycloak](https://github.com/cadenzaflow/cadenzaflow-keycloak) plugins, as well as using OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) framework to secure the API endpoints.
+An OpenTMF produced Spring Boot 4 microservice that embeds the [CadenzaFlow](https://github.com/cadenzaflow/cadenzaflow-bpm-platform) community edition BPM platform with its public Spin, and [OpenID auth for Keycloak](https://github.com/cadenzaflow/cadenzaflow-keycloak) plugins, as well as using OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) framework to secure the API endpoints.
 
-This is the successor of [opentmf-camunda7](https://github.com/opentmf/opentmf-camunda7): after Camunda 7 reached community end-of-life with 7.24, CadenzaFlow continues the engine under the `org.cadenzaflow.*` namespace. This service uses CadenzaFlow's Spring Boot **4** starters (`cadenzaflow-bpm-spring-boot-starter-*-4`, Spring Framework 7).
+This is the successor of [opentmf-camunda7](https://github.com/opentmf/opentmf-camunda7). The service uses CadenzaFlow's Spring Boot **4** starters (`cadenzaflow-bpm-spring-boot-starter-*-4`, Spring Framework 7), its `org.cadenzaflow.*` Maven artifacts, and its `cadenzaflow.bpm.*` configuration namespace.
 
 ## CadenzaFlow Dependencies
 
@@ -11,6 +11,83 @@ the spring-web-7-compiled Keycloak identity plugin line matching the `-4`
 starters. (The non-`-4` `cadenzaflow-keycloak` artifact is compiled against
 spring-web 6 and does NOT work on Spring Framework 7.) No extra Maven
 repository declaration is needed.
+
+## Service URLs
+
+The application listens on two ports: the application port (`8080`, context path `/cadenzaflow/v1`) and the management port (`16000`). The management port is expected to stay internal (not exposed through the Ingress).
+
+| URL | Description | Authentication |
+|---|---|---|
+| `http://<host>:8080/cadenzaflow/v1/engine-rest/**` | Engine REST API (process definitions, instances, tasks, deployments, history, ...) | JWT with roles per [config-security.yml](src/main/resources/config-security.yml); `/engine-rest/external-task/**` is whitelisted by default for worker traffic |
+| `http://<host>:8080/cadenzaflow/v1/app/cockpit` | Cockpit — monitoring and operations UI | Keycloak OpenID SSO |
+| `http://<host>:8080/cadenzaflow/v1/app/tasklist` | Tasklist — human task UI | Keycloak OpenID SSO |
+| `http://<host>:8080/cadenzaflow/v1/app/admin` | Admin — users, groups, authorizations UI | Keycloak OpenID SSO |
+| `http://<host>:16000/actuator/health/liveness`, `/readiness` | Kubernetes probes | anonymous |
+| `http://<host>:16000/actuator/prometheus` | Prometheus scrape endpoint | anonymous (management whitelist) |
+| `http://<host>:16000/actuator/metrics/**`, `/loggers/**` | Micrometer metrics, runtime log-level management | anonymous (management whitelist) |
+| `http://<host>:16000/actuator/env` | Effective configuration inspection | JWT + `admin` role |
+
+## Engine Configuration (`cadenzaflow.bpm.*`)
+
+All engine behavior is configured under the `cadenzaflow.bpm` prefix (environment-variable form `CADENZAFLOW_BPM_*`). The defaults this image ships with are defined in [config-cadenzaflow.yml](src/main/resources/config-cadenzaflow.yml):
+
+| Property | Default | Description |
+|---|---|---|
+| `cadenzaflow.bpm.authorization.enabled` | `true` | Engine-level authorization checks (drives what users/groups may see and do in the web UIs and REST API). |
+| `cadenzaflow.bpm.database.type` | `postgres` | Database dialect. |
+| `cadenzaflow.bpm.database.schema-update` | `true` | Create/patch the engine (`ACT_*`) tables automatically at startup. |
+| `cadenzaflow.bpm.database.schema-name` | `${spring.datasource.hikari.schema}` | Schema holding the engine tables. |
+| `cadenzaflow.bpm.database.table-prefix` | `<schema>.` | Table prefix used in generated SQL. |
+| `cadenzaflow.bpm.filter.create` | `All tasks` | Default Tasklist filter created on first start. |
+| `cadenzaflow.bpm.webapp.application-path` | `/` | Serves the web UIs directly under the context path (`/cadenzaflow/v1/app/...`). |
+| `cadenzaflow.bpm.oauth2.sso-logout.enabled` | `true` | Logging out of a web UI also ends the Keycloak SSO session. |
+| `...generic-properties.properties.historyTimeToLive` | `P92D` | Global history time to live — see [History Cleanup](#history-cleanup). |
+| `...generic-properties.properties.legacyJobRetryBehaviorEnabled` | `true` | Failed jobs keep the classic retry-cycle behavior. |
+
+Commonly tuned knobs (settable directly as environment variables; engine defaults shown):
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `CADENZAFLOW_BPM_HISTORY_LEVEL` | `full` | History/audit detail: `full`, `audit`, `activity`, or `none`. `activity` drops per-variable history writes — a significant insert-load reduction for high-throughput installations that keep their own payload audit. |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_CORE_POOL_SIZE` | `3` | Job executor worker threads (core). |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_POOL_SIZE` | `10` | Job executor worker threads (max). |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_QUEUE_CAPACITY` | `3` | In-memory queue between job acquisition and the worker pool. |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_JOBS_PER_ACQUISITION` | `3` | Jobs fetched per acquisition round-trip; raise it when sustained job throughput makes the single acquisition thread the bottleneck. |
+
+> **Note:** keys under `generic-properties.properties` are camelCase map keys — Spring's
+> relaxed binding does not reliably map `CADENZAFLOW_BPM_...` environment variables onto
+> them. Override those via a mounted configuration file
+> (`SPRING_CONFIG_ADDITIONAL_LOCATION`) instead, as shown in
+> [History Cleanup](#history-cleanup).
+
+### External Task Workers
+
+Worker services consume service tasks of type *external* over the REST API — point the worker client's base URL at `http://<host>:8080/cadenzaflow/v1/engine-rest`. Long polling (`POST /engine-rest/external-task/fetchAndLock`) is supported. `/engine-rest/external-task/**` is whitelisted by default in [config-security.yml](src/main/resources/config-security.yml) so that high-frequency worker polling does not require tokens; tighten this in deployments where the application port is reachable by untrusted clients.
+
+### Separating Job Execution from API Traffic
+
+All pods that share one database form a single engine cluster: the job executor on every pod competes for the same jobs (timers, async continuations, retries, history cleanup). Under load, that background work contends with interactive traffic — REST calls and the web UIs — for the same worker threads, connection pool, and CPU. To isolate the two workloads, run **two deployments of the same image against the same database** and split the roles with configuration only:
+
+**API pods** — behind the Service/Ingress, serve REST and the web UIs, run no jobs:
+
+```yaml
+CADENZAFLOW_BPM_JOB_EXECUTION_ENABLED: "false"
+```
+
+**Job-executor pods** — not registered in any Service (they receive no HTTP traffic), dedicated to background jobs; optionally switch the web UIs off:
+
+```yaml
+CADENZAFLOW_BPM_JOB_EXECUTION_ENABLED: "true"   # default
+CADENZAFLOW_BPM_WEBAPP_ENABLED: "false"
+```
+
+Sizing notes:
+
+- **At least one pod must run the job executor**, or timers, `asyncBefore`/`asyncAfter` continuations, retries, and history cleanup never execute.
+- The two deployments **scale independently**: add API pods for request throughput, job pods for job throughput. Job pods are where the [job executor knobs](#engine-configuration-cadenzaflowbpm) (`CORE_POOL_SIZE`, `MAX_POOL_SIZE`, `QUEUE_CAPACITY`, `MAX_JOBS_PER_ACQUISITION`) matter; on API pods they are irrelevant.
+- Watch the **database connection budget**: every pod holds its own Hikari pool (`SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE`, default 10) — the sum across both deployments plus every other client must stay below the database's `max_connections`.
+- History cleanup runs on the job pods (cleanup jobs are ordinary jobs), so its batch window and parallelism size against *their* capacity.
+- Keep heavy business logic out of the engine entirely by modeling it as [external tasks](#external-task-workers): the engine's own jobs then stay short (state transitions), and the actual work scales in the worker services.
 
 ## Secure Endpoints
 This project uses OpenTMF's [openid-rbac-security](https://github.com/opentmf/openid-rbac-security) (2.x line, built for Spring Boot 4) to secure its exposed endpoints.
@@ -71,7 +148,7 @@ The application is configured through environment variables. The tables below li
 | `SPRING_DATASOURCE_PASSWORD` | Database password. | — |
 | `SPRING_DATASOURCE_HIKARI_SCHEMA` | Schema used by the engine tables and the HikariCP connection pool. | `cadenzaflow` |
 
-The engine's database schema is inherited from Camunda 7.24 (`ACT_*` tables). Pointing this service at an existing `opentmf-camunda7` schema is the intended migration path — set the three variables above to the current values (e.g. schema `camunda7`).
+The engine stores its state in `ACT_*` tables. The schema is backward-compatible with an existing `opentmf-camunda7` database — pointing this service at such a schema is the supported migration path: set the three variables above to the current values (e.g. schema `camunda7`).
 
 ### Keycloak / OpenID
 
@@ -87,9 +164,17 @@ The engine's database schema is inherited from Camunda 7.24 (`ACT_*` tables). Po
 
 ### History Cleanup
 
-The image ships with nightly history cleanup enabled: a 01:00–05:00 UTC batch window, cleanup parallelism of 2, a global `historyTimeToLive` of `P92D` (individual BPMNs override it via `camunda:historyTimeToLive`), and a `P30D` TTL for batch-operation history. Cleanup is cluster-safe — jobs are acquired through the shared database, so multiple pods never run the same job twice.
+Every process instance leaves history data (`ACT_HI_*` tables) behind when it finishes. Without cleanup those tables grow forever, so the image ships with **removal-time-based history cleanup enabled out of the box**: when an instance ends, the engine stamps it with a removal time (`end time + TTL`), and a nightly cleanup job deletes everything whose removal time has passed, in batches, inside a configured time window.
 
-To change the window, **do not use `CADENZAFLOW_BPM_...` environment variables**: Spring's relaxed binding does not reliably map environment-variable names onto the camelCase map keys under `generic-properties.properties`. Instead, mount an override file (see `SPRING_CONFIG_ADDITIONAL_LOCATION` above) containing, e.g.:
+The TTL for an instance is resolved in this order:
+
+1. The `historyTimeToLive` set on the **process definition itself** (the `camunda:historyTimeToLive` attribute in the BPMN XML, also editable per definition via Cockpit or `PUT /process-definition/{id}/history-time-to-live`) — takes precedence.
+2. Otherwise the **global default**: `P92D` (92 days) in this image.
+3. Cockpit **batch operations** (migrations, cancellations, ...) have their own TTL: `batchOperationHistoryTimeToLive`, `P30D` in this image.
+
+Shipped schedule: batch window **01:00–05:00** (times are in the JVM timezone — the Docker image pins it to UTC), `historyCleanupDegreeOfParallelism: 2`. Cleanup is cluster-safe — jobs are acquired through the shared database, so multiple pods never run the same job twice, and the degree of parallelism is cluster-wide, not per pod.
+
+To change the schedule, **do not use `CADENZAFLOW_BPM_...` environment variables**: Spring's relaxed binding does not reliably map environment-variable names onto the camelCase map keys under `generic-properties.properties`. Instead, mount an override file (see `SPRING_CONFIG_ADDITIONAL_LOCATION` above) containing, e.g.:
 
 ```yaml
 cadenzaflow.bpm:
@@ -97,9 +182,20 @@ cadenzaflow.bpm:
     properties:
       historyCleanupBatchWindowStartTime: "22:00"
       historyCleanupBatchWindowEndTime: "06:00"
+      historyCleanupDegreeOfParallelism: 4
 ```
 
-A `"00:00"`–`"00:00"` window means continuous cleanup; per-weekday windows are available via `sundayHistoryCleanupBatchWindowStartTime` and friends. Instances that ended before a TTL was in effect carry no removal time and are never cleaned — run `POST /history/process-instance/set-removal-time` once (or the equivalent Cockpit batch operation) to backfill. Verify the schedule with `GET /history/cleanup/job`, or trigger an immediate run with `POST /history/cleanup`.
+A `"00:00"`–`"00:00"` window means continuous cleanup; per-weekday windows are available via `sundayHistoryCleanupBatchWindowStartTime` and friends.
+
+Operations and monitoring (all under `/cadenzaflow/v1/engine-rest`):
+
+| Call | Purpose |
+|---|---|
+| `GET /history/cleanup/configuration` | The currently configured batch window. |
+| `GET /history/cleanup/job` (or `/jobs`) | Inspect the scheduled cleanup job(s): next due date, retries, failures. |
+| `POST /history/cleanup` | Schedule an immediate cleanup run (outside the window). |
+| `GET /history/cleanup/cleanable-process-instance-report` | Per-definition report of finished vs. cleanable instances — useful to gauge backlog and TTL coverage. |
+| `POST /history/process-instance/set-removal-time` | Backfill removal times as a batch. Instances that finished **before** a TTL was in effect carry no removal time and are never cleaned — run this once after introducing TTLs (or use the equivalent Cockpit batch operation). |
 
 ### Split-URL deployments
 

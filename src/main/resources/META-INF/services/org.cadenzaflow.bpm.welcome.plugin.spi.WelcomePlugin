@@ -1,1 +1,1 @@
-org.opentmf.camunda.config.sso.plugin.welcome.SsoLogoutWelcomePlugin
+org.opentmf.cadenzaflow.config.sso.plugin.welcome.SsoLogoutWelcomePlugin
