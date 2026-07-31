@@ -1,4 +1,4 @@
-# Stage 1: Build the JAR using Maven (bytecode target stays 17 via maven.compiler.*)
+# Stage 1: Build the JAR using Maven (bytecode target 25 via maven.compiler.*)
 FROM maven:3.9.12-eclipse-temurin-25 AS maven-build
 WORKDIR /build
 ARG MAVEN_PROFILES=repackage
@@ -6,11 +6,13 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn -Dmaven.test.skip=true -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -P ${MAVEN_PROFILES} clean package
 
-# Stage 2: Extract layers using layertools
+# Stage 2: Extract layers
 FROM eclipse-temurin:25-jre-noble AS layer-extract
 WORKDIR /application
 COPY --from=maven-build /build/target/*.jar application.jar
-RUN java -Djarmode=layertools -jar application.jar extract
+# Spring Boot 4 removed the layertools jarmode; the tools jarmode with
+# --layers --launcher produces the same layered, JarLauncher-ready layout.
+RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --destination extracted
 
 # Stage 3: Final runtime image
 # JRE 25 matches the GraalJS/Truffle 25.x runtime requirement. JS script tasks still run
@@ -23,10 +25,10 @@ RUN apt-get update && \
     adduser --ingroup java --disabled-password java
 USER java
 WORKDIR /application
-COPY --chown=java:java --from=layer-extract /application/dependencies/ ./
-COPY --chown=java:java --from=layer-extract /application/spring-boot-loader/ ./
-COPY --chown=java:java --from=layer-extract /application/snapshot-dependencies/ ./
-COPY --chown=java:java --from=layer-extract /application/application/ ./
+COPY --chown=java:java --from=layer-extract /application/extracted/dependencies/ ./
+COPY --chown=java:java --from=layer-extract /application/extracted/spring-boot-loader/ ./
+COPY --chown=java:java --from=layer-extract /application/extracted/snapshot-dependencies/ ./
+COPY --chown=java:java --from=layer-extract /application/extracted/application/ ./
 
 # set minimal JVM options
 ENV SERVER_PORT=8080

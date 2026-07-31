@@ -327,6 +327,10 @@
         </executions>
         <configuration>
           <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+          <!-- When repackaging is on (repackage/docker profiles), the main artifact is the
+               fat jar and its classes sit under BOOT-INF/classes, which breaks the
+               @SpringBootConfiguration upward search. Point failsafe at the classes dir. -->
+          <classesDirectory>${project.build.outputDirectory}</classesDirectory>
         </configuration>
       </plugin>
       <plugin>
