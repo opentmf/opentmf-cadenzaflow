@@ -32,7 +32,7 @@ public class OAuth2AuthenticationProvider extends ContainerBasedAuthenticationPr
       return AuthenticationResult.unsuccessful();
     }
     String camundaUserId = oauth2.getName();
-    if (camundaUserId == null || camundaUserId.isEmpty()) {
+    if (camundaUserId.isEmpty()) {
       logger.debug("UserId is empty");
       return AuthenticationResult.unsuccessful();
     }

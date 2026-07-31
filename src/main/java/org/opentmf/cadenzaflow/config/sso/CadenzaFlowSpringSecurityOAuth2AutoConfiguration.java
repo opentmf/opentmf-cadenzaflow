@@ -89,13 +89,16 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     return new AuthorizeTokenFilter(clientManager);
   }
 
+  // CSRF is deliberately disabled here (java:S4502): this chain only fronts the engine
+  // web UIs, which run their own CsrfPreventionFilter inside the webapp filter chain,
+  // and every other endpoint is a stateless JWT resource server.
+  @SuppressWarnings("java:S4502")
   @Bean
   @Order(1)
   public SecurityFilterChain filterChain(
       HttpSecurity http,
       AuthorizeTokenFilter authorizeTokenFilter,
-      @Nullable SsoLogoutSuccessHandler ssoLogoutSuccessHandler)
-      throws Exception {
+      @Nullable SsoLogoutSuccessHandler ssoLogoutSuccessHandler) {
 
     logger.info("Enabling Camunda Spring Security oauth2 integration");
 

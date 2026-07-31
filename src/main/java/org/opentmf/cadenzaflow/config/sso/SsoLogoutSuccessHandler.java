@@ -70,7 +70,10 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
   public void onLogoutSuccess(
       HttpServletRequest request, HttpServletResponse response, Authentication authentication)
       throws IOException, ServletException {
-    log.debug("Initiating SSO logout for '{}'", authentication.getName());
+    // authentication is null when /logout is hit without an authenticated session
+    log.debug(
+        "Initiating SSO logout for '{}'",
+        authentication != null ? authentication.getName() : "<unauthenticated>");
     super.onLogoutSuccess(request, response, authentication);
   }
 

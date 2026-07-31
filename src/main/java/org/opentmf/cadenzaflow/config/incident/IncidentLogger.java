@@ -34,6 +34,15 @@ public class IncidentLogger extends DefaultIncidentHandler implements IncidentHa
       return super.handleIncident(context, message);
     }
 
+    logIncidentSafely(context, message);
+    return super.handleIncident(context, message);
+  }
+
+  // Deliberately catches Throwable (java:S1181): this handler is purely observational,
+  // and even an Error while assembling the log line (e.g. a LinkageError from lazily
+  // loaded entities) must never break the engine's incident handling itself.
+  @SuppressWarnings("java:S1181")
+  private void logIncidentSafely(IncidentContext context, String message) {
     try {
       ExecutionEntity execution = Context.getCommandContext().getExecutionManager()
           .findExecutionById(context.getExecutionId());
@@ -60,6 +69,5 @@ public class IncidentLogger extends DefaultIncidentHandler implements IncidentHa
           "Exception while logging cadenzaflow incident. Please check incidents"
               + " and fix this code error.", throwable);
     }
-    return super.handleIncident(context, message);
   }
 }
