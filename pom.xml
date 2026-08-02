@@ -58,6 +58,13 @@
          docker profile on HIGH/CRITICAL. Drop when the BOM catches up. -->
     <postgresql.version>42.7.13</postgresql.version>
 
+    <!-- Overrides the Spring Boot 4.1.0 BOM's 4.2.15.Final: CVE-2026-59901,
+         CVE-2026-55831, CVE-2026-55833, CVE-2026-56745, CVE-2026-56819 (all HIGH,
+         DoS in netty codecs), fixed in 4.2.16.Final. Netty is only pulled in by
+         the aws-iam profile (AWS SDK async client), where Trivy gates the -aws
+         image on HIGH/CRITICAL. Drop when the BOM catches up. -->
+    <netty.version>4.2.16.Final</netty.version>
+
     <archunit.version>1.4.2</archunit.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
@@ -86,6 +93,16 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Must be imported before spring-boot-dependencies: among imported BOMs the
+           first declaration wins, and this one overrides the netty version managed
+           by the Spring Boot BOM (see the netty.version property for the CVEs). -->
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-bom</artifactId>
+        <version>${netty.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>

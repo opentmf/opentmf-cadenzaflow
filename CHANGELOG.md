@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.3] - 2026-08-02
+
+### Security
+- Netty upgraded from 4.2.15.Final (Spring Boot 4.1.0 BOM) to 4.2.16.Final via a
+  `netty-bom` import: fixes CVE-2026-59901, CVE-2026-55831, CVE-2026-55833,
+  CVE-2026-56745 and CVE-2026-56819 (all HIGH, DoS in netty codecs). Only the
+  `-aws` image is affected — Netty comes in through the AWS SDK's async HTTP
+  client in the `aws-iam` profile. These CVEs blocked the 1.0.2 `-aws` image at
+  the release Trivy gate, so no `1.0.2-aws` image exists; `-aws` consumers should
+  move from `1.0.1-aws` (which contains the vulnerable Netty) to `1.0.3-aws`.
+
 ## [1.0.2] - 2026-08-02
 
 No functional changes over 1.0.1. Re-release to restore the GitHub release page:
