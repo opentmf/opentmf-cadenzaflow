@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.2] - 2026-08-02
+
+No functional changes over 1.0.1. Re-release to restore the GitHub release page:
+1.0.1 was published while GitHub's release immutability was enabled, which
+permanently blocked attaching the Sonar/Trivy quality reports to (or recreating)
+that release. The 1.0.1 artifacts themselves (Maven Central jar, signed GHCR
+images) shipped correctly.
+
 ## [1.0.1] - 2026-08-02
 
 ### Added
