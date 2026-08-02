@@ -132,6 +132,27 @@ events (login success/failure with provider label). Add a login-event audit
 log line (provider, user-claim, outcome) in this release — it directly feeds
 the VFDE monitoring/logging evidence (SbD M4.x).
 
+### 1.8 README documentation (part of the release, not an afterthought)
+
+The README currently documents Keycloak as THE auth story ("Keycloak /
+OpenID", "Use CadenzaFlow UIs Through OpenID Authentication", "Secure
+Endpoints"). This release updates it with a **Security architecture** section
+stating the deliberate two-surface model (§1.2 note):
+
+- The two OAuth2 roles side by side: **engine REST = resource server via
+  openid-rbac-security** (`opentmf.security.*`, multi-issuer `issuers[]` from
+  ≥ 2.3.0) vs **webapp login = Spring Boot's native
+  `spring.security.oauth2.client`**, provider-selectable
+  (`cadenzaflow.sso.provider: keycloak | entra`).
+- The **dual-audience engine REST** fact: external-task workers + dnms-flow
+  arrive with the platform M2M issuer's tokens while the Entra-logged-in
+  webapps call the same endpoints with Entra session tokens — the concrete
+  reason the `issuers[]` list exists; include the two-issuer config example.
+- Rework the existing Keycloak sections to provider-scoped subsections
+  (Keycloak = default/non-prod; Entra = the prod-policy path), with the
+  claims-based identity degradation note (no directory browsing) stated where
+  admins will look for it.
+
 ## 2. Non-goals
 
 Graph-backed directory browsing (later variant) · SAML · multi-tenant Entra ·
@@ -168,7 +189,7 @@ opted in). CHANGELOG leads with the compatibility statement.
 | 2 | Claims extractor generalization (1.4) + keycloak-parity regression | 1 d |
 | 3 | `ClaimsIdentityProviderPlugin` (1.3) | 2–3 d |
 | 4 | Logout + CSP (1.5) + audit log line (1.7) | 0.5 d |
-| 5 | Ring-1 automated tests + ring-2 tenant run + docs | 2 d |
+| 5 | Ring-1 automated tests + ring-2 tenant run + docs incl. the §1.8 README security-architecture section | 2 d |
 | 6 | openid-rbac ≥ 2.3.0 bump (1.6), CHANGELOG, release | 0.5 d |
 
 ## 5. Follow-ups outside this repo
