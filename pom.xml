@@ -76,7 +76,11 @@
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
     <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
 
-    <!-- Sonar properties -->
+    <!-- Sonar properties. Organization + project key target SonarCloud and are used
+         by the GitHub Actions workflows; the local `sonar` profile below overrides
+         the project key and host URL for scans against a local SonarQube. -->
+    <sonar.organization>opentmf</sonar.organization>
+    <sonar.projectKey>opentmf_opentmf-cadenzaflow</sonar.projectKey>
     <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
   </properties>
 
@@ -571,11 +575,15 @@
                     <argument>/var/run/docker.sock:/var/run/docker.sock</argument>
                     <argument>-v</argument>
                     <argument>trivy-cache:/root/.cache/trivy</argument>
+                    <argument>-v</argument>
+                    <argument>${project.basedir}/.trivyignore:/.trivyignore:ro</argument>
                     <argument>aquasec/trivy:${trivy-image.version}</argument>
                     <argument>image</argument>
                     <!-- default 5m is eaten by the first-run DB downloads -->
                     <argument>--timeout</argument>
                     <argument>15m</argument>
+                    <argument>--ignorefile</argument>
+                    <argument>/.trivyignore</argument>
                     <argument>--exit-code</argument>
                     <argument>1</argument>
                     <argument>--severity</argument>

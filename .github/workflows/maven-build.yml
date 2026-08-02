@@ -1,0 +1,44 @@
+name: Maven Build & SonarCloud Analysis
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for accurate Sonar blame / new-code data
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Cache Sonar packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      # `verify` runs the full test suite (surefire + failsafe/testcontainers) and
+      # the hard JaCoCo gate; the appended sonar goal then pushes the analysis with
+      # coverage to SonarCloud (organization/projectKey come from pom.xml).
+      - name: Build, test and analyze
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        run: mvn --batch-mode verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar

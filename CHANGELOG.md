@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-08-02
+
+### Added
+- SonarCloud analysis in CI: every push/PR to `develop` builds, runs the full test
+  suite and pushes the analysis (incl. JaCoCo coverage) to SonarCloud project
+  `opentmf_opentmf-cadenzaflow`.
+- Release quality reporting: the release image workflow aborts when the SonarCloud
+  quality gate on `develop` is not `OK`, and attaches a SonarCloud mini report
+  (`sonar-report.md`) plus per-image Trivy HTML reports (`trivy-report.html`,
+  `trivy-report-aws.html`) to the GitHub Release page.
+- Trivy gate in the release workflow: fixable HIGH/CRITICAL findings fail the image
+  build before anything is pushed. Accepted CVEs live in `.trivyignore`, honored by
+  both the local `docker` profile scan and the release workflow.
+
 ## [1.0.0] - 2026-07-31
 
 ### Added
