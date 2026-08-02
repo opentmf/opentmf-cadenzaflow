@@ -57,6 +57,22 @@ spring.security.oauth2.client:           # derived from the above (v2 endpoints)
     issuer-uri: https://login.microsoftonline.com/${tenant-id}/v2.0
 ```
 
+**Config-surface split (deliberate — decision, not accident):** this app uses
+BOTH security config surfaces, for different OAuth2 roles. `opentmf.security.*`
+(openid-rbac-security) = the RESOURCE-SERVER role — validating incoming bearer
+tokens on the engine REST (gains multi-issuer via that library's
+`docs/multi-issuer-plan.md`). `spring.security.oauth2.client.*` = the LOGIN
+role — the webapps' interactive authorization-code flow, which
+openid-rbac-security deliberately does NOT cover (it is a resource-server
+library). Do NOT fold the login config into `opentmf.security.*`: CadenzaFlow's
+webapps are the estate's ONLY server-side-login application (dnms UIs are SPAs
+doing browser OIDC), and Boot's client registration is already declarative —
+a shared-library wrapper would be single-consumer indirection (YAGNI +
+simplicity-first, 2026-08-02). The one legacy coupling —
+`user-name-attribute: ${opentmf.security.user-claim}` — breaks under
+multi-issuer (WHICH issuer's claim?) and moves under the provider-scoped
+`cadenzaflow.sso.*` per this section.
+
 Notes that bite: pin **v2 tokens** (`accessTokenAcceptedVersion: 2` on the app
 registration — the v1/v2 issuer strings differ); `user-name-attribute` per
 provider (today it's wired to `${opentmf.security.user-claim}` — becomes
