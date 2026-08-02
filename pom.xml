@@ -468,7 +468,7 @@
       <id>aws-iam</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk-sts.version>2.50.1</awssdk-sts.version>
+        <awssdk-sts.version>2.50.2</awssdk-sts.version>
         <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencies>
