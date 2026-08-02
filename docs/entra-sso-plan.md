@@ -2,7 +2,9 @@
 
 **Status:** planned 2026-08-02 (Gökhan + Claude, dnotify-analysis session). Not
 started. Baseline: **1.0.3** (released 2026-08-02, Keycloak-only). Target: next
-minor (**1.1.0**).
+minor (**1.1.0**). **Priority raised same day: the VFDE security reply commits
+the engine UI to Entra-direct in production (no basic-auth interim) — this
+plan must land BEFORE the DNMS MVP go-live.**
 
 **Motivation:** VFDE's production policy (security architect Veit Verstege,
 mail 2026-07-31): Keycloak must not broker HUMAN sign-ins in production — user
