@@ -12,11 +12,6 @@ on:
     types: [published]
   workflow_dispatch: {}
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write   # keyless cosign signing
-
 env:
   REGISTRY: ghcr.io
   IMAGE: ${{ github.repository }}   # ghcr.io/<owner>/<repo>
@@ -32,7 +27,7 @@ jobs:
   sonar-gate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # attaching sonar-report.md as a release asset
+      contents: write   # checkout + attach sonar-report.md as a release asset
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -76,6 +71,9 @@ jobs:
   build:
     needs: sonar-gate
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read    # checkout
+      packages: write   # push the by-digest images
     strategy:
       fail-fast: false
       matrix:
