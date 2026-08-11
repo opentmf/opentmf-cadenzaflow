@@ -32,7 +32,7 @@ jobs:
             latest: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The SonarCloud analysis itself is pushed by maven-build.yml on every push
       # to develop; this workflow only reads the results back through the API.
@@ -182,7 +182,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=build${{ matrix.tag-suffix }}
 
       - name: Cache Trivy vulnerability DB
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/.cache/trivy
           key: trivy-db-${{ runner.os }}-${{ matrix.tag-suffix }}-${{ github.run_id }}
