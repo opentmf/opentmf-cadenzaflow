@@ -15,7 +15,7 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 
-class OAuth2AuthenticationProviderTest {
+class OAuth2AuthenticationProviderTests {
 
   private final OAuth2AuthenticationProvider provider = new OAuth2AuthenticationProvider();
   private final MockHttpServletRequest request = new MockHttpServletRequest();

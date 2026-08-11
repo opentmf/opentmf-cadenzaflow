@@ -15,7 +15,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
  */
 public class OAuth2AuthenticationProvider extends ContainerBasedAuthenticationProvider {
 
-  private static final Logger logger = LoggerFactory.getLogger(OAuth2AuthenticationProvider.class);
+  private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationProvider.class);
 
   @Override
   public AuthenticationResult extractAuthenticatedUser(
@@ -23,21 +23,21 @@ public class OAuth2AuthenticationProvider extends ContainerBasedAuthenticationPr
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
     if (authentication == null) {
-      logger.debug("Authentication is null");
+      log.debug("Authentication is null");
       return AuthenticationResult.unsuccessful();
     }
 
     if (!(authentication instanceof OAuth2AuthenticationToken oauth2)) {
-      logger.debug("Authentication is not OAuth2, it is {}", authentication.getClass());
+      log.debug("Authentication is not OAuth2, it is {}", authentication.getClass());
       return AuthenticationResult.unsuccessful();
     }
     String camundaUserId = oauth2.getName();
     if (camundaUserId.isEmpty()) {
-      logger.debug("UserId is empty");
+      log.debug("UserId is empty");
       return AuthenticationResult.unsuccessful();
     }
 
-    logger.debug("Authenticated user '{}'", camundaUserId);
+    log.debug("Authenticated user '{}'", camundaUserId);
     return AuthenticationResult.successful(camundaUserId);
   }
 }

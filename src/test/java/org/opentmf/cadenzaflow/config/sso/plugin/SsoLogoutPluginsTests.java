@@ -15,7 +15,7 @@ import org.opentmf.cadenzaflow.config.sso.plugin.tasklist.SsoLogoutTasklistPlugi
 import org.opentmf.cadenzaflow.config.sso.plugin.welcome.SsoLogoutWelcomePlugin;
 import org.opentmf.cadenzaflow.config.sso.plugin.welcome.SsoLogoutWelcomePluginRootResource;
 
-class SsoLogoutPluginsTest {
+class SsoLogoutPluginsTests {
 
   @Test
   void adminPluginExposesItsRootResource() {

@@ -4,7 +4,7 @@
   <groupId>org.opentmf.cadenzaflow</groupId>
   <artifactId>opentmf-cadenzaflow</artifactId>
   <name>opentmf-cadenzaflow</name>
-  <version>1.0.4-SNAPSHOT</version>
+  <version>1.1.0-SNAPSHOT</version>
 
   <description>
     An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
@@ -32,17 +32,22 @@
     <developer>
       <id>cezmi-aslan</id>
       <name>Cezmi Aslan</name>
-      <email>cezmi.aslan@pia-team.com</email>
+      <email>cezmiaslan@gmail.com</email>
     </developer>
   </developers>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <java.version>25</java.version>
-    <maven.compiler.source>${java.version}</maven.compiler.source>
-    <maven.compiler.target>${java.version}</maven.compiler.target>
+    <!-- `release` supersedes source+target: it also pins the API signatures the
+         compiler resolves against, so a Java 25 build cannot accidentally link
+         a symbol that a Java 25 runtime lacks. -->
+    <maven.compiler.release>${java.version}</maven.compiler.release>
 
     <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+
+    <!-- keeps `mvn versions:display-*-updates` stable-only -->
+    <maven.version.ignore>.*-M\d+,.*-RC\d+,.*-SNAPSHOT,(?i).*-(alpha|beta)\d*</maven.version.ignore>
 
     <!-- Application dependencies -->
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
@@ -50,8 +55,12 @@
     <cadenzaflow.version>1.2.1</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
-    <openid-rbac-security.version>2.2.0</openid-rbac-security.version>
+    <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
+    <!-- 2.3.0+: multi-issuer support (opentmf.security.issuers[]) -->
+    <openid-rbac-security.version>2.3.0</openid-rbac-security.version>
     <graalvm.version>25.2.4</graalvm.version>
+    <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
+    <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 
     <!-- Overrides the Spring Boot 4.1.0 BOM's 42.7.11: CVE-2026-54291 (HIGH,
          SCRAM-SHA-256-PLUS downgrade MITM), fixed in 42.7.13. Trivy gates the
@@ -61,16 +70,20 @@
     <!-- Overrides the Spring Boot 4.1.0 BOM's 4.2.15.Final: CVE-2026-59901,
          CVE-2026-55831, CVE-2026-55833, CVE-2026-56745, CVE-2026-56819 (all HIGH,
          DoS in netty codecs), fixed in 4.2.16.Final. Netty is only pulled in by
-         the aws-iam profile (AWS SDK async client), where Trivy gates the -aws
+         the aws profile (AWS SDK async client), where Trivy gates the -aws
          image on HIGH/CRITICAL. Drop when the BOM catches up. -->
     <netty.version>4.2.16.Final</netty.version>
 
     <archunit.version>1.4.2</archunit.version>
+    <wiremock.version>3.13.0</wiremock.version>
+    <pitest-maven.version>1.19.6</pitest-maven.version>
+    <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
     <sonar-plugin.version>5.7.0.6970</sonar-plugin.version>
+    <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
@@ -89,6 +102,9 @@
     <sonar.organization>opentmf</sonar.organization>
     <sonar.projectKey>opentmf_opentmf-cadenzaflow</sonar.projectKey>
     <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
+
+    <!-- Azure passwordless datasource auth (azure profile) -->
+    <azure-identity-extensions.version>1.2.9</azure-identity-extensions.version>
   </properties>
 
   <dependencyManagement>
@@ -146,6 +162,13 @@
       <artifactId>cadenzaflow-keycloak-4</artifactId>
       <version>${cadenzaflow-keycloak.version}</version>
     </dependency>
+    <!-- Entra ID (Azure AD) identity provider alternative; selected via plugin.identity.provider.
+         The -4 artifact is the spring-web-7-compiled line, matching cadenzaflow-keycloak-4. -->
+    <dependency>
+      <groupId>org.cadenzaflow.bpm.extension</groupId>
+      <artifactId>cadenzaflow-entra-identity-4</artifactId>
+      <version>${cadenzaflow-entra-identity.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.graalvm.js</groupId>
       <artifactId>js-scriptengine</artifactId>
@@ -195,6 +218,15 @@
       <artifactId>janino</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- JSON log encoder with a masking hook (logback-masking.xml). Boot's built-in
+         StructuredLogEncoder produces the same shape but cannot redact, which is why
+         it is not used here. Runtime scope: wired from logback XML, never imported. -->
+    <dependency>
+      <groupId>net.logstash.logback</groupId>
+      <artifactId>logstash-logback-encoder</artifactId>
+      <version>${logstash-logback-encoder.version}</version>
+      <scope>runtime</scope>
+    </dependency>
 
     <!-- Test dependencies -->
     <dependency>
@@ -217,6 +249,13 @@
       <groupId>com.tngtech.archunit</groupId>
       <artifactId>archunit-junit5</artifactId>
       <version>${archunit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- standalone (shaded) build: bundles its own Jetty, avoiding servlet-stack clashes -->
+    <dependency>
+      <groupId>org.wiremock</groupId>
+      <artifactId>wiremock-standalone</artifactId>
+      <version>${wiremock.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -275,6 +314,33 @@
       </plugins>
     </pluginManagement>
     <plugins>
+      <!--
+        Annotation processing must be requested EXPLICITLY. Java 23 disabled implicit
+        processing, so without <proc>full</proc> javac silently ignores every processor
+        on the classpath - here spring-boot-configuration-processor, whose output
+        (META-INF/spring-configuration-metadata.json) is what gives an IDE completion and
+        documentation for `plugin.identity.entra.*`, `plugin.identity.keycloak.*` and
+        `sso.*`. Silently, because a skipped processor is not an error: the build stays
+        green and the metadata simply never appears.
+
+        NOT set: <parameters>. Parameter names stay erased, which is what the explicit-name
+        rule on request-binding annotations (ArchitectureTests) assumes.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven-compiler-plugin.version}</version>
+        <configuration>
+          <proc>full</proc>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
+              <version>${spring-boot.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
@@ -332,6 +398,9 @@
         <version>${maven-surefire-plugin.version}</version>
         <configuration>
           <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+          <!-- Bound the wait on a fork that will not exit, so a hung test reports
+               as a failure instead of stalling the pipeline indefinitely. -->
+          <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
         </configuration>
       </plugin>
       <plugin>
@@ -348,6 +417,12 @@
         </executions>
         <configuration>
           <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+          <!-- Each IT boots its own engine; the engine registers a JVM-global MBean
+               (process-engine:type=default), so cached contexts from a shared fork
+               collide. One fresh JVM per IT class keeps them isolated. -->
+          <forkCount>1</forkCount>
+          <reuseForks>false</reuseForks>
+          <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
           <!-- When repackaging is on (repackage/docker profiles), the main artifact is the
                fat jar and its classes sit under BOOT-INF/classes, which breaks the
                @SpringBootConfiguration upward search. Point failsafe at the classes dir. -->
@@ -368,6 +443,14 @@
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>${jacoco-maven-plugin.version}</version>
+        <configuration>
+          <!-- The entry class is a Boot bootstrap with a one-line main; it has no
+               branch to assert and would otherwise hold the missed-CLASS count
+               above zero forever. Mirrors sonar.coverage.exclusions. -->
+          <excludes>
+            <exclude>**/OpenTmfCadenzaFlowApplication.class</exclude>
+          </excludes>
+        </configuration>
         <executions>
           <execution>
             <id>prepare-agent</id>
@@ -387,6 +470,10 @@
               <goal>check</goal>
             </goals>
             <configuration>
+              <!-- A gate, not a report: a coverage regression fails `mvn verify`
+                   rather than printing a warning nobody reads. The thresholds are
+                   80% (not the DNMS estate's 90%) - see the coverage deviation in
+                   docs/component-design-card.md. -->
               <haltOnFailure>true</haltOnFailure>
               <rules>
                 <rule>
@@ -424,6 +511,44 @@
 
   <!-- Profile to create a local Docker image -->
   <profiles>
+    <!-- PIT mutation testing ON DEMAND: an instrument, not a gate. Unit tests only
+         (surefire *Test - never failsafe/Testcontainers).
+         `mvn -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage` -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>org.pitest</groupId>
+              <artifactId>pitest-maven</artifactId>
+              <version>${pitest-maven.version}</version>
+              <dependencies>
+                <dependency>
+                  <groupId>org.pitest</groupId>
+                  <artifactId>pitest-junit5-plugin</artifactId>
+                  <version>${pitest-junit5-plugin.version}</version>
+                </dependency>
+              </dependencies>
+              <configuration>
+                <targetTests>
+                  <param>org.opentmf.cadenzaflow.*</param>
+                </targetTests>
+                <excludedTestClasses>
+                  <param>*IT</param>
+                </excludedTestClasses>
+                <mutators>
+                  <mutator>DEFAULTS</mutator>
+                </mutators>
+                <!-- Incremental history: reruns touch only changed code. -->
+                <withHistory>true</withHistory>
+                <!-- No mutationThreshold - survivor review is the unit of work. -->
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
     <profile>
       <id>release</id>
       <build>
@@ -486,7 +611,7 @@
       </build>
     </profile>
     <profile>
-      <id>aws-iam</id>
+      <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
         <awssdk-sts.version>2.50.2</awssdk-sts.version>
@@ -511,6 +636,22 @@
           <groupId>software.amazon.awssdk</groupId>
           <artifactId>sts</artifactId>
           <version>${awssdk-sts.version}</version>
+          <scope>runtime</scope>
+        </dependency>
+      </dependencies>
+    </profile>
+    <!-- Azure twin of the aws profile: passwordless datasource auth for Azure Database for
+         PostgreSQL via Entra ID tokens. azure-identity-extensions plugs into the
+         standard PostgreSQL driver (authenticationPluginClassName) and its transitive
+         azure-identity resolves credentials via DefaultAzureCredential (AKS Workload
+         Identity, managed identity, env vars). See README - Cloud deployment variants. -->
+    <profile>
+      <id>azure</id>
+      <dependencies>
+        <dependency>
+          <groupId>com.azure</groupId>
+          <artifactId>azure-identity-extensions</artifactId>
+          <version>${azure-identity-extensions.version}</version>
           <scope>runtime</scope>
         </dependency>
       </dependencies>

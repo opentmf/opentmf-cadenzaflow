@@ -1,0 +1,179 @@
+# opentmf-cadenzaflow on Kubernetes, authenticating against Entra ID only.
+#
+# A worked example to adapt, not a drop-in: replace every <PLACEHOLDER>, set the
+# image to a digest-pinned reference, and add the Ingress your platform uses.
+# Setup instructions and what each setting does: README.md in this directory.
+#
+# The split below is deliberate. Sensitive values live in a Secret; everything else
+# is a ConfigMap, so the whole configuration can be reviewed in a pull request
+# without exposing anything.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cadenzaflow-entra
+  labels:
+    app: opentmf-cadenzaflow
+type: Opaque
+stringData:
+  # The client secret's VALUE from Certificates & secrets — not its Secret ID.
+  entra-client-secret: "<CLIENT_SECRET_VALUE>"
+  db-password: "<DB_PASSWORD>"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cadenzaflow-config
+  labels:
+    app: opentmf-cadenzaflow
+data:
+  # --- Identity provider: users and groups from Microsoft Graph ---------------
+  PLUGIN_IDENTITY_PROVIDER: entra
+  PLUGIN_IDENTITY_ENTRA_TENANT_ID: "<TENANT_ID>"
+  PLUGIN_IDENTITY_ENTRA_CLIENT_ID: "<CLIENT_ID>"
+  PLUGIN_IDENTITY_ENTRA_USE_EMAIL_AS_CAMUNDA_USER_ID: "true"
+  PLUGIN_IDENTITY_ENTRA_FALLBACK_TO_UPN_WHEN_MAIL_EMPTY: "true"
+  PLUGIN_IDENTITY_ENTRA_USE_GROUP_DISPLAY_NAME_AS_CAMUNDA_GROUP_ID: "true"
+  PLUGIN_IDENTITY_ENTRA_TRANSITIVE_GROUP_MEMBERSHIP: "true"
+  PLUGIN_IDENTITY_ENTRA_SECURITY_GROUPS_ONLY: "true"
+  # Members of this security group get workflow-engine administrator rights.
+  PLUGIN_IDENTITY_ENTRA_ADMINISTRATOR_GROUP_NAME: camunda-admin
+  PLUGIN_IDENTITY_ENTRA_CACHE_ENABLED: "true"
+
+  # --- Token validation ------------------------------------------------------
+  # An issuer LIST although there is one issuer: the single-issuer form validates
+  # neither `iss` nor `aud`, and one tenant mints tokens for many applications.
+  OPENTMF_SECURITY_ISSUERS_0_NAME: entra
+  OPENTMF_SECURITY_ISSUERS_0_ISSUER: "https://login.microsoftonline.com/<TENANT_ID>/v2.0"
+  OPENTMF_SECURITY_ISSUERS_0_JWK_SET_URI: "https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys"
+  OPENTMF_SECURITY_ISSUERS_0_USER_CLAIM: email
+  OPENTMF_SECURITY_ISSUERS_0_FALLBACK_USER_CLAIMS_0: preferred_username
+  OPENTMF_SECURITY_ISSUERS_0_AUTHORITIES_CLAIM: roles
+  # Bare client id because requestedAccessTokenVersion is 2.
+  OPENTMF_SECURITY_ISSUERS_0_AUDIENCES_0: "<CLIENT_ID>"
+
+  # --- Endpoint authorisation ------------------------------------------------
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_0_METHOD: GET
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_0_PATH: /engine-rest/**
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: dnms-read
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: dnms-write
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: dnms-admin
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_1_METHOD: POST
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_1_PATH: /engine-rest/**
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_0: dnms-write
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_1: dnms-admin
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_2_METHOD: PUT
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_2_PATH: /engine-rest/**
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_2_ROLES_0: dnms-write
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_2_ROLES_1: dnms-admin
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_3_METHOD: DELETE
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_3_PATH: /engine-rest/**
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_3_ROLES_0: dnms-write
+  OPENTMF_SECURITY_SECURE_ENDPOINTS_3_ROLES_1: dnms-admin
+
+  # --- Web UI single sign-on -------------------------------------------------
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_ID: "<CLIENT_ID>"
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_SCOPE: "openid,profile,email"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_AUTHORIZATION_URI: "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/authorize"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_TOKEN_URI: "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_JWK_SET_URI: "https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_USER_INFO_URI: "https://graph.microsoft.com/oidc/userinfo"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_USER_NAME_ATTRIBUTE: email
+  # Browser-facing authorization host; also what the web UI's content-security-policy
+  # allows the browser to contact.
+  KEYCLOAK_URL_AUTH: "https://login.microsoftonline.com"
+
+  # --- Behind an Ingress -----------------------------------------------------
+  # Without this, redirect URLs are built from the internal address and Entra
+  # rejects them as unregistered reply URLs.
+  SERVER_FORWARD_HEADERS_STRATEGY: framework
+
+  # --- Database --------------------------------------------------------------
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://<DB_HOST>:5432/<DB_NAME>?useUnicode=yes&characterEncoding=UTF-8&currentSchema=cadenzaflow"
+  SPRING_DATASOURCE_USERNAME: "<DB_USER>"
+  SPRING_DATASOURCE_HIKARI_SCHEMA: cadenzaflow
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opentmf-cadenzaflow
+  labels:
+    app: opentmf-cadenzaflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opentmf-cadenzaflow
+  template:
+    metadata:
+      labels:
+        app: opentmf-cadenzaflow
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "16000"
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # The image's USER is the name `java` (uid 999); kubelet can only verify
+        # non-root from a numeric uid, so it is stated here.
+        runAsUser: 999
+      containers:
+        - name: opentmf-cadenzaflow
+          # Digest-pinned in production — a tag can be moved under you.
+          image: ghcr.io/opentmf/opentmf-cadenzaflow:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 16000
+          envFrom:
+            - configMapRef:
+                name: cadenzaflow-config
+          env:
+            - name: PLUGIN_IDENTITY_ENTRA_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: cadenzaflow-entra, key: entra-client-secret }
+            - name: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: cadenzaflow-entra, key: entra-client-secret }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: cadenzaflow-entra, key: db-password }
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opentmf-cadenzaflow
+  labels:
+    app: opentmf-cadenzaflow
+spec:
+  selector:
+    app: opentmf-cadenzaflow
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    # The management port carries health, metrics and /actuator/env. Keep it
+    # cluster-internal — it must never be published through the Ingress.
+    - name: management
+      port: 16000
+      targetPort: management

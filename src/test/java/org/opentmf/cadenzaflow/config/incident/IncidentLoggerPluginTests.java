@@ -9,7 +9,7 @@ import org.cadenzaflow.bpm.engine.impl.incident.IncidentHandler;
 import org.cadenzaflow.bpm.engine.runtime.Incident;
 import org.junit.jupiter.api.Test;
 
-class IncidentLoggerPluginTest {
+class IncidentLoggerPluginTests {
 
   @Test
   void registersLoggingHandlersForFailedJobAndExternalTask() {

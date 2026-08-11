@@ -15,7 +15,7 @@ import org.cadenzaflow.bpm.engine.impl.scripting.engine.ScriptEngineResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-class ClosingGraalJsScriptEngineResolverTest {
+class ClosingGraalJsScriptEngineResolverTests {
 
   private final ScriptEngineResolver delegate = mock(ScriptEngineResolver.class);
   private final ClosingGraalJsScriptEngine graalJsEngine =

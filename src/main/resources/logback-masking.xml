@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The masked JSON appender, shipped inside the jar so every deployment masks
+  identically.
+
+  WHY a whole appender and not just a rule list: Logback's <include> splices only
+  top-level elements, so a shared fragment cannot contribute a decorator into an
+  appender defined elsewhere. The complete appender lives here; logback-spring.xml
+  (and any operator-mounted logback file) does:
+
+      <include resource="logback-masking.xml"/>
+      <root level="INFO"><appender-ref ref="JSON"/></root>
+
+  WHY logstash-logback-encoder and not Boot's built-in StructuredLogEncoder with
+  format=logstash: the built-in encoder has no masking hook at all. The JSON shape
+  is the same; the difference is that this one can redact.
+
+  Two nets, in order (a third - collector-side redaction - sits outside the app):
+    1. PATH masks below: any field with one of these names, at any depth, in the
+       event, the MDC or a structured argument.
+    2. VALUE masks below: regexes applied to every string value, including the
+       rendered message text, for data that arrives inside prose.
+-->
+<included>
+
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <!-- `decorator`, not `jsonGeneratorDecorator`: encoder 9.x replaced the
+           per-kind setters with a single addDecorator(Decorator). Under the old
+           element name Joran logs a warning and silently produces UNMASKED output,
+           which is why LogbackMaskingTests asserts on encoded bytes and treats any
+           Joran warning as a failure. -->
+      <decorator class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator">
+        <defaultMask>****</defaultMask>
+
+        <!-- Credentials and bearer material. A bare name is a "partial path": it
+             matches a field of that name anywhere in the JSON stream. -->
+        <path>password</path>
+        <path>passwd</path>
+        <path>secret</path>
+        <path>client_secret</path>
+        <path>clientSecret</path>
+        <path>credential</path>
+        <path>credentials</path>
+        <path>authorization</path>
+        <path>Authorization</path>
+        <path>token</path>
+        <path>access_token</path>
+        <path>refresh_token</path>
+        <path>id_token</path>
+        <path>accessToken</path>
+        <path>refreshToken</path>
+        <path>idToken</path>
+        <path>apiKey</path>
+        <path>api_key</path>
+
+        <!-- Personal data. `email`/`mail` are field-level only - see the value-mask
+             note below for why there is no e-mail regex. -->
+        <path>email</path>
+        <path>mail</path>
+        <path>msisdn</path>
+        <path>phoneNumber</path>
+        <path>iban</path>
+        <path>pin</path>
+
+        <!-- IBAN anywhere in a string value, including inside a message. -->
+        <value>\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b</value>
+        <!-- German phone numbers in the +49… / 0049… / 0… shapes. -->
+        <value>\b(?:\+49|0049|0)[1-9]\d{6,13}\b</value>
+        <!-- PIN/PAN-like runs of 12+ digits (card numbers, long account refs).
+             Deliberately not shorter: process-instance keys and job retries are
+             numeric too, and masking those would gut the operational logs. -->
+        <value>\b\d{12,}\b</value>
+
+        <!-- DELIBERATELY ABSENT: an e-mail value regex. In this service the
+             CadenzaFlow user id IS the e-mail address (use-email-as-camunda-user-id
+             for both the Keycloak and the Entra identity provider), so a value-level
+             e-mail mask would redact the actor from every authorization, task-claim
+             and incident line - i.e. destroy the audit trail it is meant to protect.
+             Structured occurrences are still covered by the `email`/`mail` path
+             masks above. -->
+      </decorator>
+    </encoder>
+  </appender>
+
+</included>

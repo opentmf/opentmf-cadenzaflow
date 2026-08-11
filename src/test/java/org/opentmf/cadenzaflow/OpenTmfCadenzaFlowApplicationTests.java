@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.springframework.boot.SpringApplication;
 
-class OpenTmfCadenzaFlowApplicationTest {
+class OpenTmfCadenzaFlowApplicationTests {
 
   @Test
   void mainDelegatesToSpringApplicationRun() {

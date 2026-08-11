@@ -1,0 +1,109 @@
+openapi: 3.1.0
+info:
+  title: opentmf-cadenzaflow
+  version: 1.0.0
+  description: >
+    The service's OWN API surface. The primary BPM API is the embedded CadenzaFlow
+    engine's REST API, mounted under `/engine-rest` and documented upstream
+    (https://github.com/cadenzaflow/cadenzaflow-bpm-platform); this contract does not
+    duplicate it. Documented here: the security model applied in front of it, the
+    whitelisted paths, and the management-port endpoints.
+  contact:
+    name: Cezmi Aslan
+    email: cezmiaslan@gmail.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+servers:
+  - url: http://localhost:8091/cadenzaflow/v1
+    description: application port (context path /cadenzaflow/v1)
+  - url: http://localhost:16000
+    description: management port (actuator; internal only, never exposed via Ingress)
+
+tags:
+  - name: engine-rest
+    description: CadenzaFlow engine REST API passthrough (contract owned upstream)
+  - name: actuator
+    description: management-port endpoints
+
+security:
+  - bearerJwt: []
+
+paths:
+  /engine-rest/{enginePath}:
+    parameters:
+      - name: enginePath
+        in: path
+        required: true
+        schema: { type: string }
+        description: Any engine REST resource, e.g. `engine`, `task`, `process-definition`.
+    get:
+      tags: [engine-rest]
+      summary: Engine REST passthrough (read)
+      description: >
+        Requires a JWT from a trusted issuer with one of the roles
+        `reader`/`writer`/`admin` (role vocabulary configurable in
+        config-security.yml; multi-issuer trust via `opentmf.security.issuers[]`).
+        Exception - `/engine-rest/external-task/**` is whitelisted for the external
+        task workers.
+      responses:
+        '200': { description: proxied engine response }
+        '401': { description: missing/invalid token (unknown issuer, bad signature, wrong audience) }
+        '403': { description: valid token without a required role }
+    post:
+      tags: [engine-rest]
+      summary: Engine REST passthrough (write)
+      description: Requires `writer` or `admin`.
+      responses:
+        '200': { description: proxied engine response }
+        '401': { description: unauthenticated }
+        '403': { description: insufficient role }
+
+  /actuator/health:
+    get:
+      tags: [actuator]
+      summary: Liveness/readiness (whitelisted, no token)
+      security: []
+      responses:
+        '200': { description: health with probes (`/liveness`, `/readiness` subpaths) }
+
+  /actuator/prometheus:
+    get:
+      tags: [actuator]
+      summary: Prometheus scrape endpoint (whitelisted on the internal management port)
+      security: []
+      description: >
+        JVM/HTTP/Hikari families plus the service's own meters -
+        `opentmf.graaljs.contexts.*` (script-engine context lifecycle),
+        `cadenzaflow.engine.*` (engine BPM metrics bridged from ACT_RU_METER_LOG and
+        live process-instance/incident gauges), and - when the Entra identity plugin
+        is active - `cadenzaflow.identity.*` (Graph request timings, throttling,
+        token, truncation and cache meters).
+      responses:
+        '200':
+          description: Prometheus exposition format
+          content:
+            text/plain: { schema: { type: string } }
+
+  /actuator/env:
+    get:
+      tags: [actuator]
+      summary: Environment (admin only)
+      description: Requires the `admin` role (opentmf.security.management.secure-endpoints).
+      responses:
+        '200': { description: environment properties (values masked unless authorized) }
+        '401': { description: unauthenticated }
+        '403': { description: not admin }
+
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        OIDC JWT from a trusted issuer (Keycloak and/or Microsoft Entra ID; single- or
+        multi-issuer per `opentmf.security` configuration). Principal claim: `email`;
+        roles claim configurable (`roles`). Browser SSO for the Cockpit/Tasklist
+        webapps uses the OAuth2 authorization-code flow, not bearer tokens.

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * both Spin's {@code S(...)} environment function and {@code execution.setVariable} host interop)
  * through a real process engine and asserts that every created context is closed again.
  */
-class ScriptEnginePluginTest {
+class ScriptEnginePluginTests {
 
   private static final int INSTANCE_COUNT = 500;
 

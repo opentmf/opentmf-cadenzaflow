@@ -26,7 +26,7 @@ import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 
-class AuthorizeTokenFilterTest {
+class AuthorizeTokenFilterTests {
 
   private final OAuth2AuthorizedClientManager clientManager =
       mock(OAuth2AuthorizedClientManager.class);
