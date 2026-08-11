@@ -64,7 +64,8 @@ jobs:
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ github.ref_name }}" sonar-report.md --clobber
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" sonar-report.md --clobber
 
   # ---------------------------------------------------------------------------
   # One job per (flavour, architecture). Each pushes an UNTAGGED by-digest image
@@ -245,9 +246,13 @@ jobs:
         uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign the index (keyless)
-        run: cosign sign --yes "${{ steps.index.outputs.ref }}"
+        env:
+          INDEX_REF: ${{ steps.index.outputs.ref }}
+        run: cosign sign --yes "$INDEX_REF"
 
       - name: Generate the CycloneDX SBOM
+        env:
+          INDEX_REF: ${{ steps.index.outputs.ref }}
         run: |
           set -euo pipefail
           docker run --rm \
@@ -255,18 +260,23 @@ jobs:
             -v "${PWD}:/out" \
             "aquasec/trivy:${TRIVY_VERSION}" image \
             --timeout 15m --format cyclonedx --output /out/sbom.cdx.json \
-            "${{ steps.index.outputs.ref }}"
+            "$INDEX_REF"
 
       - name: Attest the SBOM to the index
+        env:
+          INDEX_REF: ${{ steps.index.outputs.ref }}
         run: |
           cosign attest --yes --type cyclonedx \
-            --predicate sbom.cdx.json "${{ steps.index.outputs.ref }}"
+            --predicate sbom.cdx.json "$INDEX_REF"
 
       # A readable report of EVERY severity, not just the gated ones, so a reviewer
       # can see what shipped rather than only what blocked. Never fails the build -
       # the gate in the build jobs is what decides that. Written against the merged
       # index, so one report covers every architecture.
       - name: Trivy HTML report
+        env:
+          INDEX_REF: ${{ steps.index.outputs.ref }}
+          SUFFIX: ${{ matrix.tag-suffix }}
         run: |
           set -euo pipefail
           docker run --rm \
@@ -275,13 +285,14 @@ jobs:
             "aquasec/trivy:${TRIVY_VERSION}" image \
             --timeout 15m --format template --template "@/work/ci/trivy-html.tpl" \
             --ignorefile /work/.trivyignore \
-            --output "/work/trivy-report${{ matrix.tag-suffix }}.html" \
-            "${{ steps.index.outputs.ref }}"
+            --output "/work/trivy-report${SUFFIX}.html" \
+            "$INDEX_REF"
 
       - name: Attach the Trivy report to the release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          SUFFIX: ${{ matrix.tag-suffix }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
-            "trivy-report${{ matrix.tag-suffix }}.html" --clobber
+          gh release upload "$TAG" "trivy-report${SUFFIX}.html" --clobber
