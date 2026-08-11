@@ -19,7 +19,7 @@ import org.opentmf.cadenzaflow.config.sso.plugin.welcome.SsoLogoutWelcomePlugin;
  * META-INF/services file is invisible to direct-instantiation tests and only blows up
  * on the first webapp page render (ServiceConfigurationError: Provider ... not found).
  */
-class SsoLogoutPluginServiceLoaderTest {
+class SsoLogoutPluginServiceLoaderTests {
 
   @Test
   void cockpitPluginIsDiscoverableViaServiceLoader() {

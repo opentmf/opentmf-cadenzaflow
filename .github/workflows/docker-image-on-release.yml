@@ -1,0 +1,287 @@
+name: Docker image on Release
+
+# One SonarCloud gate for the whole workflow, then a flavour x architecture build
+# matrix, then one merge job per flavour that assembles the manifest list and signs
+# it. Third-party actions are pinned by full commit SHA with the version as a
+# trailing comment: a mutable tag would let a compromised action release run with
+# this workflow's packages:write / id-token:write tokens. GitHub-owned actions/*
+# stay on version tags - same trust root as the runner itself.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write   # keyless cosign signing
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}   # ghcr.io/<owner>/<repo>
+  SONAR_PROJECT_KEY: opentmf_opentmf-cadenzaflow
+  TRIVY_VERSION: 0.72.0
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The gate runs ONCE for the whole workflow (not once per flavour) and every
+  # build job depends on it, so a red quality gate stops the release before any
+  # image is built.
+  # ---------------------------------------------------------------------------
+  sonar-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaching sonar-report.md as a release asset
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Quality gate + mini report
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "::error::SONAR_TOKEN is not set - the release gate cannot be evaluated"
+            exit 1
+          fi
+          curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
+            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=develop" \
+            -o status.json
+          curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
+            "https://sonarcloud.io/api/measures/component?component=${SONAR_PROJECT_KEY}&branch=main&metricKeys=security_rating,reliability_rating,sqale_rating,vulnerabilities,bugs,code_smells,security_hotspots,coverage,duplicated_lines_density,new_coverage,new_violations,new_duplicated_lines_density" \
+            -o measures.json
+          python3 .github/scripts/sonar-report.py status.json measures.json \
+            "${SONAR_PROJECT_KEY}" develop > sonar-report.md
+          cat sonar-report.md >> "$GITHUB_STEP_SUMMARY"
+          test "$(python3 -c 'import json;print(json.load(open("status.json"))["projectStatus"]["status"])')" = "OK" \
+            || { echo "::error::SonarCloud quality gate is not OK - aborting the release"; exit 1; }
+
+      # Uploaded with the preinstalled gh CLI rather than a third-party release
+      # action: one less action to SHA-pin and keep current.
+      - name: Attach the report to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" sonar-report.md --clobber
+
+  # ---------------------------------------------------------------------------
+  # One job per (flavour, architecture). Each pushes an UNTAGGED by-digest image
+  # and is Trivy-gated on that exact image, so every architecture that can end up
+  # in a tagged manifest has been scanned - the single-job pattern this replaces
+  # scanned only amd64 while shipping an arm64 nobody looked at.
+  # ---------------------------------------------------------------------------
+  build:
+    needs: sonar-gate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        flavour: [base, aws, azure]
+        include:
+          - flavour: base
+            maven-profiles: repackage
+            tag-suffix: ""
+            latest: "true"
+          - flavour: aws
+            maven-profiles: repackage,aws
+            tag-suffix: "-aws"
+            latest: "false"
+          - flavour: azure
+            maven-profiles: repackage,azure
+            tag-suffix: "-azure"
+            latest: "false"
+        arch: [amd64, arm64]
+        # pia-team/opentmf are on GitHub Free, where hosted ubuntu-*-arm runners are
+        # free for PUBLIC repos only - a private repo scheduling that label queues
+        # forever. So arm64 builds QEMU-emulated on an amd64 runner. Going native
+        # later is a two-line change here: runner label + emulated flag.
+        runner: [ubuntu-latest]
+        emulated: [true]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up QEMU
+        if: matrix.emulated && matrix.arch != 'amd64'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile_release
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            MAVEN_PROFILES=${{ matrix.maven-profiles }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Built from release ${{ github.ref_name }} (${{ matrix.flavour }})
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.flavour }}-${{ matrix.arch }}
+
+      - name: Trivy gate (this architecture's own image)
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            -v trivy-cache:/root/.cache/trivy \
+            -v "${PWD}:/work" \
+            "aquasec/trivy:${TRIVY_VERSION}" image \
+            --timeout 15m --exit-code 1 --severity HIGH,CRITICAL \
+            --ignorefile /work/.trivyignore \
+            "${IMAGE_REF}"
+
+      # The merge job cannot read matrix outputs, so each leg leaves its digest as
+      # an artifact for the matching flavour to collect.
+      - name: Record the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          # The bare hex, without the `sha256:` prefix: a colon is not a valid
+          # artifact filename. The merge job puts the prefix back.
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        shell: bash
+
+      - name: Upload the digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.flavour }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Per flavour: assemble the per-arch digests into the tagged manifest list, then
+  # sign and attest THAT index digest. Signing a per-arch image or a tag instead
+  # would leave the artifact consumers actually pull unverifiable.
+  # ---------------------------------------------------------------------------
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaching the Trivy report as a release asset
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavour: base
+            tag-suffix: ""
+            latest: "true"
+          - flavour: aws
+            tag-suffix: "-aws"
+            latest: "false"
+          - flavour: azure
+            tag-suffix: "-azure"
+            latest: "false"
+    steps:
+      - name: Download this flavour's digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.flavour }}-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (tags & labels)
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          flavor: |
+            suffix=${{ matrix.tag-suffix }},onlatest=true
+            latest=${{ matrix.latest }}
+          tags: |
+            type=semver,pattern={{version}}          # 1.0.0 / 1.0.0-aws
+            type=semver,pattern={{major}}.{{minor}}  # 1.0   / 1.0-aws
+            type=semver,pattern={{major}}            # 1     / 1-aws
+
+      - name: Create the manifest list
+        working-directory: /tmp/digests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${REGISTRY}/${IMAGE}@sha256:%s " *)
+
+      - name: Resolve the index digest
+        id: index
+        run: |
+          set -euo pipefail
+          TAG=$(jq -cr '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          DIGEST=$(docker buildx imagetools inspect "$TAG" --format '{{ json .Manifest.Digest }}' | tr -d '"')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REGISTRY}/${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Sign the index (keyless)
+        run: cosign sign --yes "${{ steps.index.outputs.ref }}"
+
+      - name: Generate the CycloneDX SBOM
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            -v "${PWD}:/out" \
+            "aquasec/trivy:${TRIVY_VERSION}" image \
+            --timeout 15m --format cyclonedx --output /out/sbom.cdx.json \
+            "${{ steps.index.outputs.ref }}"
+
+      - name: Attest the SBOM to the index
+        run: |
+          cosign attest --yes --type cyclonedx \
+            --predicate sbom.cdx.json "${{ steps.index.outputs.ref }}"
+
+      # A readable report of EVERY severity, not just the gated ones, so a reviewer
+      # can see what shipped rather than only what blocked. Never fails the build -
+      # the gate in the build jobs is what decides that. Written against the merged
+      # index, so one report covers every architecture.
+      - name: Trivy HTML report
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            -v "${PWD}:/work" \
+            "aquasec/trivy:${TRIVY_VERSION}" image \
+            --timeout 15m --format template --template "@/work/ci/trivy-html.tpl" \
+            --ignorefile /work/.trivyignore \
+            --output "/work/trivy-report${{ matrix.tag-suffix }}.html" \
+            "${{ steps.index.outputs.ref }}"
+
+      - name: Attach the Trivy report to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "trivy-report${{ matrix.tag-suffix }}.html" --clobber

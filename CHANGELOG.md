@@ -4,6 +4,90 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- **Microsoft Entra ID as an engine identity provider**, beside Keycloak and
+  selected by `plugin.identity.provider`. Users and group memberships are read from
+  the directory through Microsoft Graph on demand — no background synchronisation,
+  so no sync lag and no stale local copy — and there is still no local user table.
+  The engine mounts exactly one provider, which is its SPI contract, so a deployment
+  has one directory and one set of user ids.
+- **Multi-issuer token validation.** The REST API can accept tokens from several
+  providers at once, each issuer's claims normalised onto one internal role
+  vocabulary so endpoint rules are written once and never forked per provider. The
+  concrete case is human callers on Entra ID and service-to-service callers on
+  Keycloak, on the same endpoints. Expected audiences are validated where one issuer
+  serves many applications, which Entra ID does. A trust set that is ambiguous or
+  declares an issuer twice **fails the boot** rather than starting with an undefined
+  trust set. Requires `openid-rbac-security` 2.3.0.
+- **`deploy/entra/`** — a self-contained deployment package for environments where
+  Entra ID is the only identity provider: from-scratch tenant setup, a ready-to-fill
+  environment file and Kubernetes manifests.
+- **Masked JSON logging in clusters.** Fields named like secrets or personal data
+  (`password`, `client_secret`, `*token*`, `authorization`, `email`, `iban`,
+  `msisdn`, …) become `****`, as do IBANs, German phone numbers and long digit runs
+  found anywhere in a message. The rules live in `logback-masking.xml` **inside the
+  jar**, so an operator-mounted Logback file gets identical masking with a one-line
+  include. The encoder changed from Boot's built-in `StructuredLogEncoder` to
+  `logstash-logback-encoder` for one reason: the built-in one has no masking hook.
+  E-mail addresses inside message *text* are deliberately left readable — the engine
+  user id **is** a mail address, so masking it would erase the actor from every
+  authorization and task line.
+- **An `-azure` image flavour** (`azure` Maven profile) carrying
+  `azure-identity-extensions` for passwordless authentication to Azure Database for
+  PostgreSQL through Entra ID tokens resolved by `DefaultAzureCredential`.
+- **Engine metrics** on the management port beside the JVM ones: job and activity
+  counters, active process instances and open incidents.
+- **The component design card** (`docs/component-design-card.md`), splitting the
+  documentation in two: the README is the self-contained front door for users and
+  testers — use cases, requirements, validation rules, processing-logic cards with
+  sequence diagrams, the access-control list and the data model — while the card
+  carries the internal record, including every deviation from the DNMS engineering
+  standard and its reasoning.
+
+### Changed
+
+- **Breaking (configuration):** the webapp SSO client registration id is now the
+  provider-neutral `oidc` (was `keycloak`). The id is user-visible in
+  `/oauth2/authorization/{id}` and on Spring's generated login page, so an Entra
+  deployment previously advertised "keycloak". Deployments overriding the
+  registration via environment variables must rename
+  `SPRING_SECURITY_OAUTH2_CLIENT_{REGISTRATION,PROVIDER}_KEYCLOAK_*` to
+  `..._OIDC_*`. The redirect-URI path segment is unaffected — Spring resolves the
+  registration from the `state` parameter — so existing identity-provider redirect
+  URIs keep working.
+- **Breaking (build):** the AWS Maven profile is renamed `aws-iam` → **`aws`**. The
+  published `-aws` image tag is unchanged; only local invocations such as
+  `-P docker,aws-iam` need updating.
+- With exactly one client registration the generated "Login with OAuth 2.0" page is
+  bypassed: `/login` and `/login?error` redirect straight to the provider instead of
+  rendering a provider list and "Invalid credentials" — the state reached by
+  navigating Back onto an already redeemed authorization code.
+- **The coverage gate now fails the build** instead of warning, at 80% line,
+  instruction and branch with zero missed classes. Getting there closed a real gap:
+  the incident-logging handler had no branch coverage at all, and now has unit tests
+  for each of its decisions.
+- **The release pipeline is split by flavour AND architecture.** Previously one job
+  per flavour built a multi-arch image and Trivy scanned only the amd64 side, so a
+  never-scanned arm64 image shipped inside the published manifest. Now each
+  (flavour, architecture) leg pushes an untagged by-digest image and is Trivy-gated
+  on its own image; a per-flavour merge job assembles the tagged manifest list and
+  signs **that index digest** with keyless cosign, attaching a CycloneDX SBOM
+  attestation. The workflow file is renamed `docker-image-on-release.yml`.
+- The ArchUnit suite now also enforces one logging facade, the `log` field name, and
+  explicit names on request-binding annotations.
+
+### Fixed
+
+- **Annotation processing had silently stopped.** Java 23 disabled implicit
+  annotation processing, so `spring-boot-configuration-processor` was on the
+  classpath doing nothing — no error, no warning, a green build, and no
+  `META-INF/spring-configuration-metadata.json`. Requesting it explicitly
+  (`<proc>full</proc>`) restores IDE completion and inline documentation for the 50
+  configuration properties across `plugin.identity.*` and `cadenzaflow.bpm.oauth2.*`.
+
 ## [1.0.3] - 2026-08-02
 
 ### Security

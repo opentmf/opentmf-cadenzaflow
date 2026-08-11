@@ -44,6 +44,25 @@ cadenzaflow.bpm:
                                         frame-ancestors 'none';object-src 'none';
                                         sandbox allow-forms allow-scripts allow-same-origin allow-popups allow-downloads"
 
+# Identity provider selection: 'keycloak' (default) or 'entra'. The engine mounts
+# exactly one identity provider; the switch makes them mutually exclusive.
+plugin.identity.provider: keycloak
+
+# Entra ID (Azure AD) alternative - activate with plugin.identity.provider: entra.
+# Requires an app registration with application permissions User.Read.All +
+# GroupMember.Read.All (admin consent granted). SSO-only: no password/form login.
+# plugin.identity.entra:
+#   tenant-id: <directory (tenant) id>
+#   client-id: <app registration client id>
+#   client-secret: <secret>
+#   use-email-as-camunda-user-id: true
+#   fallback-to-upn-when-mail-empty: true
+#   use-group-display-name-as-camunda-group-id: true
+#   transitive-group-membership: true
+#   security-groups-only: true
+#   administrator-group-name: camunda-admin
+#   cache-enabled: true
+
 plugin.identity.keycloak:
   keycloak-issuer-url: http://keycloak.iam-dev.svc.cluster.local/realms/devtest
   keycloak-admin-url: http://keycloak.iam-dev.svc.cluster.local/admin/realms/devtest
@@ -55,18 +74,24 @@ plugin.identity.keycloak:
   administrator-group-name: camunda-admin
   cache-enabled: true
 
+# Webapp SSO client. The registration id is deliberately provider-NEUTRAL ('oidc'):
+# it is user-visible in /oauth2/authorization/{id} and on Spring's generated login
+# page, so a provider-specific id would advertise "keycloak" on an Entra deployment.
+# The defaults below describe Keycloak; override the provider endpoints (and
+# client-id/secret) to point the same registration at Entra ID - see
+# docs/entra-azure-setup-and-testing-guide.md.
 spring.security.oauth2:
   client:
     registration:
-      keycloak:
-        provider: keycloak
+      oidc:
+        provider: oidc
         client-id: ${plugin.identity.keycloak.client-id}
         client-secret: ${plugin.identity.keycloak.client-secret}
         authorization-grant-type: authorization_code
         redirect-uri: "{baseUrl}/{action}/oauth2/code/{registrationId}"
         scope: openid, profile, email
     provider:
-      keycloak:
+      oidc:
         authorization-uri: ${keycloak.url.auth}/protocol/openid-connect/auth
         token-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/token
         jwk-set-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/certs

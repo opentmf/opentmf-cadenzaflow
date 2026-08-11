@@ -20,7 +20,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-class ClosingGraalJsScriptEngineTest {
+class ClosingGraalJsScriptEngineTests {
 
   private static SimpleMeterRegistry meterRegistry;
   private static ClosingGraalJsScriptEngine engine;

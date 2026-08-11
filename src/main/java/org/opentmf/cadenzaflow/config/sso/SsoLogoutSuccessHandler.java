@@ -51,7 +51,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHandler {
 
   private static final Logger log = LoggerFactory.getLogger(SsoLogoutSuccessHandler.class);
-  private static final String AUTH_ENDPOINT_SUFFIX = "/auth";
+  private static final String KEYCLOAK_AUTH_SUFFIX = "/auth";
+  private static final String ENTRA_AUTH_SUFFIX = "/authorize";
   private static final String LOGOUT_ENDPOINT_SUFFIX = "/logout";
 
   private final ClientRegistrationRepository clientRegistrationRepository;
@@ -104,10 +105,18 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
       return null;
     }
     String authorizationUri = registration.getProviderDetails().getAuthorizationUri();
-    if (authorizationUri == null || !authorizationUri.endsWith(AUTH_ENDPOINT_SUFFIX)) {
+    if (authorizationUri == null) {
       return null;
     }
-    return authorizationUri.substring(0, authorizationUri.length() - AUTH_ENDPOINT_SUFFIX.length())
+    // Keycloak: .../protocol/openid-connect/auth      -> .../protocol/openid-connect/logout
+    // Entra ID: .../oauth2/v2.0/authorize             -> .../oauth2/v2.0/logout
+    String suffix = authorizationUri.endsWith(ENTRA_AUTH_SUFFIX)
+        ? ENTRA_AUTH_SUFFIX
+        : authorizationUri.endsWith(KEYCLOAK_AUTH_SUFFIX) ? KEYCLOAK_AUTH_SUFFIX : null;
+    if (suffix == null) {
+      return null;
+    }
+    return authorizationUri.substring(0, authorizationUri.length() - suffix.length())
         + LOGOUT_ENDPOINT_SUFFIX;
   }
 

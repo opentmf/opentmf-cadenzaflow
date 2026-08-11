@@ -23,7 +23,7 @@ import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
-class SsoLogoutSuccessHandlerTest {
+class SsoLogoutSuccessHandlerTests {
 
   @Test
   void redirectsToDefaultTargetUrlForNonOidcAuthentication() throws ServletException, IOException {
@@ -92,6 +92,64 @@ class SsoLogoutSuccessHandlerTest {
         "expected Keycloak end-session endpoint, got: " + redirect);
     assertTrue(redirect.contains("id_token_hint=the-id-token"), redirect);
     assertTrue(redirect.contains("client_id=camunda-identity-service"), redirect);
+    assertTrue(
+        redirect.contains(
+            "post_logout_redirect_uri=http://localhost:8091/cadenzaflow/v1/app/"),
+        redirect);
+  }
+
+  /**
+   * Entra ID's authorization endpoint ends with {@code /authorize} (not Keycloak's
+   * {@code /auth}); its end-session endpoint is the {@code /logout} sibling.
+   */
+  @Test
+  void redirectsToEntraEndSessionEndpointDerivedFromAuthorizeUri()
+      throws ServletException, IOException {
+    ClientRegistration registration =
+        ClientRegistration.withRegistrationId("azure")
+            .clientId("entra-client")
+            .clientSecret("secret")
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .redirectUri("{baseUrl}/{action}/oauth2/code/{registrationId}")
+            .authorizationUri(
+                "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize")
+            .tokenUri("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token")
+            .build();
+    ClientRegistrationRepository repository = mock(ClientRegistrationRepository.class);
+    when(repository.findByRegistrationId("azure")).thenReturn(registration);
+
+    OidcIdToken idToken =
+        new OidcIdToken(
+            "entra-id-token",
+            Instant.now(),
+            Instant.now().plusSeconds(60),
+            Map.of("sub", "user-uuid", "email", "gokhan.demir@pia-team.com"));
+    OidcUser oidcUser = new DefaultOidcUser(List.of(), idToken, "email");
+    OAuth2AuthenticationToken authentication =
+        new OAuth2AuthenticationToken(oidcUser, List.of(), "azure");
+
+    OAuth2Properties properties = new OAuth2Properties();
+    properties.getSsoLogout().setPostLogoutRedirectUri("{baseUrl}/app/");
+    SsoLogoutSuccessHandler handler = new SsoLogoutSuccessHandler(repository, properties);
+
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setScheme("http");
+    request.setServerName("localhost");
+    request.setServerPort(8091);
+    request.setContextPath("/cadenzaflow/v1");
+    request.setRequestURI("/cadenzaflow/v1/logout");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    handler.onLogoutSuccess(request, response, authentication);
+
+    String redirect = response.getRedirectedUrl();
+    assertNotNull(redirect);
+    assertTrue(
+        redirect.startsWith(
+            "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/logout?"),
+        "expected Entra end-session endpoint, got: " + redirect);
+    assertTrue(redirect.contains("id_token_hint=entra-id-token"), redirect);
+    assertTrue(redirect.contains("client_id=entra-client"), redirect);
     assertTrue(
         redirect.contains(
             "post_logout_redirect_uri=http://localhost:8091/cadenzaflow/v1/app/"),

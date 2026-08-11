@@ -1,0 +1,24 @@
+# Gitleaks config - default rules plus precise allowlist entries.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """Keycloak TEST-REALM fixtures: the dsync test realm imported into a
+throwaway Testcontainers Keycloak (src/test/resources/realm/dsync-realm.json and the
+matching client secret in application-it.yml). These credentials exist only inside
+per-test containers that are destroyed after the run - deliberately committed test
+fixtures, allowlisted by path so anything outside test resources still gets caught."""
+paths = [
+  '''src/test/resources/realm/dsync-realm\.json''',
+  '''src/test/resources/application-it\.yml''',
+]
+
+[[allowlists]]
+description = """Invented secret-shaped strings in LogbackMaskingTests. The test proves
+that credential-shaped values are REDACTED from the JSON logs, which means it has to
+contain values that look like credentials - that is the assertion. They are made up,
+match nothing real, and are allowlisted by path so a genuine secret anywhere else is
+still caught."""
+paths = [
+  '''src/test/java/org/opentmf/cadenzaflow/config/logging/LogbackMaskingTests\.java''',
+]

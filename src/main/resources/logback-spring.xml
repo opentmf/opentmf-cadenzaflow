@@ -2,16 +2,27 @@
 <configuration>
 	<include resource="org/springframework/boot/logging/logback/defaults.xml" />
 
+	<!-- The masked JSON appender, named "JSON". Kept in its own file so an
+	     operator-mounted logback config (LOGGING_CONFIG) gets the identical
+	     masking rules with a one-line include. -->
+	<include resource="logback-masking.xml" />
+
+	<!-- Two shapes, one decision point. In a cluster the log is a machine-read
+	     stream, so it is masked JSON; on a developer machine it is a human-read
+	     console. JSON-vs-console is a DEPLOYMENT concern - an operator who wants
+	     the other shape points LOGGING_CONFIG at their own file rather than
+	     flipping an application property. -->
 	<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>
 		<then>
-			<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-				<encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
-					<format>logstash</format>
-				</encoder>
-			</appender>
+			<root level="INFO">
+				<appender-ref ref="JSON" />
+			</root>
 		</then>
 		<else>
 			<include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+			<root level="INFO">
+				<appender-ref ref="CONSOLE" />
+			</root>
 		</else>
 	</if>
 
@@ -32,9 +43,5 @@
 	<!-- INFO: disable request / response logging of Camunda Server
 	     DEBUG: Enable (only for testing and/or troubleshooting purposes) -->
 	<logger name="org.glassfish.jersey.logging.LoggingFeature" level="INFO" />
-
-	<root level="INFO">
-		<appender-ref ref="CONSOLE" />
-	</root>
 
 </configuration>
