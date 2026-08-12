@@ -80,7 +80,7 @@
 
     <archunit.version>1.5.0</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <pitest-maven.version>1.19.6</pitest-maven.version>
+    <pitest-maven.version>1.25.9</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
@@ -544,8 +544,15 @@
                 <mutators>
                   <mutator>DEFAULTS</mutator>
                 </mutators>
-                <!-- Incremental history: reruns touch only changed code. -->
-                <withHistory>true</withHistory>
+                <!-- No withHistory: since 1.20 incremental analysis lives in a
+                     separate history plugin (the open-source build fails outright
+                     with "History has been enabled but no history plugin has been
+                     installed", pointing at arcmutate's commercial
+                     +arcmutate_history). Losing it costs nothing here - a full run
+                     is a couple of minutes - and it removes a trap: the history is
+                     keyed on mutated-class hashes only, so STRENGTHENING a test did
+                     not invalidate the entry and the survivor kept reporting as
+                     SURVIVED until the history file was deleted by hand. -->
                 <!-- No mutationThreshold - survivor review is the unit of work. -->
               </configuration>
             </plugin>

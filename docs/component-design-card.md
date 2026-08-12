@@ -314,22 +314,32 @@ compare against rather than starting from nothing. Run on the 1.1.0 candidate wi
 the on-demand `mutation` profile; no threshold is enforced - PIT is an instrument,
 not a gate.
 
+Figures below are from **PIT 1.25.9 with no history file** - a clean full run. An
+earlier run the same day, on 1.19.6 with `withHistory=true`, reported 103/151 (68%)
+and test strength 84%; the whole difference is `config.metrics`, which that run
+scored 4/4 and this one scores 0/4. The four gauge mutations are covered but not
+asserted, so SURVIVED is the truthful verdict and the incremental history is the
+suspect - which is why `withHistory` is gone (see the mechanical notes).
+
 | Scope | Line coverage | Mutation coverage |
 |---|---|---|
-| **Overall** | 304/381 (80%) | **103/151 killed (68%)**, test strength 84% |
-| `config.metrics` | 20/20 | 4/4 |
+| **Overall** | 304/381 (80%) | **99/151 killed (66%)**, test strength 80% |
+| `config.metrics` | 20/20 | 0/4 |
 | `config.sso.plugin.*` | 3/3 each | 2/2 each |
 | `config.incident` | 31/33 | 5/7 |
 | `config.script` | 137/139 | 53/69 (77%) |
 | `config.sso` | 104/169 | 33/62 (53%) |
 | `config` | 0/8 | 0/1 |
 
-Two things this says that line coverage does not. **28 mutations had no test
-coverage at all**, so the 94.8% reported by JaCoCo is flattering in places. And
+Three things this says that line coverage does not. **28 mutations had no test
+coverage at all**, so the 94.8% reported by JaCoCo is flattering in places.
 `config.sso` - the security-critical package, holding token filtering, logout and
 the OAuth2 wiring - is the weakest at 53%: its lines are executed by tests that do
-not assert on the resulting behaviour. Reviewed and accepted for 1.1.0 (product
-owner, 2026-08-12); it is the obvious place to spend the next testing effort.
+not assert on the resulting behaviour. And `config.metrics` is at 0/4 despite 20/20
+lines: `EngineMetricsBridgeTests` registers the gauges and asserts they EXIST, so
+every gauge lambda can be replaced with `return 0.0d` and no test notices - the four
+cheapest survivors on this list to kill. Reviewed and accepted for 1.1.0 (product
+owner, 2026-08-12); this is the obvious place to spend the next testing effort.
 
 Two mechanical notes for whoever runs this next:
 
@@ -339,10 +349,13 @@ Two mechanical notes for whoever runs this next:
   that boot an in-memory engine and GraalJS contexts. The standard asks for
   `targetClasses` scoped to the logic packages; scoping it here is awkward because
   nearly every class lives under `config`.
-- **Before re-judging a survivor after strengthening a test, delete the history
-  file** (`$TEMP/<coords>_pitest_history.bin`). It is keyed on mutated-class
-  hashes only, so a better test does not invalidate the entry and the survivor
-  keeps reporting as SURVIVED.
+- **There is no incremental history any more, deliberately.** PIT moved it into a
+  separate history plugin, so `withHistory=true` now fails the run outright
+  ("History has been enabled but no history plugin has been installed", pointing at
+  arcmutate's commercial `+arcmutate_history`). A full run is ~2.5 minutes, and
+  losing history removes the trap this note used to describe: it was keyed on
+  mutated-class hashes only, so strengthening a test did not invalidate the entry
+  and the survivor kept reporting as SURVIVED until the file was deleted by hand.
 
 ### 13.4 Decision history
 
