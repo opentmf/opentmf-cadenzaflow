@@ -314,32 +314,37 @@ compare against rather than starting from nothing. Run on the 1.1.0 candidate wi
 the on-demand `mutation` profile; no threshold is enforced - PIT is an instrument,
 not a gate.
 
-Figures below are from **PIT 1.25.9 with no history file** - a clean full run. An
-earlier run the same day, on 1.19.6 with `withHistory=true`, reported 103/151 (68%)
-and test strength 84%; the whole difference is `config.metrics`, which that run
-scored 4/4 and this one scores 0/4. The four gauge mutations are covered but not
-asserted, so SURVIVED is the truthful verdict and the incremental history is the
-suspect - which is why `withHistory` is gone (see the mechanical notes).
+Figures below are from **PIT 1.25.9 with no history file** - a clean full run,
+reproducible by anyone who checks out the tag and runs the profile.
 
 | Scope | Line coverage | Mutation coverage |
 |---|---|---|
-| **Overall** | 304/381 (80%) | **99/151 killed (66%)**, test strength 80% |
-| `config.metrics` | 20/20 | 0/4 |
+| **Overall** | 304/381 (80%) | **103/151 killed (68%)**, test strength 84% |
+| `config.metrics` | 20/20 | 4/4 |
 | `config.sso.plugin.*` | 3/3 each | 2/2 each |
 | `config.incident` | 31/33 | 5/7 |
 | `config.script` | 137/139 | 53/69 (77%) |
 | `config.sso` | 104/169 | 33/62 (53%) |
 | `config` | 0/8 | 0/1 |
 
-Three things this says that line coverage does not. **28 mutations had no test
-coverage at all**, so the 94.8% reported by JaCoCo is flattering in places.
+`config.metrics` reached 4/4 the hard way, and the detour is the useful part of this
+record. The first run of the day scored it 4/4 on PIT 1.19.6 with incremental history
+on; a clean run on 1.25.9 scored it **0/4**. The survivors were real. Two causes, both
+in the test rather than the bridge: the fixture booted an EMPTY engine, where every
+meter's true value is zero and the `→ 0.0d` mutants are therefore indistinguishable
+from the real thing; and `bindTo` ran in `@BeforeAll`, so PIT attributed it to
+whichever test happened to run first and the counter test never judged it. The fixture
+now leaves one running instance, one open incident and one reported process-start
+metric behind, and each test binds its own registry. Same 103/151 as first recorded -
+but earned, not inherited from a stale history file.
+
+Two things this says that line coverage does not. **28 mutations have no test
+coverage at all**, so the 94.8% reported by JaCoCo is flattering in places. And
 `config.sso` - the security-critical package, holding token filtering, logout and
 the OAuth2 wiring - is the weakest at 53%: its lines are executed by tests that do
-not assert on the resulting behaviour. And `config.metrics` is at 0/4 despite 20/20
-lines: `EngineMetricsBridgeTests` registers the gauges and asserts they EXIST, so
-every gauge lambda can be replaced with `return 0.0d` and no test notices - the four
-cheapest survivors on this list to kill. Reviewed and accepted for 1.1.0 (product
-owner, 2026-08-12); this is the obvious place to spend the next testing effort.
+not assert on the resulting behaviour. Reviewed and accepted for 1.1.0 (product
+owner, 2026-08-12); it is the obvious place to spend the next testing effort, and
+the `config.metrics` detour above is what that effort tends to look like.
 
 Two mechanical notes for whoever runs this next:
 
