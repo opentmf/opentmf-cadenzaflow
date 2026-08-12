@@ -166,6 +166,13 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.flavour }}-${{ matrix.arch }}
 
+      # --platform is REQUIRED, not decoration: the image is scanned remotely by digest,
+      # and for a remote index Trivy defaults to the RUNNER's platform (linux/amd64).
+      # A by-digest push produces an index carrying only this leg's architecture, so on
+      # the arm64 legs Trivy looked for an amd64 child, found none, and died with
+      # "no child with platform linux/amd64 in index". The amd64 legs passed only
+      # because the default happened to match - which is how three arm64 legs failed
+      # while their amd64 twins went green.
       - name: Trivy gate (this architecture's own image)
         env:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
@@ -176,6 +183,7 @@ jobs:
             -v trivy-cache:/root/.cache/trivy \
             -v "${PWD}:/work" \
             "aquasec/trivy:${TRIVY_VERSION}" image \
+            --platform "linux/${{ matrix.arch }}" \
             --timeout 15m --exit-code 1 --severity HIGH,CRITICAL \
             --ignorefile /work/.trivyignore \
             "${IMAGE_REF}"
@@ -313,8 +321,14 @@ jobs:
 
       # A readable report of EVERY severity, not just the gated ones, so a reviewer
       # can see what shipped rather than only what blocked. Never fails the build -
-      # the gate in the build jobs is what decides that. Written against the merged
-      # index, so one report covers every architecture.
+      # the gate in the build jobs is what decides that.
+      #
+      # It is pointed at the merged index, but Trivy resolves an index to ONE child:
+      # absent --platform it takes the runner's, so this report - and the SBOM
+      # attested above - describe the amd64 image. That is a reporting limit, not a
+      # coverage hole: every architecture is gated on its own image in the build jobs,
+      # which is the check that can actually stop a release. Making the report
+      # per-architecture too means a scan per platform and a report per platform.
       - name: Trivy HTML report
         env:
           INDEX_REF: ${{ steps.index.outputs.ref }}
