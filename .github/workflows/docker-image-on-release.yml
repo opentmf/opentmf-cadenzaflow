@@ -10,11 +10,29 @@ name: Docker image on Release
 on:
   release:
     types: [published]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Existing release tag to (re)build images for, e.g. 1.1.0. Leave empty to run
+          against the ref this was dispatched from. This exists because a release-
+          triggered run uses the workflow file AS IT WAS AT THE TAG: when a released
+          workflow turns out to be broken, neither re-running it nor dispatching against
+          the tag can pick up the fix. Dispatching from the fixed branch WITH this input
+          builds the tagged source through the fixed workflow, and attaches the reports
+          to the existing release. 1.1.0 needed exactly this.
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
   IMAGE: ${{ github.repository }}   # ghcr.io/<owner>/<repo>
+  # The release being built: the dispatch input when given, otherwise the triggering
+  # ref. Every step that needs the tag - source checkout, image tags, asset upload -
+  # reads this one variable, so a dispatched rebuild cannot half-target the tag.
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  # True when there is a real release page to attach assets to.
+  HAS_RELEASE: ${{ github.event_name == 'release' || inputs.tag != '' }}
   SONAR_PROJECT_KEY: opentmf_opentmf-cadenzaflow
   # Releases are cut from `develop` - this repository's default and only
   # long-lived branch. One variable for every Sonar call, because the gate and
@@ -36,6 +54,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Quality gate + mini report
         env:
@@ -61,10 +81,10 @@ jobs:
       # Uploaded with the preinstalled gh CLI rather than a third-party release
       # action: one less action to SHA-pin and keep current.
       - name: Attach the report to the release
-        if: github.event_name == 'release'
+        if: env.HAS_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ env.RELEASE_TAG }}
         run: gh release upload "$TAG" sonar-report.md --clobber
 
   # ---------------------------------------------------------------------------
@@ -106,6 +126,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up QEMU
         if: matrix.emulated && matrix.arch != 'amd64'
@@ -114,12 +136,19 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      # A PAT, not GITHUB_TOKEN: the ghcr.io/opentmf/opentmf-cadenzaflow package is
+      # org-owned and PRIVATE, and does not grant this repository's GITHUB_TOKEN write
+      # access - buildx fails at push with `denied: permission_denied: read_package`
+      # however much `packages: write` the job declares. 1.1.0 was released with
+      # GITHUB_TOKEN here and every build leg failed. To drop the PAT later, give the
+      # repository write access under the package's "Manage Actions access" first, and
+      # prove it on a pre-release tag before trusting a real release to it.
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: gokhanus
+          password: ${{ secrets.GH_TOKEN }}
 
       - name: Build & push by digest
         id: build
@@ -132,7 +161,7 @@ jobs:
             MAVEN_PROFILES=${{ matrix.maven-profiles }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=Built from release ${{ github.ref_name }} (${{ matrix.flavour }})
+            org.opencontainers.image.description=Built from release ${{ env.RELEASE_TAG }} (${{ matrix.flavour }})
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.flavour }}-${{ matrix.arch }}
@@ -204,6 +233,8 @@ jobs:
       # tagged manifest has already been pushed and signed.
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Download this flavour's digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -215,12 +246,13 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      # Same PAT as the build job - see the note there.
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: gokhanus
+          password: ${{ secrets.GH_TOKEN }}
 
       - name: Docker meta (tags & labels)
         id: meta
@@ -231,9 +263,9 @@ jobs:
             suffix=${{ matrix.tag-suffix }},onlatest=true
             latest=${{ matrix.latest }}
           tags: |
-            type=semver,pattern={{version}}          # 1.0.0 / 1.0.0-aws
-            type=semver,pattern={{major}}.{{minor}}  # 1.0   / 1.0-aws
-            type=semver,pattern={{major}}            # 1     / 1-aws
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}          # 1.0.0 / 1.0.0-aws
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}  # 1.0   / 1.0-aws
+            type=semver,pattern={{major}},value=${{ env.RELEASE_TAG }}            # 1     / 1-aws
 
       - name: Create the manifest list
         working-directory: /tmp/digests
@@ -299,10 +331,10 @@ jobs:
             "$INDEX_REF"
 
       - name: Attach the Trivy report to the release
-        if: github.event_name == 'release'
+        if: env.HAS_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ env.RELEASE_TAG }}
           SUFFIX: ${{ matrix.tag-suffix }}
         run: |
           gh release upload "$TAG" "trivy-report${SUFFIX}.html" --clobber
