@@ -92,6 +92,12 @@ class OpenTmfCadenzaFlowApplicationIT {
     Assertions.assertTrue(
         response.body().contains("jvm_memory_used_bytes"),
         "expected Prometheus exposition format with JVM metrics");
+    // The engine meters are contributed by a MeterBinder, which Spring Boot applies to
+    // the registry for us. Nothing else would notice if that wiring stopped working -
+    // the endpoint would still answer 200 with the JVM families alone.
+    Assertions.assertTrue(
+        response.body().contains("cadenzaflow_engine_"),
+        "expected the engine meters on the scrape endpoint, not just the JVM families");
   }
 
   @Test

@@ -6,7 +6,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Date;
 import org.cadenzaflow.bpm.engine.impl.util.ClockUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +69,8 @@ public class AuthorizeTokenFilter extends OncePerRequestFilter {
   }
 
   protected boolean hasTokenExpired(OAuth2Token token) {
-    return token.getExpiresAt() == null || ClockUtil.now().after(Date.from(token.getExpiresAt()));
+    return token.getExpiresAt() == null
+        || ClockUtil.now().toInstant().isAfter(token.getExpiresAt());
   }
 
   protected void clearContext(HttpServletRequest request) {

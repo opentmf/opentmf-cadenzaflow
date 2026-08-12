@@ -172,7 +172,7 @@ class ArchitectureTests {
   private static String attribute(Annotation annotation, String name) {
     try {
       return (String) annotation.annotationType().getMethod(name).invoke(annotation);
-    } catch (ReflectiveOperationException | ClassCastException e) {
+    } catch (ReflectiveOperationException | ClassCastException _) {
       return "";
     }
   }

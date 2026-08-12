@@ -3,6 +3,7 @@ package org.opentmf.cadenzaflow.config.metrics;
 import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
 import java.util.Map;
 import org.cadenzaflow.bpm.engine.ManagementService;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "cadenzaflow.metrics.engine-bridge.enabled",
     havingValue = "true", matchIfMissing = true)
-public class EngineMetricsBridge {
+public class EngineMetricsBridge implements MeterBinder {
 
   private static final String PREFIX = "cadenzaflow.engine.";
 
@@ -40,7 +41,19 @@ public class EngineMetricsBridge {
       PREFIX + "job.acquired.failure", Metrics.JOB_ACQUIRED_FAILURE,
       PREFIX + "job.execution.rejected", Metrics.JOB_EXECUTION_REJECTED);
 
-  public EngineMetricsBridge(ProcessEngine processEngine, MeterRegistry registry) {
+  private final ProcessEngine processEngine;
+
+  public EngineMetricsBridge(ProcessEngine processEngine) {
+    this.processEngine = processEngine;
+  }
+
+  /**
+   * Registers the engine meters. Micrometer's own extension point: Spring Boot applies
+   * every {@link MeterBinder} bean to each registry it creates, so the binding happens
+   * once per registry rather than once in a constructor that would have to receive one.
+   */
+  @Override
+  public void bindTo(MeterRegistry registry) {
     ManagementService managementService = processEngine.getManagementService();
     RuntimeService runtimeService = processEngine.getRuntimeService();
 

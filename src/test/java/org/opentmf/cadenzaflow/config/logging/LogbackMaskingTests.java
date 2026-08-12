@@ -101,18 +101,20 @@ class LogbackMaskingTests {
                   "client_secret", "SBl8Q~oNOTAREALSECRET",
                   "access_token", "eyJhbGciOiJSUzI1NiJ9.payload.signature"));
 
-      assertThat(json).doesNotContain("top1secret", "SBl8Q~oNOTAREALSECRET", "eyJhbGciOiJSUzI1NiJ9");
-      assertThat(json).contains("\"password\":\"" + MASK + "\"");
-      assertThat(json).contains("\"client_secret\":\"" + MASK + "\"");
-      assertThat(json).contains("\"access_token\":\"" + MASK + "\"");
+      assertThat(json)
+          .doesNotContain("top1secret", "SBl8Q~oNOTAREALSECRET", "eyJhbGciOiJSUzI1NiJ9")
+          .contains("\"password\":\"" + MASK + "\"")
+          .contains("\"client_secret\":\"" + MASK + "\"")
+          .contains("\"access_token\":\"" + MASK + "\"");
     }
 
     @Test
     void maskPersonalDataFields() {
       String json = encode("user resolved", Map.of("email", "gokhan@example.com"));
 
-      assertThat(json).doesNotContain("gokhan@example.com");
-      assertThat(json).contains("\"email\":\"" + MASK + "\"");
+      assertThat(json)
+          .doesNotContain("gokhan@example.com")
+          .contains("\"email\":\"" + MASK + "\"");
     }
 
     @Test
@@ -134,8 +136,7 @@ class LogbackMaskingTests {
     void maskAnIbanInsideTheMessageText() {
       String json = encode("payment for DE89370400440532013000 accepted", Map.of());
 
-      assertThat(json).doesNotContain("DE89370400440532013000");
-      assertThat(json).contains(MASK);
+      assertThat(json).doesNotContain("DE89370400440532013000").contains(MASK);
     }
 
     @Test
@@ -149,8 +150,7 @@ class LogbackMaskingTests {
     void maskLongDigitRunsButNotOrdinaryEngineNumbers() {
       String json = encode("card 4111111111111111 for job with 3 retries", Map.of());
 
-      assertThat(json).doesNotContain("4111111111111111");
-      assertThat(json).contains("3 retries");
+      assertThat(json).doesNotContain("4111111111111111").contains("3 retries");
     }
 
     @Test
