@@ -16,7 +16,16 @@ cadenzaflow.bpm:
     create: All tasks
   generic-properties:
     properties:
-      historyTimeToLive: P92D
+      # The DEFAULT retention for a finished process instance, applied only to
+      # definitions that do not state their own. A definition ALWAYS wins: set
+      # camunda:historyTimeToLive on the process element, or PUT
+      # /process-definition/{id}/history-time-to-live at runtime, and that value
+      # is used instead - longer or shorter, per definition.
+      #
+      # Keeping a default here is also what lets a definition WITHOUT the
+      # attribute deploy at all: since 7.20 the engine rejects a TTL-less
+      # definition only when no default is configured.
+      historyTimeToLive: P30D
       legacyJobRetryBehaviorEnabled: true
       # History cleanup - without a batch window the cleanup job is never
       # scheduled and TTLs are decorative. Times are in the JVM timezone,

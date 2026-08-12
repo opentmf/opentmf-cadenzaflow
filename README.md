@@ -782,7 +782,9 @@ On by default. The TTL for an instance resolves in this order:
 
 1. `historyTimeToLive` on the **process definition** (the `camunda:historyTimeToLive`
    attribute in the BPMN, or `PUT /process-definition/{id}/history-time-to-live`).
-2. Otherwise the global default, `P92D`.
+2. Otherwise the global default, **`P30D`** — 30 days. Change it per deployment
+   with a mounted file (see below); a definition that states its own TTL is
+   unaffected either way.
 3. Batch operations have their own: `batchOperationHistoryTimeToLive`, `P30D`.
 
 Shipped window: 01:00–05:00 (JVM timezone; the image pins UTC), parallelism 2.

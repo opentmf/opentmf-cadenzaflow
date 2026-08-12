@@ -49,6 +49,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Default history retention is now 30 days** (`P30D`, was `P92D`). This is only the
+  fallback for process definitions that do not state their own retention — a
+  definition that carries `camunda:historyTimeToLive`, or has one set at runtime via
+  `PUT /process-definition/{id}/history-time-to-live`, is unaffected and may be longer
+  or shorter. Deployments that relied on the old default and want it back should set it
+  explicitly. Impact: finished instances and their history rows are removed by the
+  nightly cleanup roughly two months sooner than before.
+
 - **Breaking (configuration):** the webapp SSO client registration id is now the
   provider-neutral `oidc` (was `keycloak`). The id is user-visible in
   `/oauth2/authorization/{id}` and on Spring's generated login page, so an Entra
