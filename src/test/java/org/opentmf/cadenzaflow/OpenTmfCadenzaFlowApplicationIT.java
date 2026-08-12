@@ -6,6 +6,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.repository.Deployment;
+import org.cadenzaflow.bpm.engine.repository.ProcessDefinition;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,8 +59,28 @@ class OpenTmfCadenzaFlowApplicationIT {
     r.add("plugin.identity.keycloak.keycloak-admin-url", () -> admin);
   }
 
+  /**
+   * Hand-written rather than built with {@code Bpmn.createExecutableProcess(...)}: the model
+   * builder injects {@code camunda:historyTimeToLive="180"} of its own, which would make this
+   * test pass against an engine that has no default configured at all.
+   */
+  private static final String BPMN_WITHOUT_HISTORY_TIME_TO_LIVE = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                        targetNamespace="http://opentmf.org/ttl-default-regression">
+        <bpmn:process id="ttlDefaultRegression" isExecutable="true">
+          <bpmn:startEvent id="start"/>
+          <bpmn:sequenceFlow id="flow" sourceRef="start" targetRef="end"/>
+          <bpmn:endEvent id="end"/>
+        </bpmn:process>
+      </bpmn:definitions>
+      """;
+
   @Autowired
   private ApplicationContext applicationContext;
+
+  @Autowired
+  private ProcessEngine processEngine;
 
   @LocalServerPort
   private int port;
@@ -116,6 +139,33 @@ class OpenTmfCadenzaFlowApplicationIT {
     // /engine-rest/external-task/** is whitelisted in config-security.yml, so the
     // request must reach the engine REST layer instead of being rejected with 401.
     Assertions.assertEquals(200, get("/engine-rest/external-task/count", null).statusCode());
+  }
+
+  @Test
+  void acceptsProcessDefinitionWithoutHistoryTimeToLiveAndAppliesTheConfiguredDefault() {
+    // Since 7.20 the engine REJECTS a definition that states no historyTimeToLive, at parse
+    // time, unless a default is configured - so `historyTimeToLive: P30D` in
+    // config-cadenzaflow.yml is what makes such a deployment possible at all. Remove it and
+    // every deployer who omits the attribute gets ENGINE-09005. The exact value is asserted
+    // too, because the 1.1.0 release notes promise a 30-day default.
+    Deployment deployment = processEngine.getRepositoryService()
+        .createDeployment()
+        .name("ttl-default-regression")
+        .addString("ttlDefaultRegression.bpmn20.xml", BPMN_WITHOUT_HISTORY_TIME_TO_LIVE)
+        .deploy();
+    try {
+      ProcessDefinition definition = processEngine.getRepositoryService()
+          .createProcessDefinitionQuery()
+          .deploymentId(deployment.getId())
+          .singleResult();
+      Assertions.assertNotNull(definition, "the TTL-less definition was not deployed");
+      Assertions.assertEquals(
+          30,
+          definition.getHistoryTimeToLive(),
+          "expected the configured P30D default to be applied to a definition without one");
+    } finally {
+      processEngine.getRepositoryService().deleteDeployment(deployment.getId(), true);
+    }
   }
 
   private HttpResponse<String> get(String path, String authorization) throws Exception {
