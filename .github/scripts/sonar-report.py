@@ -36,12 +36,21 @@ METRICS = [
 
 
 def measure_values(measures):
-    """Flatten the measures payload; new-code metrics carry their value in `period`."""
+    """Flatten the measures payload.
+
+    New-code metrics carry no top-level `value`: SonarCloud returns them under a
+    `periods` LIST (the singular `period` object is the older shape and is still
+    accepted here, so the report works against either).
+    """
     values = {}
     for measure in measures.get("component", {}).get("measures", []):
         value = measure.get("value")
         if value is None:
-            value = measure.get("period", {}).get("value")
+            periods = measure.get("periods") or []
+            if periods:
+                value = periods[0].get("value")
+            else:
+                value = measure.get("period", {}).get("value")
         values[measure["metric"]] = value
     return values
 
@@ -51,6 +60,13 @@ def pretty(metric, value):
         return "n/a"
     if metric.endswith("_rating"):
         return RATINGS.get(value, value)
+    # Percentages arrive rounded for the overall metrics but at full float
+    # precision for the new-code ones (`87.32394366197182`). Counts are left alone.
+    if "coverage" in metric or metric.endswith("_density"):
+        try:
+            return f"{float(value):.1f}"
+        except (TypeError, ValueError):
+            return value
     return value
 
 

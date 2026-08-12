@@ -16,6 +16,11 @@ env:
   REGISTRY: ghcr.io
   IMAGE: ${{ github.repository }}   # ghcr.io/<owner>/<repo>
   SONAR_PROJECT_KEY: opentmf_opentmf-cadenzaflow
+  # Releases are cut from `develop` - this repository's default and only
+  # long-lived branch. One variable for every Sonar call, because the gate and
+  # the report must describe the SAME branch: spelling the name out per call is
+  # what once let the report quote `main`'s measures under a `develop` heading.
+  SONAR_BRANCH: develop
   TRIVY_VERSION: 0.72.0
 
 jobs:
@@ -42,13 +47,13 @@ jobs:
             exit 1
           fi
           curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
-            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=develop" \
+            "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=${SONAR_BRANCH}" \
             -o status.json
           curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
-            "https://sonarcloud.io/api/measures/component?component=${SONAR_PROJECT_KEY}&branch=main&metricKeys=security_rating,reliability_rating,sqale_rating,vulnerabilities,bugs,code_smells,security_hotspots,coverage,duplicated_lines_density,new_coverage,new_violations,new_duplicated_lines_density" \
+            "https://sonarcloud.io/api/measures/component?component=${SONAR_PROJECT_KEY}&branch=${SONAR_BRANCH}&metricKeys=security_rating,reliability_rating,sqale_rating,vulnerabilities,bugs,code_smells,security_hotspots,coverage,duplicated_lines_density,new_coverage,new_violations,new_duplicated_lines_density" \
             -o measures.json
           python3 .github/scripts/sonar-report.py status.json measures.json \
-            "${SONAR_PROJECT_KEY}" develop > sonar-report.md
+            "${SONAR_PROJECT_KEY}" "${SONAR_BRANCH}" > sonar-report.md
           cat sonar-report.md >> "$GITHUB_STEP_SUMMARY"
           test "$(python3 -c 'import json;print(json.load(open("status.json"))["projectStatus"]["status"])')" = "OK" \
             || { echo "::error::SonarCloud quality gate is not OK - aborting the release"; exit 1; }
@@ -193,6 +198,13 @@ jobs:
             tag-suffix: "-azure"
             latest: "false"
     steps:
+      # Needed for the Trivy report step below: it mounts the workspace at /work
+      # and reads ci/trivy-html.tpl and .trivyignore from it. Without a checkout
+      # the mount is empty and Trivy aborts on the missing template - after the
+      # tagged manifest has already been pushed and signed.
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - name: Download this flavour's digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
