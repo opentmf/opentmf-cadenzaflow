@@ -307,6 +307,43 @@ kinds are recorded here rather than left as silent gaps.
 | Logbook + `secure-filter` masking of HTTP wire logs | Not adopted | The engine already logs request/response through Jersey, **off by default**, so there is no always-on wire log to mask — which is the risk Logbook's `secure-filter` exists to cover. Partial coverage remains when an operator raises it to DEBUG: those lines pass through the masked JSON encoder, so the value-regex masks (IBAN, phone, long digit runs) apply to dumped bodies, while the field-name masks do not, because the body is message text rather than JSON structure. The operational rule is therefore: **DEBUG wire logging is a troubleshooting mode, not a production setting** |
 | Custom 401/403 `ProblemDetail` bodies (two consumer beans) | Not adopted — security errors keep the library's RFC 6750 defaults | The callers of this API are engine REST clients and external-task workers, which key on the status code and the `WWW-Authenticate` challenge, not on a problem document. Adding the beans would change the error body for every existing integration to buy consistency with services this one does not sit beside. The status codes are the contract, and they are specified in [README §5.2](../README.md#52-business-validation-rules) |
 
+### 13.4 PIT baseline (2026-08-12)
+
+First real mutation scores, recorded so the next survivor review has something to
+compare against rather than starting from nothing. Run on the 1.1.0 candidate with
+the on-demand `mutation` profile; no threshold is enforced - PIT is an instrument,
+not a gate.
+
+| Scope | Line coverage | Mutation coverage |
+|---|---|---|
+| **Overall** | 304/381 (80%) | **103/151 killed (68%)**, test strength 84% |
+| `config.metrics` | 20/20 | 4/4 |
+| `config.sso.plugin.*` | 3/3 each | 2/2 each |
+| `config.incident` | 31/33 | 5/7 |
+| `config.script` | 137/139 | 53/69 (77%) |
+| `config.sso` | 104/169 | 33/62 (53%) |
+| `config` | 0/8 | 0/1 |
+
+Two things this says that line coverage does not. **28 mutations had no test
+coverage at all**, so the 94.8% reported by JaCoCo is flattering in places. And
+`config.sso` - the security-critical package, holding token filtering, logout and
+the OAuth2 wiring - is the weakest at 53%: its lines are executed by tests that do
+not assert on the resulting behaviour. Reviewed and accepted for 1.1.0 (product
+owner, 2026-08-12); it is the obvious place to spend the next testing effort.
+
+Two mechanical notes for whoever runs this next:
+
+- **The `mutation` profile sets `targetTests` but no `targetClasses`**, so PIT
+  mutates everything including configuration and wiring. That is why the run
+  produced repeated `Minion exited abnormally due to TIMED_OUT` - it drives tests
+  that boot an in-memory engine and GraalJS contexts. The standard asks for
+  `targetClasses` scoped to the logic packages; scoping it here is awkward because
+  nearly every class lives under `config`.
+- **Before re-judging a survivor after strengthening a test, delete the history
+  file** (`$TEMP/<coords>_pitest_history.bin`). It is keyed on mutated-class
+  hashes only, so a better test does not invalidate the entry and the survivor
+  keeps reporting as SURVIVED.
+
 ### 13.4 Decision history
 
 | Date | Decision |
@@ -319,6 +356,7 @@ kinds are recorded here rather than left as silent gaps.
 | 2026-08-11 | Adapted to the DNMS engineering standard where applicable: coverage gate made halting, ArchUnit suite extended, masked JSON logging, split release pipeline with per-architecture Trivy gating and signing of the merged index, and this two-artifact documentation split |
 | 2026-08-11 | Annotation processing requested explicitly (`<proc>full</proc>`). Java 23 disabled implicit processing, so `spring-boot-configuration-processor` had been silently skipped and no configuration metadata was produced; 50 properties across four groups are generated again |
 | 2026-08-11 | Deviation review with the product owner: the BOM-import build, the absent Logbook wire logging and the RFC 6750 security-error bodies are ratified as they stand; the annotation-processing gap was a defect and was fixed |
+| 2026-08-12 | 1.1.0 release readiness: SonarCloud at zero findings, Trivy clean on all three image flavours with the images actually built, and the first PIT baseline recorded (§13.4) |
 | 2026-08-11 | Targeted at **1.1.0**. `main` and `develop` diverged at the 1.0.0 groundwork commit: the 1.0.x line was released from `develop` while this work continued on `main`, so the two must be reconciled before the release. The build fixes and the Netty CVE override from the released line were adopted verbatim here to keep that reconciliation conflict-free |
 | 2026-08-11 | Deployment into the DNMS stack takes a **per-service environment commons file** (`envs/<env>/values-common-opentmf-cadenzaflow.yaml`) rather than an exemption inside the shared chart. The shared chart pins one identity provider per environment and this component validates two, which are mutually exclusive settings; a chart-level allowlist was built first and then withdrawn, so the platform chart stays byte-identical while the team decides how it wants to handle components it deploys but does not own |
 
