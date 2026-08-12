@@ -75,15 +75,26 @@ services:
       OPENTMF_SECURITY_ISSUERS_0_AUDIENCES_0: ${ENTRA_CLIENT_ID}
 
       # --- endpoint authorisation --------------------------------------------
+      # Define EVERY method you want restricted. These entries replace the packaged
+      # list rather than merging into it, so a method left out here is not covered
+      # by a role rule at all — it falls through to "any valid token".
       OPENTMF_SECURITY_SECURE_ENDPOINTS_0_METHOD: GET
       OPENTMF_SECURITY_SECURE_ENDPOINTS_0_PATH: /engine-rest/**
-      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: dnms-read
-      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: dnms-write
-      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: dnms-admin
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: reader
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: writer
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: admin
       OPENTMF_SECURITY_SECURE_ENDPOINTS_1_METHOD: POST
       OPENTMF_SECURITY_SECURE_ENDPOINTS_1_PATH: /engine-rest/**
-      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_0: dnms-write
-      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_1: dnms-admin
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_0: writer
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_1: admin
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_2_METHOD: PUT
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_2_PATH: /engine-rest/**
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_2_ROLES_0: writer
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_2_ROLES_1: admin
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_3_METHOD: DELETE
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_3_PATH: /engine-rest/**
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_3_ROLES_0: writer
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_3_ROLES_1: admin
 
       # --- web UI single sign-on ---------------------------------------------
       SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_ID: ${ENTRA_CLIENT_ID}
