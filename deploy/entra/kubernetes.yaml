@@ -43,6 +43,12 @@ data:
   # --- Token validation ------------------------------------------------------
   # An issuer LIST although there is one issuer: the single-issuer form validates
   # neither `iss` nor `aud`, and one tenant mints tokens for many applications.
+  #
+  # Required, and it must stay empty: the image ships a single-issuer
+  # `opentmf.security.jwk-set-uri` default, and declaring the list as well
+  # declares trust twice, which fails the boot by design
+  # ("Declare exactly one of 'jwk-set-uri' or 'issuers'").
+  OPENTMF_SECURITY_JWK_SET_URI: ""
   OPENTMF_SECURITY_ISSUERS_0_NAME: entra
   OPENTMF_SECURITY_ISSUERS_0_ISSUER: "https://login.microsoftonline.com/<TENANT_ID>/v2.0"
   OPENTMF_SECURITY_ISSUERS_0_JWK_SET_URI: "https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys"
@@ -120,8 +126,12 @@ spec:
         runAsUser: 999
       containers:
         - name: opentmf-cadenzaflow
+          # 1.1.0 is the MINIMUM: the Entra identity provider and the provider-neutral
+          # `oidc` client-registration id used throughout this package were both
+          # introduced there. On 1.0.x these settings bind to nothing and sign-in
+          # falls back to Keycloak.
           # Digest-pinned in production — a tag can be moved under you.
-          image: ghcr.io/opentmf/opentmf-cadenzaflow:1.0.0
+          image: ghcr.io/opentmf/opentmf-cadenzaflow:1.1.0
           ports:
             - name: http
               containerPort: 8080

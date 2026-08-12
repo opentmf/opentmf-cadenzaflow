@@ -1,0 +1,108 @@
+# A local smoke test of the Entra-only configuration, before touching a cluster.
+#
+# It runs the same shape as kubernetes.yaml — Entra for browser sign-in, Entra for
+# REST tokens, Microsoft Graph as the directory — against a throwaway Postgres, so a
+# misconfigured app registration surfaces on a laptop instead of in an Ingress.
+#
+# Usage:
+#
+#   export ENTRA_TENANT_ID=...  ENTRA_CLIENT_ID=...  ENTRA_CLIENT_SECRET=...
+#   docker compose -f deploy/entra/compose.yaml up
+#
+# Then open http://localhost:8091/cadenzaflow/v1/app/cockpit — the reply URL
+# http://localhost:8091/cadenzaflow/v1/login/oauth2/code/oidc must be registered on
+# the app registration for this to complete (Part 1.4 of README.md).
+#
+# The secret is read from the shell; it is deliberately not written into this file.
+services:
+
+  postgres:
+    image: postgres:18.1-alpine3.22
+    environment:
+      POSTGRES_USER: cadenzaflow
+      POSTGRES_PASSWORD: cadenzaflow-local     # throwaway; never a pattern for real ones
+      POSTGRES_DB: cadenzaflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cadenzaflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    # Not published: only the engine talks to it.
+
+  cadenzaflow:
+    # 1.1.0 is the minimum — see the note on the image in kubernetes.yaml.
+    image: ghcr.io/opentmf/opentmf-cadenzaflow:1.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8091:8080"      # application and web UIs
+      - "16000:16000"    # management: health, prometheus
+    environment:
+      # --- database ---------------------------------------------------------
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cadenzaflow?useUnicode=yes&characterEncoding=UTF-8&currentSchema=public
+      SPRING_DATASOURCE_USERNAME: cadenzaflow
+      SPRING_DATASOURCE_PASSWORD: cadenzaflow-local
+      SPRING_DATASOURCE_HIKARI_SCHEMA: public
+      CADENZAFLOW_BPM_DATABASE_TABLE_PREFIX: "public."
+
+      # --- directory: Entra through Microsoft Graph --------------------------
+      PLUGIN_IDENTITY_PROVIDER: entra
+      PLUGIN_IDENTITY_ENTRA_TENANT_ID: ${ENTRA_TENANT_ID}
+      PLUGIN_IDENTITY_ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID}
+      PLUGIN_IDENTITY_ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET}
+      PLUGIN_IDENTITY_ENTRA_USE_EMAIL_AS_CAMUNDA_USER_ID: "true"
+      PLUGIN_IDENTITY_ENTRA_FALLBACK_TO_UPN_WHEN_MAIL_EMPTY: "true"
+      PLUGIN_IDENTITY_ENTRA_USE_GROUP_DISPLAY_NAME_AS_CAMUNDA_GROUP_ID: "true"
+      PLUGIN_IDENTITY_ENTRA_TRANSITIVE_GROUP_MEMBERSHIP: "true"
+      PLUGIN_IDENTITY_ENTRA_SECURITY_GROUPS_ONLY: "true"
+      PLUGIN_IDENTITY_ENTRA_ADMINISTRATOR_GROUP_NAME: camunda-admin
+      PLUGIN_IDENTITY_ENTRA_CACHE_ENABLED: "true"
+
+      # --- token validation --------------------------------------------------
+      # Must be present and empty: the image ships a single-issuer
+      # opentmf.security.jwk-set-uri default, and declaring the issuer list beside
+      # it declares trust twice, which fails the boot by design.
+      OPENTMF_SECURITY_JWK_SET_URI: ""
+
+      OPENTMF_SECURITY_ISSUERS_0_NAME: entra
+      OPENTMF_SECURITY_ISSUERS_0_ISSUER: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/v2.0
+      OPENTMF_SECURITY_ISSUERS_0_JWK_SET_URI: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/discovery/v2.0/keys
+      OPENTMF_SECURITY_ISSUERS_0_USER_CLAIM: email
+      OPENTMF_SECURITY_ISSUERS_0_FALLBACK_USER_CLAIMS_0: preferred_username
+      OPENTMF_SECURITY_ISSUERS_0_AUTHORITIES_CLAIM: roles
+      # Bare client id: the app registration sets requestedAccessTokenVersion 2.
+      OPENTMF_SECURITY_ISSUERS_0_AUDIENCES_0: ${ENTRA_CLIENT_ID}
+
+      # --- endpoint authorisation --------------------------------------------
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_METHOD: GET
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_PATH: /engine-rest/**
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: dnms-read
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: dnms-write
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: dnms-admin
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_METHOD: POST
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_PATH: /engine-rest/**
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_0: dnms-write
+      OPENTMF_SECURITY_SECURE_ENDPOINTS_1_ROLES_1: dnms-admin
+
+      # --- web UI single sign-on ---------------------------------------------
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_ID: ${ENTRA_CLIENT_ID}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_OIDC_SCOPE: openid,profile,email
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_AUTHORIZATION_URI: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/authorize
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_TOKEN_URI: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/token
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_JWK_SET_URI: https://login.microsoftonline.com/${ENTRA_TENANT_ID}/discovery/v2.0/keys
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_USER_INFO_URI: https://graph.microsoft.com/oidc/userinfo
+      # See the note on this key in opentmf-cadenzaflow.env §6: an account with no
+      # mail address cannot sign in, and the plugin's UPN fallback does not cover it.
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_USER_NAME_ATTRIBUTE: email
+
+      # Browser-facing authorization host, and what the web UI's content-security
+      # policy lets the browser contact. Wrong here blocks sign-in IN THE BROWSER,
+      # with nothing in the server log.
+      KEYCLOAK_URL_AUTH: https://login.microsoftonline.com
+
+      LOGGING_LEVEL_ORG_OPENTMF: INFO
+      # Uncomment to see the claims that actually arrive from Entra, rather than
+      # inferring them from the shape of a failure.
+      # LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: TRACE

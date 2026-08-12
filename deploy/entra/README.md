@@ -12,6 +12,7 @@ Everything needed is in this directory:
 | `README.md` | This guide — the Entra setup and what each setting does |
 | `opentmf-cadenzaflow.env` | Every environment variable the service needs, with blanks to fill |
 | `kubernetes.yaml` | A worked Secret + Deployment + Service to adapt |
+| `compose.yaml` | The same configuration against a throwaway Postgres, to try on a laptop first |
 
 Work through Part 1, fill in Part 2, deploy with Part 3, and confirm with Part 4.
 Part 5 is what to check when something does not work.
@@ -220,6 +221,24 @@ correct for an Entra-only deployment and carries a comment explaining what it do
 
 ## Part 3 — Deploying
 
+### 3.1 Try it on a laptop first (optional, ~2 minutes)
+
+`compose.yaml` runs the identical identity configuration against a throwaway
+Postgres, so an app registration that is missing a permission, a consent, a reply
+URL or the `email` claim fails where you can read the log directly:
+
+```bash
+export ENTRA_TENANT_ID=...  ENTRA_CLIENT_ID=...  ENTRA_CLIENT_SECRET=...
+docker compose -f deploy/entra/compose.yaml up
+```
+
+Open `http://localhost:8091/cadenzaflow/v1/app/cockpit`. Register
+`http://localhost:8091/cadenzaflow/v1/login/oauth2/code/oidc` as an additional reply
+URL (1.4) for the round trip to complete. Everything in Part 4 works against
+`http://localhost:8091` and `http://localhost:16000`.
+
+### 3.2 The cluster
+
 `kubernetes.yaml` is a worked example: a Secret for the three sensitive values, a
 Deployment that reads the rest from a ConfigMap, and a Service. Adapt the image
 reference, resources and Ingress to your platform.
@@ -294,7 +313,8 @@ Graph permissions from 1.5 are consented and working.
 | `AADSTS50055: user_password_expired` | An administrator-set password is temporary by design | Sign in interactively once and change it |
 | Every API call returns **403** | The principal holds no app role, so the token has no `roles` claim | Assign roles — 1.7 |
 | Every API call returns **401** | Issuer or audience mismatch | Decode the token (Part 4 step 3); if `iss` contains `sts.windows.net`, set `requestedAccessTokenVersion: 2` — 1.2 |
-| **500** `Attribute value for 'email' cannot be null` | The `email` claim is missing from the **access** token, or the signed-in account has no mailbox | Add `email` to Access tokens — 1.3. For mailbox-less accounts (guests, `#EXT#`) the UPN fallback covers it |
+| **500** `Attribute value for 'email' cannot be null` right after the Microsoft login | The signed-in account has no `mail` attribute, so Microsoft Graph's `/oidc/userinfo` omits the `email` claim that `..._USER_NAME_ATTRIBUTE` reads. Typical for guests and `#EXT#` accounts. **The plugin's UPN fallback does not cover this** — that fallback applies to the directory lookup, a later step the request never reaches | Give the account an **Email** in its Entra properties (no mailbox required), or sign in as an account that has one. Changing `..._USER_NAME_ATTRIBUTE` to `preferred_username` also works, at the cost of UPN-shaped engine user ids |
+| Boot fails: `Declare exactly one of 'jwk-set-uri' or 'issuers'` | The image's own single-issuer default is still set beside the issuer list | Keep `OPENTMF_SECURITY_JWK_SET_URI` present **and empty**, as shipped in the env file |
 | Sign-in redirect is blocked in the browser, nothing in the server log | `KEYCLOAK_URL_AUTH` still points at its default, so the page's content-security-policy forbids contacting Entra | Set it to `https://login.microsoftonline.com` |
 | Entra reports an unregistered reply URL | The service built the redirect from its internal address | Set `SERVER_FORWARD_HEADERS_STRATEGY=framework` |
 | Sign-in lands on the wrong account | The browser reused an existing Microsoft session | Private window, or *Use another account* |

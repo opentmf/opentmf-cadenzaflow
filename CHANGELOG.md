@@ -24,7 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   trust set. Requires `openid-rbac-security` 2.3.0.
 - **`deploy/entra/`** — a self-contained deployment package for environments where
   Entra ID is the only identity provider: from-scratch tenant setup, a ready-to-fill
-  environment file and Kubernetes manifests.
+  environment file, Kubernetes manifests, and a Compose file that runs the identical
+  identity configuration against a throwaway database so an app registration can be
+  proven on a laptop before it reaches a cluster.
 - **Masked JSON logging in clusters.** Fields named like secrets or personal data
   (`password`, `client_secret`, `*token*`, `authorization`, `email`, `iban`,
   `msisdn`, …) become `****`, as do IBANs, German phone numbers and long digit runs
