@@ -27,7 +27,7 @@ class EngineMetricsBridgeTests {
     configuration.setJobExecutorActivate(false);
     engine = configuration.buildProcessEngine();
     registry = new SimpleMeterRegistry();
-    new EngineMetricsBridge(engine, registry);
+    new EngineMetricsBridge(engine).bindTo(registry);
   }
 
   @AfterAll

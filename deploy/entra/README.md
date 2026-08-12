@@ -18,6 +18,44 @@ Part 5 is what to check when something does not work.
 
 ---
 
+## Where Entra touches the service
+
+Three separate interactions, one app registration. Knowing which one you are
+debugging is most of the work.
+
+```mermaid
+flowchart LR
+    OP["Operator<br/>(browser)"]
+    WK["Worker / integration<br/>(service principal)"]
+
+    subgraph SVC["opentmf-cadenzaflow"]
+        WEB["Web UIs<br/>Cockpit · Tasklist · Admin"]
+        API["REST engine<br/>/engine-rest/**"]
+        IDP["Identity provider<br/>(users &amp; groups)"]
+    end
+
+    ENTRA["Microsoft Entra ID"]
+    GRAPH["Microsoft Graph"]
+
+    OP -->|"1 · sign-in, OIDC authorization code"| ENTRA
+    ENTRA -.->|"id + access token"| WEB
+    WK -->|"2 · client credentials"| ENTRA
+    ENTRA -.->|"access token"| WK
+    WK -->|"Bearer token"| API
+    IDP -->|"3 · read users and group membership"| GRAPH
+```
+
+| # | Surface | What Entra does | Fails as |
+|---|---|---|---|
+| 1 | **Web UIs** | Signs the operator in and returns tokens to the browser session | a redirect that never completes, or a blocked redirect in the browser |
+| 2 | **REST engine** | Issues tokens to callers; the service validates signature, issuer, audience and reads the `roles` claim | `401` (not trusted) or `403` (trusted, no role) |
+| 3 | **Identity provider** | Answers *who are the users and groups* over Graph, with the service's own identity | login succeeds but the Admin UI is empty, or admin rights never apply |
+
+The same client id and secret serve all three. Nothing else in the deployment
+talks to an identity provider — there is no second issuer and no local user store.
+
+---
+
 ## Two mechanisms, and why the distinction matters
 
 The service asks Entra two different questions, and they are answered by two

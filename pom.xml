@@ -46,8 +46,11 @@
 
     <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
 
-    <!-- keeps `mvn versions:display-*-updates` stable-only -->
-    <maven.version.ignore>.*-M\d+,.*-RC\d+,.*-SNAPSHOT,(?i).*-(alpha|beta)\d*</maven.version.ignore>
+    <!-- Keeps `mvn versions:display-*-updates` stable-only. The separator after the
+         qualifier is optional and may be `-` or `.`: without that, `4.0.0-beta-4`
+         and `4.0.0-beta.38` slipped through and were offered as upgrades, which is
+         exactly what this property exists to prevent. -->
+    <maven.version.ignore>.*-M\d+,.*-RC\d+,.*-SNAPSHOT,(?i).*-(alpha|beta|rc|cr|pre)[-.]?\d*</maven.version.ignore>
 
     <!-- Application dependencies -->
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
@@ -69,13 +72,14 @@
 
     <!-- Overrides the Spring Boot 4.1.0 BOM's 4.2.15.Final: CVE-2026-59901,
          CVE-2026-55831, CVE-2026-55833, CVE-2026-56745, CVE-2026-56819 (all HIGH,
-         DoS in netty codecs), fixed in 4.2.16.Final. Netty is only pulled in by
-         the aws profile (AWS SDK async client), where Trivy gates the -aws
-         image on HIGH/CRITICAL. Drop when the BOM catches up. -->
-    <netty.version>4.2.16.Final</netty.version>
+         DoS in netty codecs), first fixed in 4.2.16.Final and tracked forward
+         since. Netty is only pulled in by the aws profile (AWS SDK async
+         client), where Trivy gates the -aws image on HIGH/CRITICAL. Drop when
+         the BOM catches up. -->
+    <netty.version>4.2.17.Final</netty.version>
 
-    <archunit.version>1.4.2</archunit.version>
-    <wiremock.version>3.13.0</wiremock.version>
+    <archunit.version>1.5.0</archunit.version>
+    <wiremock.version>3.13.2</wiremock.version>
     <pitest-maven.version>1.19.6</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
@@ -614,7 +618,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk-sts.version>2.50.2</awssdk-sts.version>
+        <awssdk-sts.version>2.52.0</awssdk-sts.version>
         <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencies>

@@ -108,16 +108,29 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
     if (authorizationUri == null) {
       return null;
     }
-    // Keycloak: .../protocol/openid-connect/auth      -> .../protocol/openid-connect/logout
-    // Entra ID: .../oauth2/v2.0/authorize             -> .../oauth2/v2.0/logout
-    String suffix = authorizationUri.endsWith(ENTRA_AUTH_SUFFIX)
-        ? ENTRA_AUTH_SUFFIX
-        : authorizationUri.endsWith(KEYCLOAK_AUTH_SUFFIX) ? KEYCLOAK_AUTH_SUFFIX : null;
+    String suffix = authorizationEndpointSuffix(authorizationUri);
     if (suffix == null) {
       return null;
     }
     return authorizationUri.substring(0, authorizationUri.length() - suffix.length())
         + LOGOUT_ENDPOINT_SUFFIX;
+  }
+
+  /**
+   * The provider's authorization-endpoint suffix, or {@code null} when the URI belongs to
+   * neither provider we know how to derive an end-session endpoint for.
+   *
+   * <p>Keycloak: {@code .../protocol/openid-connect/auth} -> {@code .../logout}<br>
+   * Entra ID: {@code .../oauth2/v2.0/authorize} -> {@code .../oauth2/v2.0/logout}</p>
+   */
+  private static String authorizationEndpointSuffix(String authorizationUri) {
+    if (authorizationUri.endsWith(ENTRA_AUTH_SUFFIX)) {
+      return ENTRA_AUTH_SUFFIX;
+    }
+    if (authorizationUri.endsWith(KEYCLOAK_AUTH_SUFFIX)) {
+      return KEYCLOAK_AUTH_SUFFIX;
+    }
+    return null;
   }
 
   private String resolvePostLogoutRedirectUri(HttpServletRequest request) {
