@@ -139,14 +139,20 @@ If prompted to turn on the Microsoft Graph `email` permission, accept.
 
 | Display name | Value | Allowed member types | Description |
 |---|---|---|---|
-| DNMS Read | `dnms-read` | Users/Groups **and** Applications | Read access — `GET /engine-rest/**` |
-| DNMS Write | `dnms-write` | Users/Groups **and** Applications | Create and modify — `POST`, `PUT`, `DELETE` |
-| DNMS Admin | `dnms-admin` | Users/Groups **and** Applications | Administrative access, incl. `/actuator/env` |
-| DNMS PII View | `dnms-pii-view` | **Users/Groups only** | The unmasked customer rendition of rendered documents |
+| Reader | `reader` | Users/Groups **and** Applications | Read access — `GET /engine-rest/**` |
+| Writer | `writer` | Users/Groups **and** Applications | Create and modify — `POST`, `PUT`, `DELETE` |
+| Admin | `admin` | Users/Groups **and** Applications | Administrative access, incl. `/actuator/env` |
 
-`dnms-pii-view` excludes applications deliberately: views under it are audited with
-the operator's own identity, never a service's machine identity, so no service
-principal should be able to hold it.
+These three names are the service's packaged defaults, which is why the rest of this
+package uses them. **The names are yours to choose** — a product deploying this
+engine will usually prefix them (`dnms-read`, `dnms-write`, `dnms-admin`). Whatever
+you pick, the role **Value** and the `OPENTMF_SECURITY_SECURE_ENDPOINTS_*_ROLES_*`
+entries must match exactly, and those entries are the only place to change them.
+
+Add **Applications** as an allowed member type only for roles that a service may
+hold. A role that must always be exercised by a named person — anything whose audit
+trail has to carry a human identity rather than a machine one — should stay
+Users/Groups only, so no service principal can be granted it.
 
 If you edit the **Manifest** instead of using the form, **add to the `appRoles`
 array — never replace it.** Entra reads an omitted role as a deletion and refuses
