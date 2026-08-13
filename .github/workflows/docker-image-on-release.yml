@@ -262,6 +262,16 @@ jobs:
           username: gokhanus
           password: ${{ secrets.GH_TOKEN }}
 
+      # Installed BEFORE the manifest list is created, deliberately. Creating the
+      # list PUBLISHES the tag; signing happens after. Anything that can fail in
+      # between leaves a real, pullable, UNSIGNED tag behind - which is exactly what
+      # happened on 1.1.0-azure, when this action's download returned HTTP 22 and the
+      # tag sat unsigned until the job was re-run. Front-loading the one step that
+      # reaches out to a third-party release server shrinks that window to the
+      # registry calls themselves.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
       - name: Docker meta (tags & labels)
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
@@ -291,9 +301,6 @@ jobs:
           DIGEST=$(docker buildx imagetools inspect "$TAG" --format '{{ json .Manifest.Digest }}' | tr -d '"')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "ref=${REGISTRY}/${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign the index (keyless)
         env:

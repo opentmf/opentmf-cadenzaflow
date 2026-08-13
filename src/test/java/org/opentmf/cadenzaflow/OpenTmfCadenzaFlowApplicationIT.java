@@ -6,9 +6,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Map;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
 import org.cadenzaflow.bpm.engine.repository.Deployment;
 import org.cadenzaflow.bpm.engine.repository.ProcessDefinition;
+import org.cadenzaflow.bpm.engine.runtime.ProcessInstance;
+import org.cadenzaflow.bpm.engine.variable.value.ObjectValue;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -75,6 +78,52 @@ class OpenTmfCadenzaFlowApplicationIT {
         </bpmn:process>
       </bpmn:definitions>
       """;
+
+  /** Parks on a user task so the instance - and its variables - are still there to read. */
+  private static final String BPMN_WITH_A_WAIT_STATE = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                        targetNamespace="http://opentmf.org/serialization-regression">
+        <bpmn:process id="serializationProbe" isExecutable="true">
+          <bpmn:startEvent id="start"/>
+          <bpmn:sequenceFlow id="in" sourceRef="start" targetRef="wait"/>
+          <bpmn:userTask id="wait"/>
+          <bpmn:sequenceFlow id="out" sourceRef="wait" targetRef="end"/>
+          <bpmn:endEvent id="end"/>
+        </bpmn:process>
+      </bpmn:definitions>
+      """;
+
+  /** A plain POJO variable - the kind the default serialization format decides the fate of. */
+  public static class Payload {
+    private String name;
+    private int count;
+
+    public Payload() {
+      // Jackson.
+    }
+
+    public Payload(String name, int count) {
+      this.name = name;
+      this.count = count;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public void setName(String name) {
+      this.name = name;
+    }
+
+    public int getCount() {
+      return count;
+    }
+
+    public void setCount(int count) {
+      this.count = count;
+    }
+  }
 
   @Autowired
   private ApplicationContext applicationContext;
@@ -163,6 +212,41 @@ class OpenTmfCadenzaFlowApplicationIT {
           30,
           definition.getHistoryTimeToLive(),
           "expected the configured P30D default to be applied to a definition without one");
+    } finally {
+      processEngine.getRepositoryService().deleteDeployment(deployment.getId(), true);
+    }
+  }
+
+  @Test
+  void storesObjectVariablesAsJsonRatherThanJavaSerializedBlobs() {
+    // Asserted on a stored variable rather than on the configuration property, because
+    // the property is only interesting if it reaches the variable: the engine's own
+    // default is application/x-java-serialized-object, which is unreadable to Cockpit
+    // and to every non-Java consumer. Reading it back SERIALIZED (deserialized=false)
+    // is what exposes the format actually used on the way in.
+    Deployment deployment = processEngine.getRepositoryService()
+        .createDeployment()
+        .name("serialization-regression")
+        .addString("serializationProbe.bpmn20.xml", BPMN_WITH_A_WAIT_STATE)
+        .deploy();
+    try {
+      ProcessInstance instance = processEngine.getRuntimeService()
+          .startProcessInstanceByKey("serializationProbe",
+              Map.of("payload", new Payload("probe", 7)));
+
+      ObjectValue stored = processEngine.getRuntimeService()
+          .getVariableTyped(instance.getId(), "payload", false);
+
+      Assertions.assertEquals(
+          "application/json",
+          stored.getSerializationDataFormat(),
+          "object variables must default to JSON, not a Java-serialized blob");
+      // Substance, not an exact string: field ORDER is Jackson's business and a change
+      // there is not a regression, whereas losing readable JSON is.
+      Assertions.assertTrue(
+          stored.getValueSerialized().contains("\"name\":\"probe\"")
+              && stored.getValueSerialized().contains("\"count\":7"),
+          "the stored form should be readable JSON, was: " + stored.getValueSerialized());
     } finally {
       processEngine.getRepositoryService().deleteDeployment(deployment.getId(), true);
     }
