@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1] - 2026-08-13
+
+### Changed
+
+- **Object process variables now serialize as JSON by default**
+  (`cadenzaflow.bpm.default-serialization-format: application/json`, was the engine's
+  own `application/x-java-serialized-object`). A Java-serialized variable is an opaque
+  blob: invisible in Cockpit, unreadable to any consumer that is not Java — external
+  task workers, dnms services — and a deserialization sink on the way back in. Spin's
+  JSON dataformat was already on the classpath, so this only changes which one is
+  picked when the caller names no format. Variables already stored in the old format
+  stay readable, because the format is recorded per variable, so there is nothing to
+  migrate. The one way this bites: a value that Java could serialize but Jackson
+  cannot — no default constructor, an unsupported field type — now fails where it
+  previously succeeded. Deployments that need the old behaviour back can set
+  `CADENZAFLOW_BPM_DEFAULT_SERIALIZATION_FORMAT=application/x-java-serialized-object`.
+
 ## [1.1.0] - 2026-08-12
 
 ### Added

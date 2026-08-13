@@ -5,6 +5,13 @@
 keycloak.url.auth: ${plugin.identity.keycloak.keycloak-issuer-url}
 
 cadenzaflow.bpm:
+  # How OBJECT process variables are serialized when the caller does not name a
+  # format. The engine's own default is application/x-java-serialized-object, which
+  # stores a Java-serialized blob: unreadable in Cockpit, unreadable to the external
+  # task workers and dnms services that are not Java, and a deserialization sink on
+  # the way back in. JSON is readable by every consumer and needs no shared classes.
+  # Spin's JSON dataformat is already on the classpath, so nothing else is required.
+  default-serialization-format: application/json
   authorization:
     enabled: true
   database:
