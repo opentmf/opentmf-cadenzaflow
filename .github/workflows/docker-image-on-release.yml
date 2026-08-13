@@ -319,6 +319,11 @@ jobs:
             --timeout 15m --format cyclonedx --output /out/sbom.cdx.json \
             "$INDEX_REF"
 
+      # KNOWN LIMIT, deliberately not addressed here: the SBOM is generated from the
+      # index without --platform, so like the HTML report before it, it describes the
+      # amd64 child while being attested to the whole index. The Trivy reports below
+      # are now per-architecture; this is the remaining half of the same problem and
+      # wants two SBOMs and two attestations.
       - name: Attest the SBOM to the index
         env:
           INDEX_REF: ${{ steps.index.outputs.ref }}
@@ -330,32 +335,47 @@ jobs:
       # can see what shipped rather than only what blocked. Never fails the build -
       # the gate in the build jobs is what decides that.
       #
-      # It is pointed at the merged index, but Trivy resolves an index to ONE child:
-      # absent --platform it takes the runner's, so this report - and the SBOM
-      # attested above - describe the amd64 image. That is a reporting limit, not a
-      # coverage hole: every architecture is gated on its own image in the build jobs,
-      # which is the check that can actually stop a release. Making the report
-      # per-architecture too means a scan per platform and a report per platform.
-      - name: Trivy HTML report
+      # ONE REPORT PER ARCHITECTURE, because Trivy resolves an index to a SINGLE
+      # child: without --platform it picks the runner's, so a single report against
+      # the index silently described amd64 while claiming to cover the tag. An arm64
+      # operator was reading about an image they do not run. The architectures are
+      # spelled out here rather than derived, so they must be kept in step with the
+      # build job's `arch:` matrix.
+      #
+      # Expect the two reports to come out IDENTICAL apart from timestamps, and do not
+      # "fix" that: the OS findings are Debian/Ubuntu source-package CVEs, which are
+      # tracked per source package and not per architecture, and the Java layers are
+      # byte-identical across arches. Checked on 1.1.0 - the platforms resolve to
+      # genuinely different children (distinct ImageIDs, each reporting its own
+      # architecture) that happen to carry the same 25 vulnerabilities. The split
+      # earns its keep the day they diverge, and until then it makes the arm64 report
+      # demonstrably about the arm64 image.
+      - name: Trivy HTML reports (one per architecture)
         env:
           INDEX_REF: ${{ steps.index.outputs.ref }}
           SUFFIX: ${{ matrix.tag-suffix }}
         run: |
           set -euo pipefail
-          docker run --rm \
-            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
-            -v "${PWD}:/work" \
-            "aquasec/trivy:${TRIVY_VERSION}" image \
-            --timeout 15m --format template --template "@/work/ci/trivy-html.tpl" \
-            --ignorefile /work/.trivyignore \
-            --output "/work/trivy-report${SUFFIX}.html" \
-            "$INDEX_REF"
+          for arch in amd64 arm64; do
+            docker run --rm \
+              -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+              -v "${PWD}:/work" \
+              "aquasec/trivy:${TRIVY_VERSION}" image \
+              --platform "linux/${arch}" \
+              --timeout 15m --format template --template "@/work/ci/trivy-html.tpl" \
+              --ignorefile /work/.trivyignore \
+              --output "/work/trivy-report${SUFFIX}-${arch}.html" \
+              "$INDEX_REF"
+          done
 
-      - name: Attach the Trivy report to the release
+      - name: Attach the Trivy reports to the release
         if: env.HAS_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ env.RELEASE_TAG }}
           SUFFIX: ${{ matrix.tag-suffix }}
         run: |
-          gh release upload "$TAG" "trivy-report${SUFFIX}.html" --clobber
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            gh release upload "$TAG" "trivy-report${SUFFIX}-${arch}.html" --clobber
+          done

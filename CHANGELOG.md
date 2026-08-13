@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The Trivy report attached to a release is now one file per architecture**, named
+  `trivy-report[-flavour]-amd64.html` / `-arm64.html` (was a single
+  `trivy-report[-flavour].html`). The old single file was misleading rather than
+  merely incomplete: Trivy resolves a multi-arch index to ONE child and, with no
+  platform given, picks the runner's — so the report described amd64 while appearing
+  to cover the tag, and an arm64 operator was reading about an image they do not run.
+  Anything consuming these assets by name needs the new suffix. The CycloneDX SBOM
+  attestation still describes amd64 only; that is the remaining half of the same
+  problem.
+
 - **Object process variables now serialize as JSON by default**
   (`cadenzaflow.bpm.default-serialization-format: application/json`, was the engine's
   own `application/x-java-serialized-object`). A Java-serialized variable is an opaque
