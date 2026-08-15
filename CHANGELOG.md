@@ -4,9 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.1] - 2026-08-13
+## [1.1.1] - 2026-08-15
+
+### Added
+
+- **Credential masking now reaches message text**, not just field names. The masking
+  rules shipped in `logback-masking.xml` gained the platform's three credential-class
+  value rules: `key=value` secrets (`password=…`, `client_secret: …`), HTTP auth
+  schemes (`Bearer …`, `Basic …`, scheme kept for triage), bare JWTs anywhere, and
+  card numbers written in separated groups. Until now only *field names* were masked,
+  so a secret that arrived inside prose went out in the clear — and prose is exactly
+  where the engine puts them: identity-plugin and REST-client failures are logged
+  verbatim, and a Keycloak admin-client error is a place a bearer token echoes. These
+  four rules are byte-identical to the shared fragment in the DNMS service template
+  and are not allowed to diverge per service.
+- The **personal-data** rules stay deliberately different from that shared fragment,
+  and each difference is now pinned by a test so it cannot be "aligned" away by
+  accident: e-mail addresses in message text remain readable (the engine user id *is*
+  the e-mail, so masking it would erase the actor from every authorization, task-claim
+  and incident line), while IBANs are masked whole and unseparated 12+ digit runs are
+  masked — both stricter than the platform set. The reasoning, and the one residual
+  risk this leaves (a customer e-mail carried inside an external task worker's
+  `errorMessage` stays readable), are recorded in the fragment itself.
 
 ### Changed
+
+- **The container uid is now pinned to 1001** (`adduser --uid 1001`). This is the uid
+  every released image has already run as — Ubuntu noble ships an `ubuntu` user at
+  1000, so the previous unpinned `adduser` landed on 1001 — so nothing changes at
+  runtime. What changes is that a deployment's `securityContext.runAsUser` can now
+  name the value safely instead of depending on which users the base image happens to
+  ship.
 
 - **The Trivy report attached to a release is now one file per architecture**, named
   `trivy-report[-flavour]-amd64.html` / `-arm64.html` (was a single
@@ -30,6 +58,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cannot — no default constructor, an unsupported field type — now fails where it
   previously succeeded. Deployments that need the old behaviour back can set
   `CADENZAFLOW_BPM_DEFAULT_SERIALIZATION_FORMAT=application/x-java-serialized-object`.
+  Deployments that already carry `CADENZAFLOW_BPM_DEFAULTSERIALIZATIONFORMAT` as an
+  environment workaround can drop it once they are on 1.1.1 — the image now ships the
+  same value.
 
 ## [1.1.0] - 2026-08-12
 

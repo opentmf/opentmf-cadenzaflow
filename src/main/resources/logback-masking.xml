@@ -63,22 +63,96 @@
         <path>iban</path>
         <path>pin</path>
 
-        <!-- IBAN anywhere in a string value, including inside a message. -->
+        <!-- ===== CREDENTIAL-CLASS VALUE MASKS =========================
+             The platform floor (dnms combined-rules §13.1), byte-for-byte the
+             same regexes as the shared fragment in pia-team/dnms-service-template.
+             Credential rules are never allowed to diverge per service: a token is
+             a token everywhere, and a service that masks fewer of them is simply
+             leaking. Copy changes in both directions verbatim; if a rule here
+             stops matching the template's, that is drift, not a decision.
+
+             These matter more here than the path masks suggest. The engine logs
+             identity-plugin and REST-client failures verbatim, and a Keycloak
+             admin-client error is exactly the place a bearer token echoes into
+             free text, where no field-name lookup can reach it.
+
+             Known limit, shared with the template: the key=value rule wants a
+             bare separator, so JSON-inside-a-message (`"password":"x"`) is not
+             matched by it. Structured occurrences are the path masks' job. -->
+
+        <!-- key=value / key: value secrets inside message text
+             ("password=hunter2", "client_secret: abc"). -->
+        <valueMask>
+          <value>(?i)\b(password|passwd|pwd|secret|token|pin|otp|apikey|api[-_]key|client[-_]secret)\s*[=:]\s*"?[^\s",;]+</value>
+          <mask>$1=****</mask>
+        </valueMask>
+
+        <!-- HTTP auth schemes ("Bearer eyJ…", "Basic dXNlcj…"). Must stay ahead of
+             the bare-JWT rule below so the scheme survives for triage. -->
+        <valueMask>
+          <value>(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}</value>
+          <mask>$1 ****</mask>
+        </valueMask>
+
+        <!-- Bare JWTs anywhere (every JWT starts with base64url of '{"' = eyJ). -->
+        <valueMask>
+          <value>\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}</value>
+          <mask>****</mask>
+        </valueMask>
+
+        <!-- Card PANs written in separated groups (4-4-4-2..4). The unseparated
+             form is covered by the stricter digit-run rule below. -->
+        <valueMask>
+          <value>\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{2,4}\b</value>
+          <mask>****</mask>
+        </valueMask>
+
+        <!-- ===== PII-CLASS VALUE MASKS ================================
+             Unlike the credential floor, these are this service's own and
+             DIVERGE from the template on purpose. Each divergence is pinned by a
+             case in LogbackMaskingTests, so a later "align with the template"
+             edit fails a test instead of silently changing what the engine logs.
+             Two of the three are STRICTER than the template, which is always
+             acceptable; the third is looser and is argued below. -->
+
+        <!-- IBAN anywhere in a string value, including inside a message.
+             DIVERGENCE (stricter): the template keeps country + check digits
+             ("DE44****") for payment triage. This service never reconciles
+             payments, so the whole value goes. -->
         <value>\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b</value>
+
         <!-- German phone numbers in the +49… / 0049… / 0… shapes. -->
         <value>\b(?:\+49|0049|0)[1-9]\d{6,13}\b</value>
-        <!-- PIN/PAN-like runs of 12+ digits (card numbers, long account refs).
-             Deliberately not shorter: process-instance keys and job retries are
-             numeric too, and masking those would gut the operational logs. -->
+
+        <!-- Runs of 12+ digits (card numbers, long account refs).
+             DIVERGENCE (stricter): the template deliberately leaves the
+             unseparated form alone because ids and epoch timestamps look the
+             same. Here the engine renders process-variable dumps into message
+             text, so an unseparated PAN really can arrive in prose and the
+             false positives - epoch-milli timestamps, mostly - are worth it.
+             Deliberately not shorter than 12: process-definition keys, job
+             retries and incident counts are numeric too, and masking those
+             would gut the operational logs. -->
         <value>\b\d{12,}\b</value>
 
-        <!-- DELIBERATELY ABSENT: an e-mail value regex. In this service the
-             CadenzaFlow user id IS the e-mail address (use-email-as-camunda-user-id
-             for both the Keycloak and the Entra identity provider), so a value-level
-             e-mail mask would redact the actor from every authorization, task-claim
-             and incident line - i.e. destroy the audit trail it is meant to protect.
-             Structured occurrences are still covered by the `email`/`mail` path
-             masks above. -->
+        <!-- DELIBERATELY ABSENT: an e-mail value regex.
+             DIVERGENCE (looser): the template masks the local part and keeps the
+             domain. Here the CadenzaFlow user id IS the e-mail address
+             (use-email-as-camunda-user-id, for both the Keycloak and the Entra
+             identity provider), so a value-level e-mail mask would redact the
+             ACTOR from every authorization, task-claim and incident line - it
+             would destroy the audit trail it is meant to protect. Structured
+             occurrences are still covered by the `email`/`mail` path masks above.
+
+             RESIDUAL RISK, accepted and documented rather than fixed: external
+             task workers submit errorMessage text that the engine logs verbatim,
+             so a CUSTOMER e-mail carried in such a message stays readable too. No
+             regex can tell an actor's address from a subject's - they are the same
+             token in the same position. This is bounded by the other two nets:
+             net #1, workers must not put raw PII in error messages, and net #3,
+             collector-side redaction. Do not "fix" this by adding the e-mail
+             regex; that trades a bounded risk for an unbounded loss of
+             attribution. -->
       </decorator>
     </encoder>
   </appender>

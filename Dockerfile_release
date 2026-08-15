@@ -18,11 +18,16 @@ RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --dest
 # JRE 25 matches the GraalJS/Truffle 25.x runtime requirement. JS script tasks still run
 # interpreted: as of GraalVM 25, in-process JIT of guest code requires a GraalVM JDK.
 FROM eclipse-temurin:25-jre-noble
+# The uid is PINNED because a deployment's securityContext.runAsUser has to name it
+# and must not silently drift when the base image changes. 1001, not 1000: Ubuntu
+# noble already ships an `ubuntu` user at 1000, so an unpinned adduser lands on 1001
+# anyway - pinning records the value the released images have always had rather than
+# changing it.
 RUN apt-get update && \
     apt-get install -y curl iputils-ping procps rsync && \
     rm -rf /var/lib/apt/lists/* && \
-    addgroup java && \
-    adduser --ingroup java --disabled-password java
+    addgroup --gid 1001 java && \
+    adduser --uid 1001 --ingroup java --disabled-password java
 USER java
 WORKDIR /application
 COPY --chown=java:java --from=layer-extract /application/extracted/dependencies/ ./

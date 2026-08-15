@@ -30,40 +30,51 @@ marked ❓ before relying on it.
 | `micrometer-registry-prometheus` | ✅ present — the chart's prometheus scrape annotations work |
 | `openid-rbac-security` 2.3.0 | ✅ — the chart's chart-owned platform profile (`opentmf.security.management.*` ACL) applies to this app |
 | `spring-kafka` / `spring-data-redis` on the classpath | ✅ **absent** — the deployment's shared `envStatic` Kafka/Valkey variables are inert here (same receive-and-ignore precedent as the no-DB services) |
-| OTLP tracing dependency | ❓ none found in the pom — `MANAGEMENT_OTLP_TRACING_ENDPOINT` from envStatic is expected to be a no-op; confirm the boot log stays clean |
-| Container user | `adduser java` on `eclipse-temurin:25-jre-noble` → expected **uid 1000**; ❓ confirm with `docker run --rm ghcr.io/opentmf/opentmf-cadenzaflow:1.1.0 id` (the chart hardcodes 999 today — Part B parameterizes it) |
-| `default-serialization-format: application/json` in-image | ❌ **1.1.0 gap** — the deployment carries `CADENZAFLOW_BPM_DEFAULTSERIALIZATIONFORMAT` as an env workaround (engine-produced collection variables are otherwise java-serialized and external-task workers fail with `ValueMapperException`) |
-| Behavioral masking test | ❌ nothing in this repo executes the fragment; only the file ships |
+| OTLP tracing dependency | ✅ **verified 2026-08-15** — no `otlp` / `opentelemetry` / `micrometer-tracing` reference anywhere in the pom or `src/main/resources`, so `MANAGEMENT_OTLP_TRACING_ENDPOINT` from envStatic is inert |
+| Container user | ✅ **verified 2026-08-15: uid 1001, NOT 1000.** `docker run --rm ghcr.io/opentmf/opentmf-cadenzaflow:1.1.0 id` → `uid=1001(java) gid=1001(java)`. Cause: `eclipse-temurin:25-jre-noble` inherits Ubuntu noble's own `ubuntu` user at uid/gid 1000, so an unpinned `adduser` takes the next free id. Part A now pins `--uid 1001` (the value already released); **Part B's `runAsUser` is 1001** |
+| `default-serialization-format: application/json` in-image | ✅ **shipped on develop** (`cbd523c`) — the deployment's `CADENZAFLOW_BPM_DEFAULTSERIALIZATIONFORMAT` env workaround can be dropped at the 1.1.1 digest bump |
+| Behavioral masking test | ✅ **the fact table was wrong** — `src/test/java/org/opentmf/cadenzaflow/config/logging/LogbackMaskingTests.java` has shipped since 1.1.0. It configures the fragment exactly as a deployment does and asserts on encoded bytes, and its `@BeforeEach` fails on any Joran status above INFO — a *stronger* silent-failure guard than the template's, worth back-porting there. Part A **extends** it rather than porting `MaskedJsonAppenderTests` |
+| Masking rule set vs the template's fragment | ⚠️ **not identical, by design.** The credential-class rules are a uniform floor and were missing here — added for 1.1.1 with tests. The three PII-class rules diverge deliberately (e-mail readable; IBAN whole-masked; unseparated 12+ digit runs masked) and are now pinned by `DeliberateDivergences` tests plus rationale in the fragment |
 | pom version | `1.1.1-SNAPSHOT`; CHANGELOG already carries the `[1.1.1]` section |
 
-## 2. Part A — this repo (target release: 1.1.1)
+## 2. Part A — this repo (target release: 1.1.1) — ✅ DONE 2026-08-15
 
-1. **Ship the serialization default in-image.** Add
-   `default-serialization-format: application/json` to the engine block in
-   `config-cadenzaflow.yml` (beside the history/TTL defaults that moved
-   in-image in 1.1.0 — same rationale: platform requirement, not tuning).
-   CHANGELOG under the existing `[1.1.1]` section. Note in the entry that
-   deployments may drop the `CADENZAFLOW_BPM_DEFAULTSERIALIZATIONFORMAT`
-   env once on 1.1.1.
-2. **Port the behavioral masking test** from
-   `pia-team/dnms-service-template` (`MaskedJsonAppenderTests`, commit
-   `0ffb22b`): a fresh `LoggerContext`, configured exactly the way a
-   deployment consumes the fragment
-   (`<include resource="logback-masking.xml"/>` + `ref="JSON"`), asserting on
-   emitted bytes per rule — path masks (MDC + StructuredArguments), `key=value`
-   secrets in message text, Bearer/JWT, e-mail local-part (domain kept), IBAN
-   (country+check kept), phone forms, separated card PANs, and the DELIBERATE
-   non-rule (unseparated digit runs stay unmasked). Two pitfalls the template
-   already solved — copy the solutions, not the debugging:
-   - a bare `new LoggerContext()` has **no MDCAdapter** and NPEs on every
-     append → `context.setMDCAdapter(MDC.getMDCAdapter())`;
-   - the test exists precisely because the wrong decorator element fails
-     SILENT — never weaken it to a structure-only check.
-3. *(Optional, recommended)* **Pin the uid** in the Dockerfile
-   (`adduser --uid 1000 …`) so the deployment's `runAsUser` value can never
-   drift from the image.
-4. **Release 1.1.1** through the normal split pipeline (per-arch Trivy gate,
-   by-digest push, merged-index cosign).
+1. ✅ **Ship the serialization default in-image.**
+   `default-serialization-format: application/json` sits in the engine block of
+   `config-cadenzaflow.yml` (shipped in `cbd523c`, beside the history/TTL
+   defaults that moved in-image in 1.1.0 — same rationale: platform
+   requirement, not tuning). The `[1.1.1]` CHANGELOG entry now says deployments
+   may drop the `CADENZAFLOW_BPM_DEFAULTSERIALIZATIONFORMAT` env once on 1.1.1.
+2. ✅ **Extend the existing masking test — do NOT port the template's.**
+   `LogbackMaskingTests` already did the hard part (fragment configured the way
+   a deployment consumes it, assertions on encoded bytes, Joran warnings
+   treated as failures). Splitting the work by rule class, per the review:
+   - **Credential-class rules are a uniform floor and never diverge.** Three
+     were missing here and are now in the fragment, byte-for-byte from the
+     template: `key=value` secrets in message text, Bearer/Basic + bare JWTs,
+     separated card PANs. This was a real gap, not a formality — the engine
+     logs identity-plugin and REST-client failures verbatim, and a Keycloak
+     admin-client error is precisely where a token echoes into free text.
+   - **The PII-class divergences stay**, each with its rationale in the
+     fragment and a `DeliberateDivergences` test case pinning it so the
+     difference is provably a decision, not drift: e-mail readable (the engine
+     user id IS the e-mail; masking erases the actor from authz/task/incident
+     lines), 12+ digit runs masked and IBANs masked whole (both stricter than
+     the template — stricter is always acceptable).
+   - **One residual risk is named in the fragment comment, not fixed:**
+     external task workers submit `errorMessage` content the engine then logs,
+     so the e-mail divergence leaves a customer e-mail inside such text
+     readable. No regex can tell an actor's address from a subject's. Bounded
+     by net #1 (workers must not put raw PII in error messages — worth a line
+     in the worker rules someday) and net #3 (collector redaction).
+   - 14 tests green, including the Joran guard.
+3. ✅ **Pin the uid** in both Dockerfiles — `adduser --uid 1001`, **not 1000**:
+   that is the uid every released image already runs as (see the fact table),
+   so one chart value stays correct across the 1.1.0 → 1.1.1 digest bump and
+   the pin changes nothing at runtime.
+4. ⬜ **Release 1.1.1** through the normal split pipeline (per-arch Trivy gate,
+   by-digest push, merged-index cosign). Refresh the `[1.1.1]` CHANGELOG date
+   to the actual release day first.
 
 ## 3. Part B — dnms-deploy: the move (performable on 1.1.0, digest-bump later)
 
@@ -75,7 +86,8 @@ marked ❓ before relying on it.
    - `values.yaml` — `name: camunda` (**keep the Service name**: the
      external-task workers dial the engine by this DNS name; the move must not
      rename it), image **digest-pinned** (1.1.0 now, 1.1.1 when cut),
-     `runAsUser: 1000` (per the verified uid), `resources` override
+     `runAsUser: 1001` (per the verified uid — see the fact table; 1000 is
+     Ubuntu noble's own user, not this image's), `resources` override
      (768Mi request / 1536Mi limit — the engine's current sizing), and env:
      - `SPRING_DATASOURCE_HIKARI_SCHEMA: cadenzaflow` — replaces the old
        URL-embedded `currentSchema`; the shared envStatic
