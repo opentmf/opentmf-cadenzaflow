@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.2] - 2026-08-15
+
+### Security
+
+- Apache HttpComponents Core upgraded from 5.4.2 (Spring Boot 4.1.0 BOM) to 5.4.3:
+  fixes CVE-2026-54399 (HIGH) in `httpcore5` and CVE-2026-54428 in `httpcore5-h2`,
+  both denial of service via oversized HTTP/2 HPACK headers. It arrives through
+  `cadenzaflow-keycloak-4` → `httpclient5`, so **every** image flavour was affected,
+  not just one — all six build legs of the 1.1.1 release failed the Trivy gate on it,
+  which is why 1.1.1 has no images. Consumers of the 1.1.1 jar from Maven Central
+  carry the vulnerable version and should move to 1.1.2.
+
+  Note for anyone overriding this themselves: `httpcore5.version` is the Spring Boot
+  BOM's own property name, and this project imports that BOM rather than inheriting
+  from it, so setting the property has no effect — the override has to be explicit
+  `dependencyManagement` entries.
+
 ## [1.1.1] - 2026-08-15
 
 ### Added

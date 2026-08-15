@@ -78,6 +78,14 @@
          the BOM catches up. -->
     <netty.version>4.2.17.Final</netty.version>
 
+    <!-- Overrides the Spring Boot 4.1.0 BOM's 5.4.2: CVE-2026-54399 (HIGH) in
+         httpcore5 and CVE-2026-54428 in httpcore5-h2, both DoS via oversized
+         HTTP/2 HPACK headers, first fixed in 5.4.3. Reached through
+         cadenzaflow-keycloak-4 -> httpclient5, so it is in EVERY flavour, not
+         just one - all six build legs of 1.1.1 failed the Trivy gate on it.
+         Drop when the BOM catches up. -->
+    <httpcore5.version>5.4.3</httpcore5.version>
+
     <archunit.version>1.5.0</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
     <pitest-maven.version>1.25.9</pitest-maven.version>
@@ -122,6 +130,22 @@
         <version>${netty.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <!-- Also before spring-boot-dependencies, and declared as explicit entries
+           rather than a property override: `httpcore5.version` is the Spring Boot
+           BOM's OWN property name, and with a BOM-only import (no parent) the BOM
+           resolves its properties internally - setting it here is silently ignored
+           and the vulnerable 5.4.2 still resolves. Verified with dependency:tree.
+           See the httpcore5.version property above for the CVEs. -->
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5</artifactId>
+        <version>${httpcore5.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5-h2</artifactId>
+        <version>${httpcore5.version}</version>
       </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
