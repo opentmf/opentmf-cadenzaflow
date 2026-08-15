@@ -21,6 +21,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   from it, so setting the property has no effect — the override has to be explicit
   `dependencyManagement` entries.
 
+### Fixed
+
+- **The `-aws` image shipped a mixed AWS SDK.** `sts` was pinned directly while
+  `aws-msk-iam-auth` contributed `auth` from the same dependency depth, so Maven's
+  nearest-wins resolved by declaration order and the image carried `auth` 2.44.12
+  against `sdk-core`/`aws-core` 2.52.0. AWS does not support mixing v2 module
+  versions, and `auth` is the module implementing the IRSA/WebIdentity credential
+  providers that `sts` is there for — so the likely symptom was a `NoSuchMethodError`
+  during credential resolution, on a code path that only runs inside EKS and that no
+  test covers. The `aws` profile now imports `software.amazon.awssdk:bom` (2.53.1),
+  which aligns all 31 SDK modules on one version; `sts` no longer carries its own
+  `<version>`. Only the `-aws` flavour is affected.
+
 ## [1.1.1] - 2026-08-15
 
 ### Added

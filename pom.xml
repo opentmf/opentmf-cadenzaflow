@@ -649,9 +649,29 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk-sts.version>2.52.0</awssdk-sts.version>
+        <awssdk.version>2.53.1</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
       </properties>
+      <dependencyManagement>
+        <dependencies>
+          <!-- The AWS SDK v2 BOM aligns EVERY software.amazon.awssdk module on one
+               version. It is not optional housekeeping here: aws-msk-iam-auth pulls
+               `auth` at its own SDK version from the same depth as sts's transitives,
+               and Maven's nearest-wins then resolves by declaration order, which used
+               to ship `auth` 2.44.12 against sdk-core/aws-core 2.52.0. `auth` is the
+               module implementing the IRSA/WebIdentity credential providers that sts
+               is here for, and AWS does not support mixing module versions - the
+               failure mode is NoSuchMethodError at credential-resolution time, in a
+               code path no test covers. Bumping sts alone would only widen the gap. -->
+          <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bom</artifactId>
+            <version>${awssdk.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+          </dependency>
+        </dependencies>
+      </dependencyManagement>
       <dependencies>
         <dependency>
           <groupId>software.amazon.msk</groupId>
@@ -666,11 +686,11 @@
           <version>${aws-advanced-jdbc-wrapper.version}</version>
           <scope>runtime</scope>
         </dependency>
-        <!-- Required for IRSA / WebIdentity credentials on Java -->
+        <!-- Required for IRSA / WebIdentity credentials on Java. Version comes from
+             the SDK BOM above - do not pin it here. -->
         <dependency>
           <groupId>software.amazon.awssdk</groupId>
           <artifactId>sts</artifactId>
-          <version>${awssdk-sts.version}</version>
           <scope>runtime</scope>
         </dependency>
       </dependencies>
