@@ -2,10 +2,11 @@ name: Docker image on Release
 
 # One SonarCloud gate for the whole workflow, then a flavour x architecture build
 # matrix, then one merge job per flavour that assembles the manifest list and signs
-# it. Third-party actions are pinned by full commit SHA with the version as a
-# trailing comment: a mutable tag would let a compromised action release run with
-# this workflow's packages:write / id-token:write tokens. GitHub-owned actions/*
-# stay on version tags - same trust root as the runner itself.
+# it. EVERY action is pinned by full commit SHA with the version as a trailing
+# comment, GitHub-owned actions/* included: a mutable tag would let a compromised
+# action release run with this workflow's packages:write / id-token:write tokens,
+# and "it is the same trust root as the runner" argues for trusting the publisher,
+# not for trusting whatever a tag points at on the day this runs.
 
 on:
   release:
@@ -40,6 +41,10 @@ env:
   # what once let the report quote `main`'s measures under a `develop` heading.
   SONAR_BRANCH: develop
   TRIVY_VERSION: 0.72.0
+  # The cosign BINARY version, pinned in one place because two jobs now install it:
+  # the build legs attest a per-architecture SBOM, the merge job signs the index.
+  # A split between them would sign and attest the same release with two majors.
+  COSIGN_VERSION: v2.6.1
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -99,6 +104,7 @@ jobs:
     permissions:
       contents: read    # checkout
       packages: write   # push the by-digest images
+      id-token: write   # keyless cosign attest of this leg's SBOM (Fulcio OIDC)
     strategy:
       fail-fast: false
       matrix:
@@ -188,6 +194,49 @@ jobs:
             --ignorefile /work/.trivyignore \
             "${IMAGE_REF}"
 
+      # The SBOM is generated and attested HERE, per (flavour, architecture), rather
+      # than once against the merged index in the merge job. An index-level SBOM had
+      # the same defect the HTML reports used to have: Trivy resolves an index to a
+      # SINGLE child, so one SBOM described amd64 while being attested to the whole
+      # index - an arm64 consumer verifying the attestation got an accurate-looking
+      # component list for an image they do not run. A leg's by-digest image IS one
+      # architecture, so the SBOM and its subject cannot disagree.
+      #
+      # Trade-off, deliberate: attestations now hang off the per-architecture child
+      # digests instead of the index, so `cosign verify-attestation` against the TAG
+      # no longer finds one - resolve the tag to its child for your platform first.
+      # A wrong SBOM discoverable at the tag is worse than a right one a step away.
+      #
+      # The scan target is the same remote by-digest ref the gate just read, with the
+      # same warm cache mount, so this costs a second read of a cached image, not a
+      # second build. --platform for the reason spelled out above the gate.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Generate this architecture's CycloneDX SBOM
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
+            -v trivy-cache:/root/.cache/trivy \
+            -v "${PWD}:/out" \
+            "aquasec/trivy:${TRIVY_VERSION}" image \
+            --platform "linux/${{ matrix.arch }}" \
+            --timeout 15m --format cyclonedx --output /out/sbom.cdx.json \
+            "${IMAGE_REF}"
+
+      - name: Attest the SBOM to this architecture's image (keyless)
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign attest --yes --type cyclonedx \
+            --predicate sbom.cdx.json "${IMAGE_REF}"
+
       # The merge job cannot read matrix outputs, so each leg leaves its digest as
       # an artifact for the matching flavour to collect.
       - name: Record the digest
@@ -272,16 +321,17 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          # PINNED DELIBERATELY. The installer's own default moved from cosign v2.5.2
-          # to v3.0.6 in its v4, so taking the installer upgrade for the Node 24
-          # runtime would ALSO swap the signing binary for a new major - quietly, in a
-          # commit whose stated purpose is clearing deprecation warnings. Every
-          # signature published so far (1.0.x through 1.1.2) was made by v2.5.2, and
-          # cosign 3 changes how signatures are attached and discovered, so anyone
-          # verifying our images could start failing. Moving to cosign 3 is a
-          # supply-chain decision that deserves its own change and its own
-          # verification pass against a throwaway tag - not a side effect of this one.
-          cosign-release: v2.5.2
+          # PINNED DELIBERATELY, and the pin is on the cosign BINARY, not on the
+          # installer. The installer's own default moved from cosign v2.5.2 to v3.0.6
+          # in its v4, so taking the installer upgrade for the Node 24 runtime would
+          # ALSO swap the signing binary for a new major - quietly, in a commit whose
+          # stated purpose is clearing deprecation warnings. cosign 3 changes how
+          # signatures are attached and discovered, so anyone verifying our images
+          # could start failing. Moving to cosign 3 is a supply-chain decision that
+          # deserves its own change and its own verification pass, not a side effect.
+          # v2.6.1 is the version the rest of the estate pins; still cosign 2, so the
+          # signature format is identical to what signed 1.0.x through 1.1.2.
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Docker meta (tags & labels)
         id: meta
@@ -318,29 +368,13 @@ jobs:
           INDEX_REF: ${{ steps.index.outputs.ref }}
         run: cosign sign --yes "$INDEX_REF"
 
-      - name: Generate the CycloneDX SBOM
-        env:
-          INDEX_REF: ${{ steps.index.outputs.ref }}
-        run: |
-          set -euo pipefail
-          docker run --rm \
-            -v "${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
-            -v "${PWD}:/out" \
-            "aquasec/trivy:${TRIVY_VERSION}" image \
-            --timeout 15m --format cyclonedx --output /out/sbom.cdx.json \
-            "$INDEX_REF"
-
-      # KNOWN LIMIT, deliberately not addressed here: the SBOM is generated from the
-      # index without --platform, so like the HTML report before it, it describes the
-      # amd64 child while being attested to the whole index. The Trivy reports below
-      # are now per-architecture; this is the remaining half of the same problem and
-      # wants two SBOMs and two attestations.
-      - name: Attest the SBOM to the index
-        env:
-          INDEX_REF: ${{ steps.index.outputs.ref }}
-        run: |
-          cosign attest --yes --type cyclonedx \
-            --predicate sbom.cdx.json "$INDEX_REF"
+      # NO SBOM step here any more. It used to generate one from the index without
+      # --platform and attest it to the whole index, which described amd64 while
+      # claiming to cover every architecture - the same defect the HTML reports had.
+      # Each build leg now generates and attests its OWN architecture's SBOM against
+      # its by-digest image, where the subject and the contents cannot disagree. This
+      # job still signs the index, because a signature says "this is ours" about the
+      # thing consumers actually pull, and that IS the index.
 
       # A readable report of EVERY severity, not just the gated ones, so a reviewer
       # can see what shipped rather than only what blocked. Never fails the build -

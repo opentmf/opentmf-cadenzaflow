@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.3] - 2026-08-15
+
+### Changed
+
+- **SBOM attestations are now per architecture.** Previously one CycloneDX SBOM was
+  generated from the multi-arch index and attested to that index — but Trivy resolves
+  an index to a single child, so the SBOM described amd64 while claiming to cover the
+  whole tag. An arm64 consumer verifying the attestation got an accurate-looking
+  component list for an image they do not run. This is the same defect the Trivy HTML
+  reports had before 1.1.1, and this is its remaining half. Each build leg now
+  generates and attests its own architecture's SBOM against its by-digest image,
+  where the subject and the contents cannot disagree.
+
+  **Action required if you verify attestations:** they now hang off the
+  per-architecture child digests rather than the index, so
+  `cosign verify-attestation` against the *tag* no longer finds one. Resolve the tag
+  to the child for your platform and verify that. Image *signatures* are unchanged —
+  the index is still signed, because a signature asserts provenance about the thing
+  you actually pull. Signing and attestation use cosign 2.6.1 (was 2.5.2); same major,
+  so the signature format is unchanged.
+
 ## [1.1.2] - 2026-08-15
 
 ### Security
