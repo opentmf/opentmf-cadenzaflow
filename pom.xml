@@ -55,7 +55,7 @@
     <!-- Application dependencies -->
     <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
     <spring-boot.version>4.1.0</spring-boot.version>
-    <cadenzaflow.version>1.2.1</cadenzaflow.version>
+    <cadenzaflow.version>1.2.2</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
@@ -559,6 +559,12 @@
                 </dependency>
               </dependencies>
               <configuration>
+                <!-- Stated rather than inherited: with targetClasses absent PIT
+                     falls back to the project groupId, so a groupId change would
+                     silently move what gets mutated. -->
+                <targetClasses>
+                  <param>org.opentmf.cadenzaflow.*</param>
+                </targetClasses>
                 <targetTests>
                   <param>org.opentmf.cadenzaflow.*</param>
                 </targetTests>
