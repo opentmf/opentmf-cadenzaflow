@@ -69,14 +69,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   directory-backed identity, masked logging and metrics this service adds.
 
 - **The database schema is fully documented.** README §7 previously showed one diagram
-  covering twelve of the engine's tables. It now has an entity-relationship diagram per
-  table group — deployments and definitions, runtime, history, identity — with what
-  each group is for and when its rows appear and disappear, and a new
-  [`docs/database-schema.md`](docs/database-schema.md) catalogues **all 49 tables**:
-  every column with its type verbatim from the DDL, primary keys, the few real foreign
-  keys, unique constraints and indexes. It also answers two questions operators keep
-  asking: why CMMN and DMN tables exist when no such model is deployed, and why the
-  `ACT_ID_*` identity tables are created but stay empty.
+  covering twelve of the engine's tables. It now carries an entity-relationship diagram
+  per table group — deployments and definitions, runtime, history, identity — and
+  **every one of the 49 tables appears in one of them, with its columns and types**,
+  rather than a chosen dozen. Alongside it, [`docs/database-schema.md`](docs/database-schema.md)
+  gives **one specification table per database table** in the platform's
+  component-design-card shape: column, primary-key membership, type verbatim from the
+  DDL, nullability, uniqueness, default, declared foreign key, and what the column
+  holds — 681 columns, 42 foreign keys, 7 unique constraints and 225 indexes, all
+  re-parsed from the engine's own PostgreSQL DDL so they cannot drift from it.
+
+  It also answers two questions operators keep asking: why CMMN and DMN tables exist
+  when no such model is deployed, and why the `ACT_ID_*` identity tables are created
+  but stay empty.
+
+  **Both documents now open by saying the schema is internal to the engine and may
+  change in any release**, citing upstream's own words — *"The database is not part of
+  the public API. The database schema may change for MINOR and MAJOR version updates"* —
+  and the public-API definition that backs them up. So: do not write to these tables, do
+  not extend the schema, and do not build reporting on it; the supported entry points are
+  the REST API, the history endpoints and Cockpit. The catalogue is for understanding and
+  troubleshooting a running system, a use that survives upgrades, rather than for
+  integrating against.
+
+  Both also record where this sits relative to upstream documentation: upstream describes
+  eight of the forty-nine tables in prose and publishes the rest only as diagrams rendered
+  from the **MySQL** schema, so no official per-column reference exists for any of the
+  Camunda 7 forks. Ours is derived from the **PostgreSQL** DDL this service actually runs,
+  which is also why a type may legitimately differ from an upstream diagram.
 
 - **New README §9.6 on external-task throughput.** `maxTasks` is a batch size, not a
   parallelism setting — the Java client processes a batch on a single thread — so

@@ -484,9 +484,39 @@ upstream platform's contract rather than this component's design surface.
 | Created by | the engine, when `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE=true` |
 
 **Every column of every table is catalogued in
-[docs/database-schema.md](docs/database-schema.md)** — types verbatim from the DDL,
-primary keys, the few real foreign keys, unique constraints and indexes. This section
-is the map; that file is the territory.
+[docs/database-schema.md](docs/database-schema.md)** — one specification table per
+database table, with types verbatim from the DDL, primary keys, nullability, the few
+real foreign keys, defaults, unique constraints and indexes. This section is the map;
+that file is the territory.
+
+Upstream has its own
+[database schema page](https://docs.cadenzaflow.org/manual/latest/user-guide/process-engine/database/database-schema/),
+worth reading for context — but it describes eight of the forty-nine tables in prose and
+publishes the rest only as diagrams generated from the *MySQL* schema. There is no
+official per-column reference for any of the forks, which is why ours is derived
+directly from the engine's PostgreSQL DDL.
+
+> ### ⚠ The schema is the engine's private storage, not an API
+>
+> **These tables belong to CadenzaFlow and can change in any engine release.** Upstream
+> states it directly — *"The database is not part of the public API. The database schema
+> may change for MINOR and MAJOR version updates"*
+> ([manual](https://docs.cadenzaflow.org/manual/latest/user-guide/process-engine/database/database-schema/)).
+> The [public API](https://docs.cadenzaflow.org/manual/latest/introduction/public-api/) is
+> defined as the engine's non-`impl` Java packages plus the REST API's HTTP interface, and
+> compatibility is promised for those alone. Only patch releases leave the schema alone.
+> Neither this service nor OpenTMF controls its shape.
+>
+> So: **never write to an `ACT_*` table**, do not add your own tables, foreign keys or
+> triggers inside the `cadenzaflow` schema, and do not point a report or ETL job at them
+> and expect it to survive an upgrade. The engine version-checks rows through `REV_`, so
+> an outside `UPDATE` corrupts state that looks fine until an unrelated
+> `OptimisticLockingException` appears somewhere else entirely.
+>
+> The supported ways in are the **engine REST API**, its **history endpoints**, and
+> **Cockpit**. What this documentation is genuinely for is understanding and
+> troubleshooting a running system — sizing a database, reading an incident, knowing
+> what history cleanup deletes. That use is stable; integration is not.
 
 The diagrams below show how the tables relate. Read the relationships as *logical*
 ones: the engine maintains most of them itself and only a minority are declared as
@@ -527,25 +557,80 @@ erDiagram
     ACT_RE_DECISION_REQ_DEF ||--o{ ACT_RE_DECISION_DEF     : "groups"
 
     ACT_RE_DEPLOYMENT {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 NAME_
-        timestamp  DEPLOY_TIME_
-        varchar64  TENANT_ID_
+        timestamp DEPLOY_TIME_
+        varchar255 SOURCE_
+        varchar64 TENANT_ID_
     }
     ACT_RE_PROCDEF {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 KEY_
-        integer    VERSION_
-        varchar64  DEPLOYMENT_ID_ FK
-        integer    HISTORY_TTL_
-        boolean    SUSPENSION_STATE_
+        varchar255 NAME_
+        integer VERSION_
+        varchar64 DEPLOYMENT_ID_
+        varchar4000 RESOURCE_NAME_
+        integer SUSPENSION_STATE_
+        integer HISTORY_TTL_
+        varchar64 VERSION_TAG_
+        varchar64 TENANT_ID_
+    }
+    ACT_RE_DECISION_DEF {
+        varchar64 ID_ PK
+        varchar255 KEY_
+        varchar255 NAME_
+        integer VERSION_
+        varchar64 DEPLOYMENT_ID_
+        varchar64 DEC_REQ_ID_ FK
+        integer HISTORY_TTL_
+        varchar64 TENANT_ID_
+    }
+    ACT_RE_DECISION_REQ_DEF {
+        varchar64 ID_ PK
+        varchar255 KEY_
+        varchar255 NAME_
+        integer VERSION_
+        varchar64 DEPLOYMENT_ID_
+        varchar4000 RESOURCE_NAME_
+        varchar64 TENANT_ID_
+    }
+    ACT_RE_CASE_DEF {
+        varchar64 ID_ PK
+        varchar255 KEY_
+        varchar255 NAME_
+        integer VERSION_
+        varchar64 DEPLOYMENT_ID_
+        integer HISTORY_TTL_
+        varchar64 TENANT_ID_
+    }
+    ACT_RE_CAMFORMDEF {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 KEY_
+        integer VERSION_
+        varchar64 DEPLOYMENT_ID_
+        varchar4000 RESOURCE_NAME_
+        varchar64 TENANT_ID_
     }
     ACT_GE_BYTEARRAY {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 NAME_
-        bytea      BYTES_
-        varchar64  DEPLOYMENT_ID_ FK
-        timestamp  REMOVAL_TIME_
+        bytea BYTES_
+        varchar64 DEPLOYMENT_ID_ FK
+        integer TYPE_
+        timestamp CREATE_TIME_
+        varchar64 ROOT_PROC_INST_ID_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_GE_PROPERTY {
+        varchar64 NAME_ PK
+        varchar300 VALUE_
+        integer REV_
+    }
+    ACT_GE_SCHEMA_LOG {
+        varchar64 ID_ PK
+        timestamp TIMESTAMP_
+        varchar255 VERSION_
     }
 ```
 
@@ -562,64 +647,170 @@ never finish, not of history accumulating.
 
 ```mermaid
 erDiagram
-    ACT_RE_PROCDEF   ||--o{ ACT_RU_EXECUTION    : "instantiated as"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_EXECUTION    : "parent of"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_TASK         : "has open"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_VARIABLE     : "holds"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_JOB          : "schedules"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_EXT_TASK     : "offers as external"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_INCIDENT     : "raises"
-    ACT_RU_EXECUTION ||--o{ ACT_RU_EVENT_SUBSCR : "waits on"
-    ACT_RU_TASK      ||--o{ ACT_RU_IDENTITYLINK : "assigned through"
-    ACT_RU_JOBDEF    ||--o{ ACT_RU_JOB          : "defines"
-    ACT_RU_BATCH     ||--o{ ACT_RU_JOB          : "fans out into"
-    ACT_RU_VARIABLE  }o--|| ACT_GE_BYTEARRAY    : "spills large values into"
+    ACT_RE_PROCDEF        ||--o{ ACT_RU_EXECUTION        : "instantiated as"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_EXECUTION        : "parent of"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_TASK             : "has open"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_VARIABLE         : "holds"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_JOB              : "schedules"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_EXT_TASK         : "offers as external"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_INCIDENT         : "raises"
+    ACT_RU_EXECUTION      ||--o{ ACT_RU_EVENT_SUBSCR     : "waits on"
+    ACT_RU_TASK           ||--o{ ACT_RU_IDENTITYLINK     : "assigned through"
+    ACT_RU_JOBDEF         ||--o{ ACT_RU_JOB              : "defines"
+    ACT_RU_BATCH          ||--o{ ACT_RU_JOB              : "fans out into"
+    ACT_RU_VARIABLE       }o--|| ACT_GE_BYTEARRAY        : "spills large values into"
+    ACT_RU_CASE_EXECUTION ||--o{ ACT_RU_CASE_SENTRY_PART : "gates with"
 
     ACT_RU_EXECUTION {
-        varchar64  ID_ PK
-        varchar64  PROC_INST_ID_
-        varchar64  PARENT_ID_
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_ FK
+        varchar64 PARENT_ID_ FK
+        varchar64 PROC_DEF_ID_ FK
         varchar255 BUSINESS_KEY_
-        varchar64  ACT_ID_
-        boolean    IS_ACTIVE_
-        integer    SUSPENSION_STATE_
+        varchar255 ACT_ID_
+        boolean IS_ACTIVE_
+        integer SUSPENSION_STATE_
+        varchar64 TENANT_ID_
     }
     ACT_RU_TASK {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
+        varchar64 EXECUTION_ID_ FK
+        varchar64 PROC_INST_ID_ FK
         varchar255 NAME_
         varchar255 ASSIGNEE_
-        timestamp  DUE_DATE_
-        integer    PRIORITY_
-        varchar64  TASK_STATE_
+        integer PRIORITY_
+        timestamp DUE_DATE_
+        timestamp CREATE_TIME_
+        varchar64 TASK_STATE_
     }
     ACT_RU_VARIABLE {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 NAME_
         varchar255 TYPE_
+        varchar64 EXECUTION_ID_ FK
+        varchar64 TASK_ID_
+        varchar64 BYTEARRAY_ID_ FK
         varchar4000 TEXT_
-        varchar64  BYTEARRAY_ID_ FK
-    }
-    ACT_RU_EXT_TASK {
-        varchar64  ID_ PK
-        varchar255 TOPIC_NAME_
-        varchar255 WORKER_ID_
-        timestamp  LOCK_EXP_TIME_
-        integer    RETRIES_
-        integer    PRIORITY_
+        bigint LONG_
+        varchar64 VAR_SCOPE_
     }
     ACT_RU_JOB {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 TYPE_
-        integer    RETRIES_
-        timestamp  DUEDATE_
-        varchar64  HANDLER_TYPE_
+        varchar64 EXECUTION_ID_
+        varchar64 JOB_DEF_ID_
+        varchar64 BATCH_ID_
+        integer RETRIES_
+        timestamp DUEDATE_
+        varchar255 HANDLER_TYPE_
+        bigint PRIORITY_
+        varchar4000 EXCEPTION_MSG_
+    }
+    ACT_RU_JOBDEF {
+        varchar64 ID_ PK
+        varchar64 PROC_DEF_ID_
+        varchar255 ACT_ID_
+        varchar255 JOB_TYPE_
+        bigint JOB_PRIORITY_
+        integer SUSPENSION_STATE_
+    }
+    ACT_RU_EXT_TASK {
+        varchar64 ID_ PK
+        varchar255 TOPIC_NAME_
+        varchar255 WORKER_ID_
+        timestamp LOCK_EXP_TIME_
+        integer RETRIES_
+        bigint PRIORITY_
+        varchar64 EXECUTION_ID_ FK
+        varchar4000 ERROR_MSG_
+        varchar64 ERROR_DETAILS_ID_ FK
     }
     ACT_RU_INCIDENT {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
         varchar255 INCIDENT_TYPE_
         varchar4000 INCIDENT_MSG_
-        timestamp  INCIDENT_TIMESTAMP_
-        varchar64  CAUSE_INCIDENT_ID_
+        timestamp INCIDENT_TIMESTAMP_
+        varchar64 EXECUTION_ID_ FK
+        varchar255 ACTIVITY_ID_
+        varchar64 CAUSE_INCIDENT_ID_ FK
+        varchar64 JOB_DEF_ID_ FK
+    }
+    ACT_RU_EVENT_SUBSCR {
+        varchar64 ID_ PK
+        varchar255 EVENT_TYPE_
+        varchar255 EVENT_NAME_
+        varchar64 EXECUTION_ID_ FK
+        varchar64 PROC_INST_ID_
+        varchar255 ACTIVITY_ID_
+        timestamp CREATED_
+    }
+    ACT_RU_IDENTITYLINK {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 GROUP_ID_
+        varchar255 TYPE_
+        varchar255 USER_ID_
+        varchar64 TASK_ID_ FK
+        varchar64 PROC_DEF_ID_ FK
+        varchar64 TENANT_ID_
+    }
+    ACT_RU_BATCH {
+        varchar64 ID_ PK
+        varchar255 TYPE_
+        integer TOTAL_JOBS_
+        integer JOBS_CREATED_
+        varchar64 SEED_JOB_DEF_ID_ FK
+        varchar64 BATCH_JOB_DEF_ID_ FK
+        integer SUSPENSION_STATE_
+        timestamp START_TIME_
+    }
+    ACT_RU_AUTHORIZATION {
+        varchar64 ID_ PK
+        integer TYPE_
+        varchar255 USER_ID_
+        varchar255 GROUP_ID_
+        integer RESOURCE_TYPE_
+        varchar255 RESOURCE_ID_
+        integer PERMS_
+    }
+    ACT_RU_METER_LOG {
+        varchar64 ID_ PK
+        varchar64 NAME_
+        varchar255 REPORTER_
+        bigint VALUE_
+        timestamp TIMESTAMP_
+        bigint MILLISECONDS_
+    }
+    ACT_RU_TASK_METER_LOG {
+        varchar64 ID_ PK
+        bigint ASSIGNEE_HASH_
+        timestamp TIMESTAMP_
+    }
+    ACT_RU_FILTER {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 RESOURCE_TYPE_
+        varchar255 NAME_
+        varchar255 OWNER_
+        text QUERY_
+        text PROPERTIES_
+    }
+    ACT_RU_CASE_EXECUTION {
+        varchar64 ID_ PK
+        varchar64 CASE_INST_ID_ FK
+        varchar64 CASE_DEF_ID_ FK
+        varchar64 PARENT_ID_ FK
+        varchar255 ACT_ID_
+        integer CURRENT_STATE_
+        varchar255 BUSINESS_KEY_
+    }
+    ACT_RU_CASE_SENTRY_PART {
+        varchar64 ID_ PK
+        varchar64 CASE_INST_ID_ FK
+        varchar64 CASE_EXEC_ID_ FK
+        varchar255 SENTRY_ID_
+        varchar255 TYPE_
+        boolean SATISFIED_
     }
 ```
 
@@ -657,37 +848,203 @@ erDiagram
     ACT_HI_CASEINST ||--o{ ACT_HI_CASEACTINST  : "case activity history"
 
     ACT_HI_PROCINST {
-        varchar64  ID_ PK
-        varchar64  PROC_INST_ID_
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_
         varchar255 BUSINESS_KEY_
-        timestamp  START_TIME_
-        timestamp  END_TIME_
+        varchar255 PROC_DEF_KEY_
+        timestamp START_TIME_
+        timestamp END_TIME_
+        bigint DURATION_
         varchar255 STATE_
-        timestamp  REMOVAL_TIME_
+        timestamp REMOVAL_TIME_
     }
     ACT_HI_ACTINST {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_
         varchar255 ACT_ID_
+        varchar255 ACT_NAME_
         varchar255 ACT_TYPE_
-        timestamp  END_TIME_
-        bigint     DURATION_
-        timestamp  REMOVAL_TIME_
+        varchar255 ASSIGNEE_
+        timestamp START_TIME_
+        timestamp END_TIME_
+        bigint DURATION_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_TASKINST {
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_
+        varchar255 TASK_DEF_KEY_
+        varchar255 NAME_
+        varchar255 ASSIGNEE_
+        varchar255 OWNER_
+        timestamp START_TIME_
+        timestamp END_TIME_
+        bigint DURATION_
+        varchar4000 DELETE_REASON_
+        timestamp REMOVAL_TIME_
     }
     ACT_HI_VARINST {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_
         varchar255 NAME_
-        varchar255 VAR_TYPE_
+        varchar100 VAR_TYPE_
         varchar4000 TEXT_
-        varchar64  BYTEARRAY_ID_
-        timestamp  REMOVAL_TIME_
+        bigint LONG_
+        varchar64 BYTEARRAY_ID_
+        varchar20 STATE_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_DETAIL {
+        varchar64 ID_ PK
+        varchar255 TYPE_
+        varchar64 PROC_INST_ID_
+        varchar64 VAR_INST_ID_
+        varchar255 NAME_
+        varchar64 VAR_TYPE_
+        timestamp TIME_
+        boolean INITIAL_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_INCIDENT {
+        varchar64 ID_ PK
+        varchar64 PROC_INST_ID_
+        varchar255 INCIDENT_TYPE_
+        varchar4000 INCIDENT_MSG_
+        timestamp CREATE_TIME_
+        timestamp END_TIME_
+        integer INCIDENT_STATE_
+        varchar4000 ANNOTATION_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_JOB_LOG {
+        varchar64 ID_ PK
+        timestamp TIMESTAMP_
+        varchar64 JOB_ID_
+        integer JOB_STATE_
+        integer JOB_RETRIES_
+        varchar4000 JOB_EXCEPTION_MSG_
+        varchar64 PROCESS_INSTANCE_ID_
+        varchar255 HOSTNAME_
+        timestamp REMOVAL_TIME_
     }
     ACT_HI_EXT_TASK_LOG {
-        varchar64  ID_ PK
+        varchar64 ID_ PK
+        timestamp TIMESTAMP_
+        varchar64 EXT_TASK_ID_
         varchar255 TOPIC_NAME_
         varchar255 WORKER_ID_
-        integer    STATE_
+        integer RETRIES_
+        integer STATE_
         varchar4000 ERROR_MSG_
-        timestamp  REMOVAL_TIME_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_IDENTITYLINK {
+        varchar64 ID_ PK
+        timestamp TIMESTAMP_
+        varchar255 TYPE_
+        varchar255 USER_ID_
+        varchar255 GROUP_ID_
+        varchar64 TASK_ID_
+        varchar64 OPERATION_TYPE_
+        varchar64 ASSIGNER_ID_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_COMMENT {
+        varchar64 ID_ PK
+        varchar255 TYPE_
+        timestamp TIME_
+        varchar255 USER_ID_
+        varchar64 TASK_ID_
+        varchar64 PROC_INST_ID_
+        varchar255 ACTION_
+        varchar4000 MESSAGE_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_ATTACHMENT {
+        varchar64 ID_ PK
+        varchar255 USER_ID_
+        varchar255 NAME_
+        varchar255 TYPE_
+        varchar64 TASK_ID_
+        varchar64 PROC_INST_ID_
+        varchar4000 URL_
+        varchar64 CONTENT_ID_
+        timestamp CREATE_TIME_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_OP_LOG {
+        varchar64 ID_ PK
+        varchar255 USER_ID_
+        timestamp TIMESTAMP_
+        varchar64 OPERATION_TYPE_
+        varchar30 ENTITY_TYPE_
+        varchar64 PROPERTY_
+        varchar4000 ORG_VALUE_
+        varchar4000 NEW_VALUE_
+        varchar64 CATEGORY_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_BATCH {
+        varchar64 ID_ PK
+        varchar255 TYPE_
+        integer TOTAL_JOBS_
+        varchar255 CREATE_USER_ID_
+        timestamp START_TIME_
+        timestamp END_TIME_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_DECINST {
+        varchar64 ID_ PK
+        varchar255 DEC_DEF_KEY_
+        varchar255 DEC_DEF_NAME_
+        varchar64 PROC_INST_ID_
+        varchar255 ACT_ID_
+        timestamp EVAL_TIME_
+        doubleprecision COLLECT_VALUE_
+        varchar64 ROOT_DEC_INST_ID_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_DEC_IN {
+        varchar64 ID_ PK
+        varchar64 DEC_INST_ID_
+        varchar64 CLAUSE_ID_
+        varchar255 CLAUSE_NAME_
+        varchar100 VAR_TYPE_
+        varchar4000 TEXT_
+        timestamp CREATE_TIME_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_DEC_OUT {
+        varchar64 ID_ PK
+        varchar64 DEC_INST_ID_
+        varchar64 CLAUSE_ID_
+        varchar255 VAR_NAME_
+        varchar100 VAR_TYPE_
+        varchar64 RULE_ID_
+        integer RULE_ORDER_
+        varchar4000 TEXT_
+        timestamp REMOVAL_TIME_
+    }
+    ACT_HI_CASEINST {
+        varchar64 ID_ PK
+        varchar64 CASE_INST_ID_
+        varchar255 BUSINESS_KEY_
+        varchar64 CASE_DEF_ID_
+        timestamp CREATE_TIME_
+        timestamp CLOSE_TIME_
+        bigint DURATION_
+        integer STATE_
+    }
+    ACT_HI_CASEACTINST {
+        varchar64 ID_ PK
+        varchar64 CASE_INST_ID_
+        varchar255 CASE_ACT_ID_
+        varchar255 CASE_ACT_NAME_
+        varchar255 CASE_ACT_TYPE_
+        timestamp CREATE_TIME_
+        timestamp END_TIME_
+        bigint DURATION_
+        integer STATE_
     }
 ```
 
@@ -705,13 +1062,64 @@ erDiagram
     ACT_ID_TENANT ||--o{ ACT_ID_TENANT_MEMBER : "scopes"
     ACT_ID_USER   ||--o{ ACT_ID_TENANT_MEMBER : "member of tenant via"
     ACT_ID_GROUP  ||--o{ ACT_ID_TENANT_MEMBER : "member of tenant via"
+
+    ACT_ID_USER {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 FIRST_
+        varchar255 LAST_
+        varchar255 EMAIL_
+        varchar255 PWD_
+        varchar255 SALT_
+        timestamp LOCK_EXP_TIME_
+        integer ATTEMPTS_
+        varchar64 PICTURE_ID_
+    }
+    ACT_ID_GROUP {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 NAME_
+        varchar255 TYPE_
+    }
+    ACT_ID_MEMBERSHIP {
+        varchar64 USER_ID_ PK
+        varchar64 GROUP_ID_ PK
+    }
+    ACT_ID_INFO {
+        varchar64 ID_ PK
+        integer REV_
+        varchar64 USER_ID_
+        varchar64 TYPE_
+        varchar255 KEY_
+        varchar255 VALUE_
+        bytea PASSWORD_
+        varchar255 PARENT_ID_
+    }
+    ACT_ID_TENANT {
+        varchar64 ID_ PK
+        integer REV_
+        varchar255 NAME_
+    }
+    ACT_ID_TENANT_MEMBER {
+        varchar64 ID_ PK
+        varchar64 TENANT_ID_ FK
+        varchar64 USER_ID_ FK
+        varchar64 GROUP_ID_ FK
+    }
 ```
 
-> **These tables are created but stay empty in a normal deployment.** Users and groups
-> are resolved from the identity provider (§3) — Keycloak or Entra ID — through a
-> plugin that replaces the engine's identity session, so nothing is written here. They
-> exist because the engine's `dbIdentityUsed` flag defaults to on and the plugin does
-> not turn it off. Do not treat them as a user store, and do not seed them.
+> **These tables are created but stay empty in a normal deployment.** They are populated
+> only by the engine's *built-in* database identity service. This service always runs a
+> plugin instead — Keycloak or Entra ID (§3) — and upstream describes such a plugin as one
+> that "replaces the default database identity service", so nothing is written here. The
+> tables are still created because the engine's `dbIdentityUsed` flag defaults to on and
+> the plugin does not turn it off. (Upstream does not state the "created but empty"
+> consequence outright; that part is our observation.) Do not treat them as a user store,
+> and do not seed them.
+>
+> **Do not over-generalise it, though.** `ACT_RU_AUTHORIZATION` is *not* an `ACT_ID_*`
+> table: engine authorizations are stored in the database whatever the identity provider
+> is, because they are grants over engine resources rather than directory data.
 
 ### 7.6 Schema management, and why not Liquibase
 
