@@ -25,6 +25,14 @@ on:
         required: false
         type: string
 
+# Least privilege by default. Every job below declares its own `permissions:` block,
+# and a job-level block REPLACES this one wholesale rather than adding to it - so this
+# line changes nothing about the jobs that exist today. It exists for the job someone
+# adds tomorrow without thinking about tokens: without it that job inherits the
+# repository default, which can be read-write.
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE: ${{ github.repository }}   # ghcr.io/<owner>/<repo>
@@ -53,7 +61,7 @@ jobs:
   # image is built.
   # ---------------------------------------------------------------------------
   sonar-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write   # checkout + attach sonar-report.md as a release asset
     steps:
@@ -62,7 +70,17 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Quality gate + mini report
+      # The gate and the report are DELIBERATELY separate steps, in this order:
+      # read the gate, render the report, attach it, then enforce.
+      #
+      # They used to be one step under `set -euo pipefail`, which made a COSMETIC
+      # call load-bearing: the report needs `api/measures/component`, and a 5xx or a
+      # token that lost a permission there failed the step before the gate - already
+      # fetched and possibly OK - was ever evaluated, skipping all six image builds
+      # of a green release. Only the gate may stop a release; nothing rendered for
+      # human eyes may.
+      - name: Evaluate the quality gate
+        id: gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
@@ -74,23 +92,42 @@ jobs:
           curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
             "https://sonarcloud.io/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}&branch=${SONAR_BRANCH}" \
             -o status.json
+          STATUS=$(python3 -c 'import json;print(json.load(open("status.json"))["projectStatus"]["status"])')
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+          echo "SonarCloud quality gate: ${STATUS}"
+
+      # Cosmetic. `continue-on-error` so a metrics hiccup costs the report, not the
+      # release - and it runs BEFORE enforcement so a red gate still publishes the
+      # list of failed conditions that explains why.
+      - name: Render the mini report
+        id: report
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -euo pipefail
           curl -sSf -H "Authorization: Bearer ${SONAR_TOKEN}" \
             "https://sonarcloud.io/api/measures/component?component=${SONAR_PROJECT_KEY}&branch=${SONAR_BRANCH}&metricKeys=security_rating,reliability_rating,sqale_rating,vulnerabilities,bugs,code_smells,security_hotspots,coverage,duplicated_lines_density,new_coverage,new_violations,new_duplicated_lines_density" \
             -o measures.json
           python3 .github/scripts/sonar-report.py status.json measures.json \
             "${SONAR_PROJECT_KEY}" "${SONAR_BRANCH}" > sonar-report.md
           cat sonar-report.md >> "$GITHUB_STEP_SUMMARY"
-          test "$(python3 -c 'import json;print(json.load(open("status.json"))["projectStatus"]["status"])')" = "OK" \
-            || { echo "::error::SonarCloud quality gate is not OK - aborting the release"; exit 1; }
 
       # Uploaded with the preinstalled gh CLI rather than a third-party release
-      # action: one less action to SHA-pin and keep current.
+      # action: one less action to SHA-pin and keep current. Guarded on the file
+      # existing, because the report step above is allowed to fail.
       - name: Attach the report to the release
-        if: env.HAS_RELEASE == 'true'
+        if: env.HAS_RELEASE == 'true' && hashFiles('sonar-report.md') != ''
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ env.RELEASE_TAG }}
         run: gh release upload "$TAG" sonar-report.md --clobber
+
+      - name: Enforce the quality gate
+        run: |
+          test "${{ steps.gate.outputs.status }}" = "OK" \
+            || { echo "::error::SonarCloud quality gate is ${{ steps.gate.outputs.status }} - aborting the release"; exit 1; }
 
   # ---------------------------------------------------------------------------
   # One job per (flavour, architecture). Each pushes an UNTAGGED by-digest image
@@ -109,6 +146,23 @@ jobs:
       fail-fast: false
       matrix:
         flavour: [base, aws, azure]
+        arch: [amd64, arm64]
+        # Each architecture builds on its OWN native runner - there is no QEMU in this
+        # workflow. Hosted `ubuntu-*-arm` runners are free for PUBLIC repositories and
+        # this repository is public, so the constraint that makes sibling projects
+        # emulate arm64 on an amd64 runner does not apply here. Emulated arm64 Maven
+        # builds are several times slower and were the long pole of every release.
+        # If this repository is ever made private, that label queues forever: point
+        # arm64 back at `ubuntu-24.04` and restore a QEMU setup step before Buildx.
+        #
+        # Runners carry a dated label rather than `ubuntu-latest` so a GitHub image
+        # rollover cannot change the build substrate under a release without a commit.
+        #
+        # ONE `include:` list carries both sets of attributes. An entry applies to
+        # every combination whose matrix keys it matches, so entries keyed on
+        # `flavour` fan out across both architectures and entries keyed on `arch` fan
+        # out across all three flavours. Two `include:` keys in one mapping would be
+        # duplicate YAML and the second would silently win.
         include:
           - flavour: base
             maven-profiles: repackage
@@ -122,22 +176,15 @@ jobs:
             maven-profiles: repackage,azure
             tag-suffix: "-azure"
             latest: "false"
-        arch: [amd64, arm64]
-        # pia-team/opentmf are on GitHub Free, where hosted ubuntu-*-arm runners are
-        # free for PUBLIC repos only - a private repo scheduling that label queues
-        # forever. So arm64 builds QEMU-emulated on an amd64 runner. Going native
-        # later is a two-line change here: runner label + emulated flag.
-        runner: [ubuntu-latest]
-        emulated: [true]
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
-
-      - name: Set up QEMU
-        if: matrix.emulated && matrix.arch != 'amd64'
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -258,6 +305,24 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # Carried to the merge job so it can be attached to the Release. The
+      # ATTESTATION on the by-digest image (above) stays the authoritative copy -
+      # it is signed and bound to the exact bytes. This asset is the auditor's
+      # convenience copy: readable without cosign, and without pulling the image.
+      - name: Stage this architecture's SBOM for the release
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sboms
+          cp sbom.cdx.json "/tmp/sboms/sbom${{ matrix.tag-suffix }}-${{ matrix.arch }}.cdx.json"
+
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ matrix.flavour }}-${{ matrix.arch }}
+          path: /tmp/sboms/*
+          if-no-files-found: error
+          retention-days: 1
+
   # ---------------------------------------------------------------------------
   # Per flavour: assemble the per-arch digests into the tagged manifest list, then
   # sign and attest THAT index digest. Signing a per-arch image or a tag instead
@@ -265,7 +330,7 @@ jobs:
   # ---------------------------------------------------------------------------
   merge:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write   # attaching the Trivy report as a release asset
       packages: write
@@ -352,13 +417,46 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
             type=semver,pattern={{major}},value=${{ env.RELEASE_TAG }}
 
+      # Both inputs are checked BEFORE the Docker CLI sees them, and the offending
+      # payload is printed. An empty expansion is the failure shape that ships a
+      # release with every architecture built, scanned and attested and no tagged
+      # image anywhere: 1.1.3's first run died exactly here with "can't push with no
+      # tags specified", because metadata-action had dropped every tag rule and the
+      # empty `-t` expansion reached buildx as if nothing were wrong. `set -e` does
+      # not catch an empty `$( )`; only an explicit check does.
       - name: Create the manifest list
         working-directory: /tmp/digests
         run: |
           set -euo pipefail
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf "${REGISTRY}/${IMAGE}@sha256:%s " *)
+          shopt -s nullglob
+
+          # Arrays, not a flattened string: each -t and each ref stays one argv
+          # entry, so nothing depends on word splitting and shellcheck stays quiet.
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          if [ ${#tags[@]} -eq 0 ]; then
+            echo "::error::metadata-action produced NO tags for flavour '${{ matrix.flavour }}' - refusing to push an untagged manifest"
+            echo "DOCKER_METADATA_OUTPUT_JSON was:"
+            echo "$DOCKER_METADATA_OUTPUT_JSON"
+            exit 1
+          fi
+
+          digests=(*)
+          if [ ${#digests[@]} -eq 0 ]; then
+            echo "::error::no per-architecture digests were downloaded for flavour '${{ matrix.flavour }}' - the build legs did not publish what this job needs"
+            echo "contents of $(pwd):"
+            ls -la
+            exit 1
+          fi
+
+          tag_args=()
+          for t in "${tags[@]}"; do tag_args+=(-t "$t"); done
+          refs=()
+          for d in "${digests[@]}"; do refs+=("${REGISTRY}/${IMAGE}@sha256:${d}"); done
+
+          echo "Assembling ${#digests[@]} architecture digest(s) into ${#tags[@]} tag(s):"
+          printf '  %s\n' "${tags[@]}"
+
+          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
 
       - name: Resolve the index digest
         id: index
@@ -430,3 +528,30 @@ jobs:
           for arch in amd64 arm64; do
             gh release upload "$TAG" "trivy-report${SUFFIX}-${arch}.html" --clobber
           done
+
+      - name: Download this flavour's SBOMs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/sboms
+          pattern: sbom-${{ matrix.flavour }}-*
+          merge-multiple: true
+
+      # The signed attestation on each per-architecture digest remains the
+      # authoritative SBOM; these are the readable copies, one per architecture,
+      # for anyone auditing the release without cosign in hand. See the CHANGELOG
+      # for how to verify the attested originals.
+      - name: Attach the SBOMs to the release
+        if: env.HAS_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          sboms=(/tmp/sboms/*.cdx.json)
+          if [ ${#sboms[@]} -eq 0 ]; then
+            echo "::error::no SBOMs were downloaded for flavour '${{ matrix.flavour }}' - the build legs did not upload them"
+            ls -la /tmp/sboms || true
+            exit 1
+          fi
+          gh release upload "$TAG" "${sboms[@]}" --clobber

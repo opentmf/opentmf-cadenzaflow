@@ -263,13 +263,19 @@ Gates: JaCoCo 80/80/80 with zero missed classes, halting the build; ArchUnit in
 on release.
 
 The release pipeline builds a **flavour × architecture** matrix
-(base/aws/azure × amd64/arm64). Each leg pushes an untagged by-digest image and is
-Trivy-gated on *its own* image; a per-flavour merge job assembles the tagged
-manifest list and then signs **that index digest** keylessly with cosign and
-attaches a CycloneDX SBOM attestation. The arm64 leg builds QEMU-emulated on an
-amd64 runner; going native is a matrix runner-label change.
+(base/aws/azure × amd64/arm64). Each leg pushes an untagged by-digest image, is
+Trivy-gated on *its own* image, and attests **its own architecture's** CycloneDX
+SBOM to that by-digest image — the attestation is per architecture, not per tag,
+because Trivy resolves a multi-arch index to a single child and an index-level SBOM
+would describe one architecture while claiming to cover all of them. A per-flavour
+merge job then assembles the tagged manifest list, signs **that index digest**
+keylessly with cosign, and attaches the per-architecture SBOMs and Trivy reports to
+the GitHub Release as readable copies. Both architectures build on their own native
+runner; there is no QEMU in the pipeline, because hosted arm runners are free for
+public repositories and this one is public.
 
-Third-party actions are pinned by full commit SHA — a mutable tag would let a
+Every action is pinned by full commit SHA — GitHub-owned `actions/*` included, since
+a mutable tag would let a
 compromised action release run with the workflow's `packages: write` and
 `id-token: write` tokens, which would make the rest of this posture decorative.
 
@@ -286,7 +292,7 @@ kinds are recorded here rather than left as silent gaps.
 | Rule area | Why it does not apply |
 |---|---|
 | groupId / package `com.dnext.dnms.*`, `dnms-*` artifact naming | Different product, different organization: `org.opentmf.cadenzaflow` |
-| Repo under `pia-team`, `develop` default branch | Public repo under `opentmf`, default branch `main` |
+| Repo under `pia-team`, `develop` default branch | Public repo under `opentmf`; `develop` is the default and only long-lived branch here too |
 | Layered package structure, contract-first controllers, DTO and exception families, `@RestControllerAdvice` | The service exposes no REST resources of its own; the API is the embedded engine's |
 | Liquibase, JPA/QueryDSL, entity and DB-design conventions | It owns no schema — the engine creates its own tables (Liquibase is not usable here; see [README §7](../README.md#7-data)) |
 | Kafka, transactional outbox, JSLT transformations | No broker, no dual writes, no mappings |

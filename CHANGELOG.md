@@ -32,6 +32,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   both the configuration reference and §9.6 state the constraint so it survives future
   retuning.
 
+- **A cosmetic API call could abort a green release.** The release workflow fetched
+  the SonarCloud quality gate and the metrics for its summary report in one shell
+  step under `set -euo pipefail`. The metrics call is decorative, but a 5xx from it —
+  or a token that had lost a permission on that endpoint — failed the step *before*
+  the already-fetched gate was evaluated, skipping all six image builds of a release
+  that was passing. Gate and report are now separate steps: the gate is read and
+  published as a step output, the report renders with `continue-on-error`, and
+  enforcement happens last so a genuinely red gate still prints the conditions that
+  failed.
+
+- **The manifest-merge step could hand an empty tag list to Docker.** `set -e` does
+  not catch an empty `$( )` expansion, so a metadata-action run that produced no tags
+  — exactly what happened on 1.1.3's first release run — reached `buildx imagetools
+  create` as if nothing were wrong and died with an unhelpful "can't push with no
+  tags specified". The step now checks both the tag list and the downloaded
+  per-architecture digests before calling Docker, and prints the offending payload
+  when either is empty.
+
 ### Changed
 
 - **Defaults now target real load rather than a demo: roughly 100 external tasks in
@@ -46,6 +64,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   three loaded pods now reach 90 connections and PostgreSQL ships `max_connections`
   at 100. Deployments that run several pods against a small database should raise
   the server limit or lower `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE`.
+
+- **Both architectures now build on native runners; QEMU is gone from the pipeline.**
+  The arm64 leg was emulated on an amd64 runner because hosted arm runners are free
+  only for public repositories — a constraint inherited from sibling projects that
+  are private. **This repository is public**, so it never applied here. Emulated
+  arm64 Maven builds are several times slower and were the long pole of every
+  release. Runners are also pinned to a dated label rather than `ubuntu-latest`, so a
+  GitHub image rollover cannot change the build substrate under a release without a
+  commit.
+
+- **Per-architecture SBOMs are attached to the GitHub Release** as
+  `sbom[-flavour]-<arch>.cdx.json`, alongside the Trivy reports. The signed
+  attestation on each by-digest image remains authoritative; these are the copies
+  readable without cosign, so an auditor need not pull an image to see a component
+  list.
+
+- **New README §8.9, "Verifying an image."** The `cosign verify` and
+  `cosign verify-attestation` recipes, with the certificate identity regexp that
+  makes verification mean something, and the wrinkle that attestations hang off the
+  per-architecture child digests rather than the tag — so verifying against the tag
+  finds nothing.
+
+- **Both workflows declare `permissions: contents: read` at the top level.** Every
+  job already declared its own, and a job-level block replaces rather than extends
+  the default, so nothing changes for the jobs that exist today. It is the floor for
+  the next job added without one.
 
 - **AWS SDK moved from 2.53.1 to 2.53.3** in the `-aws` flavour. A routine patch bump
   with no behaviour change; recorded because it alters what that image contains. The

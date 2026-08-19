@@ -9,12 +9,18 @@ on:
   pull_request:
     branches: [develop]
 
+# Least privilege by default; each job below still declares its own block, which
+# REPLACES this one rather than adding to it. This is the floor for any job added
+# later without one.
+permissions:
+  contents: read
+
 env:
   SONAR_PROJECT_KEY: opentmf_opentmf-cadenzaflow
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -72,7 +78,7 @@ jobs:
             "${SONAR_PROJECT_KEY}" "${BRANCH}" >> "$GITHUB_STEP_SUMMARY"
 
   gitleaks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:

@@ -66,9 +66,11 @@ Our images:
 | `ghcr.io/opentmf/opentmf-cadenzaflow:<version>-aws` | Adds the AWS JDBC wrapper (IAM auth to RDS/Aurora), STS for IRSA, MSK IAM auth |
 | `ghcr.io/opentmf/opentmf-cadenzaflow:<version>-azure` | Adds Azure Identity for passwordless PostgreSQL |
 
-All three are built for `linux/amd64` and `linux/arm64`, signed with cosign, and carry
-a per-architecture CycloneDX SBOM attestation (§8.8, and the CHANGELOG for how to
-verify them).
+All three are built for `linux/amd64` and `linux/arm64` — each on its own native
+runner — signed with cosign, and carrying a per-architecture CycloneDX SBOM
+attestation. The flavours are described in [§8.8](#88-cloud-variants);
+[§8.9](#89-verifying-an-image) shows how to verify the signature and the
+attestation, including the one thing that catches people out.
 
 > This document is the front door for **users and testers**: everything needed to
 > use the service, and everything needed to write test cases against it, is here.
@@ -1375,6 +1377,50 @@ Release builds publish three image flavours; the default carries no cloud jars.
 
 Infrastructure authentication is independent of the identity provider: any
 combination of cloud platform and Keycloak/Entra application identity is valid.
+
+### 8.9 Verifying an image
+
+Every published image is signed keylessly with cosign, and every architecture
+carries its own CycloneDX SBOM attestation. Both are worth checking before you run
+one in an environment you care about.
+
+**Signature.** The signature is on the *index* — the multi-architecture manifest the
+tag points at — because that is the thing you pull:
+
+```bash
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/' \
+  ghcr.io/opentmf/opentmf-cadenzaflow:1.1.4
+```
+
+The identity regexp is the point of the exercise: it asserts *which workflow, in
+which repository, at a tag* produced the image. Verifying without it only proves
+that something signed it.
+
+**SBOM attestation.** This one has a wrinkle worth knowing before it confuses you:
+**the attestations hang off the per-architecture child digests, not the tag.** A
+`cosign verify-attestation` against the tag finds nothing. Resolve the tag to the
+child for your platform first:
+
+```bash
+DIGEST=$(docker buildx imagetools inspect ghcr.io/opentmf/opentmf-cadenzaflow:1.1.4 \
+  --format '{{ range .Manifest.Manifests }}{{ if and (eq .Platform.OS "linux") (eq .Platform.Architecture "amd64") }}{{ .Digest }}{{ end }}{{ end }}')
+
+cosign verify-attestation --type cyclonedx \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/' \
+  "ghcr.io/opentmf/opentmf-cadenzaflow@${DIGEST}"
+```
+
+That split is deliberate. A signature asserts provenance about the artefact you
+pull, so it belongs on the index; an SBOM lists the packages of *one* filesystem, so
+attesting it to the index would describe one architecture while appearing to cover
+both. See the `[1.1.3]` CHANGELOG entry for the full reasoning.
+
+The same SBOMs are attached to each GitHub Release as
+`sbom[-flavour]-<arch>.cdx.json` for reading without cosign — convenient, but the
+attestation is the copy that is signed, and the one to trust.
 
 ---
 
