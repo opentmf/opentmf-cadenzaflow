@@ -47,6 +47,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   at 100. Deployments that run several pods against a small database should raise
   the server limit or lower `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE`.
 
+- **AWS SDK moved from 2.53.1 to 2.53.3** in the `-aws` flavour. A routine patch bump
+  with no behaviour change; recorded because it alters what that image contains. The
+  version is the imported `software.amazon.awssdk:bom`, so all 31 SDK modules move
+  together — verified in the packaged jar, which is the only place a family split
+  actually shows up.
+
 - **Removed a dead entry from the security whitelist.** `/cadenzaflow/**` matched no
   path the service actually serves: the web UIs, their API and their static assets are
   reached through the OIDC login chain, not through the whitelist. Proven rather than

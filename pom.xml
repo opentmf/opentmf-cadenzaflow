@@ -114,9 +114,6 @@
     <sonar.organization>opentmf</sonar.organization>
     <sonar.projectKey>opentmf_opentmf-cadenzaflow</sonar.projectKey>
     <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
-
-    <!-- Azure passwordless datasource auth (azure profile) -->
-    <azure-identity-extensions.version>1.2.9</azure-identity-extensions.version>
   </properties>
 
   <dependencyManagement>
@@ -655,7 +652,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk.version>2.53.1</awssdk.version>
+        <awssdk.version>2.53.3</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
@@ -708,6 +705,19 @@
          Identity, managed identity, env vars). See README - Cloud deployment variants. -->
     <profile>
       <id>azure</id>
+      <!-- Azure passwordless datasource auth. The version lives HERE, not in the
+           top-level <properties>, so that every flavour's dependency versions sit
+           with the flavour that uses them - the same shape as the aws profile above.
+           Consequence for upgrade checks: a property inside an inactive profile is
+           not in the effective model and the versions plugin cannot see it, so the
+           check must activate every flavour:
+             mvn versions:display-property-updates -Paws,azure \
+                 -Dmaven.version.ignore="(?i).*-(alpha|beta|m|rc).*"
+           An unprofiled run reports BUILD SUCCESS with no findings, which reads
+           exactly like "everything is current". -->
+      <properties>
+        <azure-identity-extensions.version>1.2.9</azure-identity-extensions.version>
+      </properties>
       <dependencies>
         <dependency>
           <groupId>com.azure</groupId>
