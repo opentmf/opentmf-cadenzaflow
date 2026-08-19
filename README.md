@@ -1334,7 +1334,9 @@ Ingress). With one reachable address, only the issuer URL needs setting.
 | `CADENZAFLOW_BPM_JOB_EXECUTION_QUEUE_CAPACITY` | Queue between acquisition and workers | `10` |
 | `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_JOBS_PER_ACQUISITION` | Jobs locked per acquisition round-trip. Keep it at or below the queue capacity — acquiring more than the queue can hold is what produces `job.execution.rejected` | `10` |
 | `CADENZAFLOW_BPM_RESTAPI_FETCHANDLOCK_QUEUE_CAPACITY` | Newly arriving long-poll registrations that may queue between handler cycles before the engine answers HTTP 500. A burst limiter — see §9.6 | `1000` |
-| `CADENZAFLOW_BPM_WEBAPP_ENABLED` | Serve the web UIs on this pod | `true` |
+| `CADENZAFLOW_BPM_WEBAPP_ENABLED` | Serve the web UIs on this pod. Turn it off on job pods — see §9.5 for which pods should carry the UI | `true` |
+| `CADENZAFLOW_BPM_METRICS_ENABLED` | Collect engine metrics at all. `false` also empties the nine `cadenzaflow.engine.*` counters | `true` |
+| `CADENZAFLOW_BPM_METRICS_DB_REPORTER_ACTIVATE` | Flush collected metrics to `ACT_RU_METER_LOG`. The flush runs every 15 minutes and that interval is not configurable, which is why those counters lag — §9.1 | `true` |
 
 > Settings under `generic-properties.properties` (history cleanup times, TTLs) are
 > camelCase map keys, and environment variables do **not** map onto them reliably.
@@ -1408,10 +1410,39 @@ out: dots become underscores and counters gain a `_total` suffix, so
 | `opentmf.graaljs.contexts.created` | counter | GraalJS polyglot contexts created for script evaluation |
 | `opentmf.graaljs.contexts.closed` | counter | GraalJS contexts closed. In steady state this tracks `.created`; a widening gap is a script-engine leak |
 
+> ### The counters lag by up to 15 minutes. The gauges do not.
+>
+> This is the single most important thing to know before writing an alert rule. The nine
+> counters are not incremented in memory as work happens — they are **sums over
+> `ACT_RU_METER_LOG`**, and the engine flushes its in-memory counts to that table on its
+> own timer, **every 15 minutes**. Scraping more often does not make them fresher; it
+> re-reads the same stored sums.
+>
+> The two gauges are different: they run a live `count()` against the engine at scrape
+> time, so `cadenzaflow.engine.process.instances.active` and
+> `cadenzaflow.engine.incidents.open` are current to the second.
+>
+> **So alert on the gauges and treat the counters as trend data.** A rule like "more than
+> N `job_failed_total` in the last 5 minutes" will read flat through an incident and then
+> jump in one step a quarter of an hour later. `incidents.open` rising is the signal that
+> actually fires when something is wrong.
+>
+> The flush interval is fixed in the engine and is **not** exposed as a configuration
+> property — changing it needs a `ProcessEngineConfiguration` customizer. The Java API has
+> `managementService.reportDbMetricsNow()` to force a flush, but it is not reachable over
+> REST, so there is no operational way to make a scrape current on demand.
+>
+> Each pod reports independently, on its own daemon timer, **whether or not it runs the
+> job executor** — so splitting the deployment per §9.5 does not lose metrics. Because the
+> counters are database sums, every pod reports the same cluster-wide totals; the gauges
+> likewise count the whole cluster's state, not the local pod's.
+
 The two gauges each run one bounded `count()` query against the engine per scrape,
 so keep the scrape interval sane (15–60s) rather than sub-second. The whole bridge
 can be switched off with `CADENZAFLOW_METRICS_ENGINEBRIDGE_ENABLED=false`, which
-leaves the JVM and HTTP families in place.
+leaves the JVM and HTTP families in place. Reporting to `ACT_RU_METER_LOG` is separate
+and stays on; disable that with `CADENZAFLOW_BPM_METRICS_DB_REPORTER_ACTIVATE=false`,
+which empties the nine counters at source.
 
 > The engine also keeps its own metrics API at `/engine-rest/metrics`. It reports
 > the same underlying counters, but it is JWT-gated and not in Prometheus format;
@@ -1485,8 +1516,8 @@ Monitoring and operations, all under `/cadenzaflow/v1/engine-rest`:
 
 Every pod on one database is one engine cluster, and every pod's job executor
 competes for the same jobs. Under load that background work contends with
-interactive traffic for the same threads, pool and CPU. Split them by running **two
-deployments of the same image against the same database**, differing only in
+interactive traffic for the same threads, pool and CPU. Split them by running
+**several deployments of the same image against the same database**, differing only in
 configuration.
 
 API pods — behind the Service, serving REST and the UIs, running no jobs:
@@ -1511,6 +1542,45 @@ CADENZAFLOW_BPM_WEBAPP_ENABLED: "false"
   into two deployments doubles the pod count, so it is the moment this bites.
 - Keep business logic in external-task workers; the engine's own jobs then stay
   short and the real work scales in the workers.
+- Metrics survive the split: every pod reports independently of the job executor, and
+  the meters describe the whole cluster rather than the local pod (§9.1).
+
+#### Which pods should serve the web UIs?
+
+**The UI belongs on a pod with the job executor off — never on the job pods.** The
+reason is reachability, not performance. Job pods are in no Service *on purpose*.
+Serving Cockpit from them means giving them an Ingress, SSO redirect URIs and session
+cookies, which puts back exactly the exposure the split exists to remove. The REST API
+and the UIs have to be reachable by someone; job execution has to be reachable by
+nobody, and that asymmetry decides the question.
+
+Nothing pulls the other way. **No UI action needs a local job executor**: incrementing
+retries, batch cancel, migration, restart, and "run history cleanup now" all write to
+the database, and whichever pods run the executor pick the work up. Keeping the webapp
+off the job pods also drops the frontend bundle, and leaves those pods free to be
+restarted and rescaled without cutting an operator's browser session.
+
+#### When two deployments are not enough
+
+The shape above puts Cockpit and your external-task workers on the same pods, sharing
+one connection pool — and **Cockpit can issue the most expensive queries in the
+system.** An unfiltered history list over millions of rows is one operator click. If
+that starves worker fetch-and-complete, connections queue, external-task locks expire,
+and work is delivered twice (§9.6). That is a business-path failure caused by an
+operator opening a screen.
+
+So size the split to the traffic:
+
+| Situation | Shape |
+|---|---|
+| Modest external-task volume; light Cockpit use | **Two deployments** — API + UI together, jobs separate. The configuration above |
+| Real external-task volume, or operators running broad history queries | **Three deployments** — workers/API, UI, jobs |
+
+The third deployment is not a third *kind* of pod: the UI deployment is configured
+exactly like the API pods (`JOB_EXECUTION_ENABLED: "false"`), it is simply behind its
+own Service and Ingress rather than the one the workers call. That keeps operator
+queries off the worker pool while keeping the job pods unreachable. It costs one more
+pool against the database budget, which is the thing to check before adopting it.
 
 ### 9.6 Scaling: external-task throughput and `maxTasks`
 

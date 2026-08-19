@@ -108,9 +108,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   registration queue. It also flags that a job pod is under-provisioned at the shipped
   defaults: 10 job threads plus an acquisition thread against a pool of 10.
 
-- **§9.1 now lists every metric by name.** Previously one row said
-  `cadenzaflow.engine.*`; all thirteen meters are now named individually with what
-  each one means and which indicate saturation, plus the Prometheus renaming rule.
+- **§9.1 now lists every metric by name, and says which ones you can alert on.**
+  Previously one row said `cadenzaflow.engine.*`; all thirteen meters are now named
+  individually with what each means and which indicate saturation, plus the Prometheus
+  renaming rule.
+
+  The part that changes how you configure alerting: **the nine counters lag by up to 15
+  minutes.** They are sums over `ACT_RU_METER_LOG`, and the engine flushes its in-memory
+  counts on a fixed 15-minute timer that is not exposed as a configuration property —
+  scraping more often re-reads the same stored sums. The two gauges are live queries and
+  current to the second. So a rule like "N job failures in the last 5 minutes" reads flat
+  through an incident and then steps; `cadenzaflow.engine.incidents.open` is what actually
+  fires. Metrics are reported by every pod independently of the job executor, so splitting
+  the deployment does not lose them.
+
+- **§9.5 answers which pods should serve the web UIs**, which the split-deployment
+  guidance previously left implicit. They belong on a pod with the job executor off, and
+  the reason is reachability rather than performance: job pods are in no Service on
+  purpose, and serving Cockpit from them would mean giving them an Ingress, SSO redirect
+  URIs and session cookies. No UI action needs a local job executor — retries, batch
+  operations and history cleanup are all picked up from the database by whichever pods run
+  one. The section also names the case where two deployments are not enough: Cockpit can
+  issue the most expensive queries in the system, and sharing a pool with external-task
+  workers means one broad history query can expire worker locks and cause duplicate
+  execution, so busy installations should run the UI as its own deployment.
 
 - **Corrected throughout:** `schema-update` creates missing tables, it does **not**
   patch existing ones — an engine upgrade shipping new DDL needs a deliberate step, and
