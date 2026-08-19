@@ -29,7 +29,6 @@ opentmf:
 
     whitelist:
       - /error
-      - /cadenzaflow/**
       - /engine-rest/external-task/**
 
     # Actuator runs on the separate management port (16000); since

@@ -184,6 +184,25 @@ class OpenTmfCadenzaFlowApplicationIT {
   }
 
   @Test
+  void webUiIsHandledBySsoRatherThanTheWhitelist() throws Exception {
+    // The UI paths are NOT whitelisted in config-security.yml - an unauthenticated
+    // browser is redirected by the OAuth2 login chain instead. Proven rather than
+    // assumed: with the (now removed) /cadenzaflow/** whitelist entry present or
+    // absent, these answer 302 either way. That entry only ever matched a path space
+    // nothing serves, so its removal changed 404 into 401 there and nothing else.
+    Assertions.assertEquals(302, get("/app/cockpit", null).statusCode());
+    Assertions.assertEquals(302, get("/api/admin/auth/user/default", null).statusCode());
+  }
+
+  @Test
+  void unmatchedApplicationPortPathIsDenied() throws Exception {
+    // SEC-02: unmatched paths are denied, not allowed. Guards the whitelist against
+    // regaining a blanket entry that would turn this into a 404 (i.e. "reached the
+    // app") for anything under the context path.
+    Assertions.assertEquals(401, get("/cadenzaflow/anything", null).statusCode());
+  }
+
+  @Test
   void whitelistedExternalTaskEndpointBypassesRbac() throws Exception {
     // /engine-rest/external-task/** is whitelisted in config-security.yml, so the
     // request must reach the engine REST layer instead of being rejected with 401.

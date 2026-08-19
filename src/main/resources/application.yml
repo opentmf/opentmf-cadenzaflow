@@ -22,8 +22,21 @@ spring:
       connection-timeout: 30000
       idle-timeout: 1800000
       max-lifetime: 2400000
-      minimum-idle: 2
-      maximum-pool-size: 10
+      minimum-idle: 5
+      # Sized for real external-task load rather than a demo: roughly 100 tasks in
+      # flight across a worker fleet, whose completes and fetches are what actually
+      # draw connections (a parked long poll holds a socket, not a connection).
+      #
+      # This is ALSO a floor, not just a throughput knob. The job executor can run
+      # max-pool-size threads plus a separate acquisition thread, so a pod that runs
+      # jobs needs strictly more connections than that - at the previous 10 against
+      # 10 job threads the acquisition thread could be starved by its own workers.
+      # Keep this above cadenzaflow.bpm.job-execution.max-pool-size + 1.
+      #
+      # BUDGET: this is a per-pod maximum. Multiply by the number of pods (both
+      # deployments, if you split them per README 9.5) and keep the total, plus every
+      # other client, under the database's max_connections - PostgreSQL ships 100.
+      maximum-pool-size: 30
       pool-name: cadenzaflow-pool
 
 server:

@@ -15,6 +15,61 @@ It is the successor of `opentmf-camunda7`, and its database schema is compatible
 with one — pointing this service at an existing Camunda 7 schema is the supported
 migration path.
 
+### Which OpenID Connect providers work with it
+
+Three different jobs are done by an identity provider here, and they do **not** have
+the same answer. Read the middle column first — it is the one with a hard limit.
+
+| | **User & group directory** | **API token validation** | **Web UI single sign-on** |
+|---|---|---|---|
+| What it does | Answers "who are the users and groups, and who is in which group?" — task assignment, the Admin UI | Verifies the bearer token on `/engine-rest/**` and reads its roles | Redirects a browser to sign in, then issues a session |
+| **Keycloak** | ✅ shipped plugin | ✅ | ✅ shipped defaults |
+| **Microsoft Entra ID** (Azure AD) | ✅ shipped plugin | ✅ | ✅ documented ([guide](docs/entra-azure-setup-and-testing-guide.md)) |
+| **Any other OIDC provider** (Okta, Auth0, Ping, Google, …) | ❌ **not supported** | ✅ any issuer publishing a JWKS | ✅ standard OIDC client — set the endpoints |
+| How many at once | **exactly one** | **one or several, simultaneously** | one registration |
+
+**The one constraint that catches people:** the *directory* is an engine plugin, and
+the engine mounts exactly one. Only Keycloak and Entra ID plugins ship here, so the
+directory must be one of those two. Token validation and browser sign-on are ordinary
+OIDC and are not restricted that way — a deployment can validate tokens from several
+issuers at once (§8.4) while its directory comes from one.
+
+So "we use Okta" is answerable: Okta can issue the API tokens this service accepts and
+can sign users in to the web UIs, but it cannot be the *directory* — task assignment
+and the Admin UI would still need Keycloak or Entra ID behind them.
+
+### The engine underneath, and its own images
+
+This service embeds **CadenzaFlow**, the maintained community fork of Camunda 7. That
+project is separate from this repository and publishes its own artefacts:
+
+| | |
+|---|---|
+| Source | [github.com/cadenzaflow/cadenzaflow-bpm-platform](https://github.com/cadenzaflow/cadenzaflow-bpm-platform) |
+| Reference manual | [docs.cadenzaflow.org/manual/latest](https://docs.cadenzaflow.org/manual/latest/) — the normative documentation for everything under `/engine-rest`, BPMN/DMN/CMMN semantics, and engine configuration |
+| Getting started | [docs.cadenzaflow.org/get-started](https://docs.cadenzaflow.org/get-started/) |
+| Modeler | [github.com/cadenzaflow/cadenzaflow-modeler](https://github.com/cadenzaflow/cadenzaflow-modeler) — the desktop BPMN/DMN modelling tool |
+| Their Docker images | [`cadenzaflow/cadenzaflow-bpm-platform`](https://hub.docker.com/r/cadenzaflow/cadenzaflow-bpm-platform) on Docker Hub — tags `latest`, `run-<version>` (Spring Boot Run distribution) and `tomcat-<version>` |
+
+**Those images are not this one.** They are the upstream platform on its own — the
+engine plus the web UIs, with the engine's default security model. This service adds
+what the upstream distribution deliberately leaves to you: bearer-token RBAC on the
+REST API, OIDC single sign-on for the UIs, a directory-backed identity provider
+instead of a local user table, masked JSON logging, and Prometheus metrics. Use the
+upstream image to evaluate Camunda 7 semantics; use this one to run a service.
+
+Our images:
+
+| Image | Contents |
+|---|---|
+| `ghcr.io/opentmf/opentmf-cadenzaflow:<version>` | The service. No cloud SDKs |
+| `ghcr.io/opentmf/opentmf-cadenzaflow:<version>-aws` | Adds the AWS JDBC wrapper (IAM auth to RDS/Aurora), STS for IRSA, MSK IAM auth |
+| `ghcr.io/opentmf/opentmf-cadenzaflow:<version>-azure` | Adds Azure Identity for passwordless PostgreSQL |
+
+All three are built for `linux/amd64` and `linux/arm64`, signed with cosign, and carry
+a per-architecture CycloneDX SBOM attestation (§8.8, and the CHANGELOG for how to
+verify them).
+
 > This document is the front door for **users and testers**: everything needed to
 > use the service, and everything needed to write test cases against it, is here.
 > The internal design record — module layout, engineering deviations, decision
@@ -157,7 +212,7 @@ caller needs **any one** of them.
 | `PUT` | `/engine-rest/**` | `writer`, `admin` | modifying |
 | `DELETE` | `/engine-rest/**` | `writer`, `admin` | deleting instances, deployments |
 | any | `/engine-rest/external-task/**` | **none — open** | worker polling; see the warning below |
-| any | `/cadenzaflow/**` (the web UIs) | **none at this layer** | the UIs authenticate through SSO themselves |
+| any | the web UIs (`/app/**`, `/api/**`, static assets) | **none at this layer** | not whitelisted — the OIDC login chain redirects an unauthenticated browser to the provider |
 | `GET` | `/actuator/health`, `/prometheus`, `/metrics/**`, `/loggers/**` | **none — open** | management port, internal only |
 | `GET` | `/actuator/env` | `admin` | shows effective configuration |
 | any | anything else on the application port | **denied** | unmatched paths are refused, not allowed |
@@ -712,7 +767,7 @@ knowing; the shipped defaults live in
 | `SPRING_DATASOURCE_USERNAME` | Database user | `cadenzaflow` |
 | `SPRING_DATASOURCE_PASSWORD` | Database password | — |
 | `SPRING_DATASOURCE_HIKARI_SCHEMA` | Schema for the engine tables and the pool | `cadenzaflow` |
-| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | Connections per pod | `10` |
+| `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | Connections per pod. Must stay above `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_POOL_SIZE` + 1 on a pod that runs jobs; multiply by pod count against the database's `max_connections` | `30` |
 
 To adopt an existing `opentmf-camunda7` database, point these at it (e.g. schema
 `camunda7`); the schema is compatible.
@@ -867,9 +922,10 @@ Ingress). With one reachable address, only the issuer URL needs setting.
 | `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE` | Create missing `ACT_*` tables at startup. It **creates, it does not patch**: existing tables are left untouched, so an engine upgrade that ships new DDL needs a deliberate upgrade step. Set `false` to make the engine assert the schema exists and match versions instead, without holding DDL rights | `true` |
 | `CADENZAFLOW_BPM_HISTORY_LEVEL` | `full`, `audit`, `activity`, `none`. `activity` drops per-variable history writes — a large insert-load reduction for high throughput installations that audit payloads themselves | `full` |
 | `CADENZAFLOW_BPM_JOB_EXECUTION_ENABLED` | Run background jobs on this pod | `true` |
-| `CADENZAFLOW_BPM_JOB_EXECUTION_CORE_POOL_SIZE` / `_MAX_POOL_SIZE` | Job executor threads | `3` / `10` |
-| `CADENZAFLOW_BPM_JOB_EXECUTION_QUEUE_CAPACITY` | Queue between acquisition and workers | `3` |
-| `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_JOBS_PER_ACQUISITION` | Jobs per acquisition round-trip; raise when the acquisition thread becomes the bottleneck | `3` |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_CORE_POOL_SIZE` / `_MAX_POOL_SIZE` | Job executor threads. Each running job holds a connection, so `_MAX_POOL_SIZE` + 1 must fit inside the Hikari pool | `5` / `12` |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_QUEUE_CAPACITY` | Queue between acquisition and workers | `10` |
+| `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_JOBS_PER_ACQUISITION` | Jobs locked per acquisition round-trip. Keep it at or below the queue capacity — acquiring more than the queue can hold is what produces `job.execution.rejected` | `10` |
+| `CADENZAFLOW_BPM_RESTAPI_FETCHANDLOCK_QUEUE_CAPACITY` | Newly arriving long-poll registrations that may queue between handler cycles before the engine answers HTTP 500. A burst limiter — see §9.6 | `1000` |
 | `CADENZAFLOW_BPM_WEBAPP_ENABLED` | Serve the web UIs on this pod | `true` |
 
 > Settings under `generic-properties.properties` (history cleanup times, TTLs) are
@@ -1041,9 +1097,10 @@ CADENZAFLOW_BPM_WEBAPP_ENABLED: "false"
 - **At least one pod must run the job executor**, or timers, async continuations,
   retries and history cleanup never run at all.
 - The two scale independently. The job-executor knobs matter only on job pods.
-- Watch the connection budget: every pod holds its own pool, and the sum across
-  both deployments plus every other client must stay under the database's
-  `max_connections`.
+- Watch the connection budget: every pod holds its own pool — **up to 30 by
+  default** — and the sum across both deployments plus every other client must stay
+  under the database's `max_connections`, which PostgreSQL ships at 100. Splitting
+  into two deployments doubles the pod count, so it is the moment this bites.
 - Keep business logic in external-task workers; the engine's own jobs then stay
   short and the real work scales in the workers.
 
@@ -1137,31 +1194,50 @@ count, long polling is not actually working — check `asyncResponseTimeout`.
 
 Every fetch tries once **synchronously** on the request thread before parking, and
 every `complete`/`failure`/`extendLock` is its own call — so all of them draw from the
-Hikari pool. The shipped `maximum-pool-size` is **10** (§8.2), which is fine for light
-use and low for real volume: when threads queue for a connection they wait up to
-`connection-timeout` (30 s), and meanwhile locks expire — the redelivery storm again,
-this time caused by the pool rather than by `maxTasks`.
+Hikari pool. A parked long poll does not, which is why the pool is sized from the
+*rate* of completions rather than from the number of connected workers. When threads
+queue for a connection they wait up to `connection-timeout` (30 s), and meanwhile locks
+expire — the redelivery storm again, this time caused by the pool rather than by
+`maxTasks`.
 
-> **A job pod is under-provisioned at the shipped defaults.** The job executor runs up
-> to `max-pool-size` (10) job threads *plus* a separate acquisition thread — 11
-> connection consumers against a pool of 10. If you run job pods per §9.5, raise
-> `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` above the job pool size.
+**The shipped `maximum-pool-size` is 30** (§8.2), chosen to carry roughly a hundred
+tasks in flight across a worker fleet without queueing on the pool. It is a per-pod
+maximum, not a reservation: `minimum-idle` is 5, so an idle pod holds five connections
+and grows only under load.
+
+> **Mind the database budget when you add pods.** 30 is per pod. Three loaded pods are
+> 90 connections, and PostgreSQL ships with `max_connections` at 100. Raise the server
+> limit, or lower the per-pod pool, before scaling out — and count both deployments if
+> you split API and job pods per §9.5.
+
+> **Why the pool has a floor as well as a ceiling.** The job executor runs up to
+> `max-pool-size` job threads *plus* a separate acquisition thread, and every one of
+> them holds a connection while it works. The pool must therefore be strictly larger
+> than `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_POOL_SIZE` + 1, or the acquisition thread
+> ends up starved by the very workers it feeds. At the shipped 12 job threads against
+> a pool of 30 there is comfortable room; if you raise the job pool, raise the
+> connection pool with it.
 
 #### Starting points
 
-Measure rather than adopt these — they are reasoned starting values, not documented
-ones. Every number below is a judgement call; the *mechanisms* above are not.
+**The engine side ships tuned for roughly a hundred tasks in flight** — pool 30, job
+executor 5/12/10/10, fetch-and-lock queue 1000 — so nothing below needs changing to
+reach that. These are the knobs for going further, and for the worker side, which this
+service does not configure.
 
-| Knob | Starting point | Why |
-|---|---|---|
-| `maxTasks` | 1–5 for slow/IO-bound tasks, 10–50 only for fast uniform ones | The batch is only as quick as its slowest member |
-| `lockDuration` | ≈ 3 × (`maxTasks` × p99 task duration), floor 30 s | Headroom for GC pauses, retries and pool waits |
-| `asyncResponseTimeout` | 20–30 s | Longer buys little — the cross-pod sweep is 30 s anyway — and interacts badly with ingress idle timeouts |
-| Worker parallelism | one client instance per concurrent task | The only real parallelism dimension |
-| Hikari pool, API pods | 20–30 | Sized from *active* threads; parked polls cost nothing here |
-| Hikari pool, job pods | ≥ job `max-pool-size` + 2 | See the box above |
-| Tomcat `threads.max` | leave at 200 | Past the pool size it only deepens the queue in front of Hikari |
-| Topic design | many narrow topics | `TOPIC_NAME_` is the only selective index on `ACT_RU_EXT_TASK` — one mega-topic degrades toward a scan |
+Measure rather than adopt them: the numbers are reasoned starting values, not
+documented ones. The *mechanisms* above are not judgement calls; these are.
+
+| Knob | Where | Starting point | Why |
+|---|---|---|---|
+| `maxTasks` | worker | 1–5 for slow/IO-bound tasks, 10–50 only for fast uniform ones | The batch is only as quick as its slowest member |
+| `lockDuration` | worker | ≈ 3 × (`maxTasks` × p99 task duration), floor 30 s | Headroom for GC pauses, retries and pool waits |
+| `asyncResponseTimeout` | worker | 20–30 s | Longer buys little — the cross-pod sweep is 30 s anyway — and interacts badly with ingress idle timeouts |
+| Worker parallelism | worker | one client instance per concurrent task | The only real parallelism dimension |
+| Hikari pool | engine | **30 shipped.** Raise with sustained `hikaricp_connections_pending` > 0, and only after checking the database's `max_connections` | Sized from active threads; parked polls cost nothing here |
+| Job executor pool | engine | **12 shipped.** Raise only on job pods, and raise the Hikari pool with it | Every job thread holds a connection, plus one for acquisition |
+| Tomcat `threads.max` | engine | leave at 200 | Past the pool size it only deepens the queue in front of Hikari |
+| Topic design | models | many narrow topics | `TOPIC_NAME_` is the only selective index on `ACT_RU_EXT_TASK` — one mega-topic degrades toward a scan |
 
 **Worked example.** 100 tasks/s at 200 ms each needs 100 × 0.2 = **20 concurrent
 executions**, so 20 client instances — not one client with `maxTasks: 20`. At

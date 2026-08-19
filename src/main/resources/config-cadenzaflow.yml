@@ -21,6 +21,32 @@ cadenzaflow.bpm:
     table-prefix: ${spring.datasource.hikari.schema}.
   filter:
     create: All tasks
+  # Job executor sizing. These govern the engine's OWN background work - timers,
+  # async continuations, retries, history cleanup - not external tasks, which are
+  # pulled by worker services and are bounded by the worker fleet instead.
+  #
+  # Raised from the starter defaults (3 / 10 / 3 / 3) so a pod can absorb a burst of
+  # async continuations without rejecting them. max-pool-size must stay comfortably
+  # below spring.datasource.hikari.maximum-pool-size: every job thread holds a
+  # connection while it runs, and the acquisition thread needs one of its own.
+  #
+  # max-jobs-per-acquisition is deliberately equal to queue-capacity: acquired jobs
+  # are handed to the queue, so acquiring more per cycle than the queue can hold is
+  # what produces `cadenzaflow.engine.job.execution.rejected` - the meter to watch if
+  # you raise it further.
+  job-execution:
+    core-pool-size: 5
+    max-pool-size: 12
+    queue-capacity: 10
+    max-jobs-per-acquisition: 10
+  rest-api:
+    fetch-and-lock:
+      # How many NEWLY ARRIVING long-poll registrations can queue between handler
+      # cycles before the engine answers HTTP 500 "too many requests at the same
+      # time". It is a burst limiter, not a steady-state cap, and the realistic
+      # trigger is a whole worker fleet reconnecting after an engine restart - so it
+      # wants headroom well above the number of workers, not equal to it.
+      queue-capacity: 1000
   generic-properties:
     properties:
       # The DEFAULT retention for a finished process instance, applied only to

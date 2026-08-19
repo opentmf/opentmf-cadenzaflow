@@ -24,7 +24,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   parse and showed as an error instead of a picture. Every diagram in the README is
   now checked with the Mermaid parser.
 
+- **A pod running the job executor could starve its own job acquisition.** The job
+  executor runs up to `max-pool-size` job threads *plus* a separate acquisition
+  thread, and each holds a database connection while it works — 11 consumers against
+  a connection pool of 10. Under load the acquisition thread could be left waiting on
+  the pool it feeds. The pool is now larger than the job pool by a wide margin, and
+  both the configuration reference and §9.6 state the constraint so it survives future
+  retuning.
+
 ### Changed
+
+- **Defaults now target real load rather than a demo: roughly 100 external tasks in
+  flight.** `spring.datasource.hikari.maximum-pool-size` 10 → **30** (with
+  `minimum-idle` 2 → 5), job executor 3/10/3 → **5/12/10** with
+  `max-jobs-per-acquisition` 3 → **10**, and the fetch-and-lock registration queue
+  200 → **1000** so a whole worker fleet reconnecting after a restart is not answered
+  with HTTP 500. Nothing needs to be set to reach that scale now; §9.6 documents how
+  to go further and, more importantly, which knob actually moves throughput.
+
+  **Check your database budget before scaling out.** The pool figure is *per pod*, so
+  three loaded pods now reach 90 connections and PostgreSQL ships `max_connections`
+  at 100. Deployments that run several pods against a small database should raise
+  the server limit or lower `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE`.
+
+- **Removed a dead entry from the security whitelist.** `/cadenzaflow/**` matched no
+  path the service actually serves: the web UIs, their API and their static assets are
+  reached through the OIDC login chain, not through the whitelist. Proven rather than
+  assumed — with the entry present or absent, every real path answers identically, and
+  the only difference was that unserved paths under it returned 404 instead of 401,
+  i.e. it made the application's presence observable without authentication. Two
+  regression tests now pin both halves of that behaviour.
+
+- **The README says which identity providers actually work, and where.** The
+  directory — task assignment and the Admin UI — is an engine plugin and must be
+  Keycloak or Entra ID. Token validation and browser sign-on are ordinary OIDC and
+  work with any compliant provider, several issuers at once for tokens. That
+  distinction decides whether a given provider can be adopted, and it was previously
+  only implicit.
+
+- **The README links the upstream project and its images.** CadenzaFlow's source,
+  reference manual, getting-started guide and modeller, plus its own
+  `cadenzaflow/cadenzaflow-bpm-platform` images on Docker Hub — with a note on how
+  those differ from ours, since they are the bare platform without the RBAC, SSO,
+  directory-backed identity, masked logging and metrics this service adds.
 
 - **The database schema is fully documented.** README §7 previously showed one diagram
   covering twelve of the engine's tables. It now has an entity-relationship diagram per
