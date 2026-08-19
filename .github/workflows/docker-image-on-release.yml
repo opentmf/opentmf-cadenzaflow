@@ -216,6 +216,29 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=Built from release ${{ env.RELEASE_TAG }} (${{ matrix.flavour }})
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Buildx's OWN attestations are off, and this is load-bearing rather than a
+          # preference. With them on, a push-by-digest build publishes an INDEX
+          # wrapper (the platform manifest plus an attestation manifest) and
+          # `steps.build.outputs.digest` is that wrapper. cosign below then attests
+          # the wrapper - while the merge job assembles the final index from the
+          # wrapper's CHILDREN, so the digest that actually ships carries no
+          # attestation and the wrapper is discarded as an orphan. That is exactly
+          # what happened: 1.1.3 and 1.1.4 shipped with `cosign attest` reporting
+          # success and NO published image child carrying an attestation.
+          #
+          # Verified against a throwaway registry: with provenance on, the pushed
+          # digest is `application/vnd.oci.image.index.v1+json` with 2 children; with
+          # it off, `application/vnd.oci.image.manifest.v1+json` with none - a plain
+          # single-platform manifest, which is the digest the final index references.
+          #
+          # The trade is buildx's SLSA provenance attestation, which we were not
+          # consuming. What consumers verify is the cosign signature on the index and
+          # the cosign CycloneDX attestation on each child, both of which this makes
+          # reachable. Re-check with `cosign verify-attestation` against a published
+          # CHILD after any change here - a green workflow does not prove it, because
+          # attesting the wrong subject succeeds.
+          provenance: false
+          sbom: false
           cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.flavour }}-${{ matrix.arch }}
 

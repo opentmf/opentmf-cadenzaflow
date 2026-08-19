@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.5] - 2026-08-19
+
+### Fixed
+
+- **SBOM attestations were never reachable on a published image.** Since 1.1.3, every
+  release generated a per-architecture CycloneDX SBOM and reported `cosign attest` as
+  successful — but `cosign verify-attestation` fails with `no matching attestations`
+  against a published image, whether you target the tag or resolve it to the child
+  for your platform. Confirmed across 1.1.3, 1.1.4 and 1.1.4-aws: **not one published
+  `linux/amd64` or `linux/arm64` child carried an attestation.**
+
+  The cause is that buildx's own attestations were left enabled. With them on, a
+  push-by-digest build publishes an *index wrapper* — the platform manifest plus an
+  attestation manifest — and the digest the build step reports is that wrapper. cosign
+  attested the wrapper; the merge job then assembled the release index from the
+  wrapper's **children**, so the digest that actually shipped had nothing attached and
+  the wrapper was discarded as an untagged orphan. The attestation succeeded against
+  the wrong subject every time, which is why no workflow ever failed.
+
+  Buildx provenance and SBOM generation are now off, so a build leg publishes a plain
+  single-platform manifest and the attestation lands on the digest that ships.
+  Verified against a throwaway registry: with provenance on, the pushed digest is an
+  OCI *index* with two children; with it off, an OCI *manifest* with none.
+
+  **What was and was not affected.** Image signatures were always correct — the
+  cosign signature on the release index verifies, and nothing was mis-signed. What
+  was missing is the SBOM's verifiable binding to the image. The SBOM *contents* have
+  been attached to the GitHub Release as `sbom[-flavour]-<arch>.cdx.json` since 1.1.4,
+  so nothing was unavailable, only unverifiable. **Consumers who tried to follow our
+  documented verification steps on 1.1.3 or 1.1.4 got an error**, which those releases'
+  notes and README §8.9 wrongly presented as a working procedure; both are corrected.
+
 ## [1.1.4] - 2026-08-19
 
 ### Fixed
@@ -235,6 +267,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the index is still signed, because a signature asserts provenance about the thing
   you actually pull. Signing and attestation use cosign 2.6.1 (was 2.5.2); same major,
   so the signature format is unchanged.
+
+  > **Correction, added 2026-08-19 — the paragraph above does not work as written.**
+  > No published child of 1.1.3 or 1.1.4 carries an attestation: the attestation was
+  > applied to an intermediate digest that never shipped. Resolving the tag to a child
+  > and verifying there returns `no matching attestations` for those two releases, and
+  > there is no procedure that succeeds against them. Signatures on the index are
+  > unaffected and do verify. Fixed in 1.1.5; the SBOM contents for 1.1.4 are on that
+  > release page as `sbom[-flavour]-<arch>.cdx.json`. Left in place rather than
+  > rewritten, because it is what those releases shipped with and consumers may have
+  > acted on it.
 
 ## [1.1.2] - 2026-08-15
 

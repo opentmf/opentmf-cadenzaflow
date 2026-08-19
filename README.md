@@ -1418,6 +1418,14 @@ pull, so it belongs on the index; an SBOM lists the packages of *one* filesystem
 attesting it to the index would describe one architecture while appearing to cover
 both. See the `[1.1.3]` CHANGELOG entry for the full reasoning.
 
+> **Attestations work from 1.1.5 onward. On 1.1.3 and 1.1.4 they are not there.**
+> Those two releases attested an intermediate digest that never shipped, so
+> `cosign verify-attestation` returns `no matching attestations` against them however
+> you target it — that is a defect on our side, not a problem with your command or a
+> reason to distrust the image. Their **signatures** verify normally, and their SBOM
+> contents are attached to each release page as `sbom[-flavour]-<arch>.cdx.json`. See
+> the `[1.1.5]` CHANGELOG entry.
+
 The same SBOMs are attached to each GitHub Release as
 `sbom[-flavour]-<arch>.cdx.json` for reading without cosign — convenient, but the
 attestation is the copy that is signed, and the one to trust.
