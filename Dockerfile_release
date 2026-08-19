@@ -38,6 +38,12 @@ COPY --chown=java:java --from=layer-extract /application/extracted/application/ 
 # set minimal JVM options
 ENV SERVER_PORT=8080
 EXPOSE ${SERVER_PORT}
+# The actuator - health probes and the /actuator/prometheus scrape endpoint - is served
+# on management.server.port (16000), not SERVER_PORT. Declared literally rather than via
+# ENV: an env var of that name would bind to the property and restate its own default.
+# EXPOSE is metadata only, but tooling that derives ports from the image never sees it
+# otherwise.
+EXPOSE 16000
 ENV JVM_OPTS="-Duser.timezone=UTC -Dserver.port=${SERVER_PORT}"
 
 ENTRYPOINT ["sh","-lc","exec java ${JVM_OPTS} org.springframework.boot.loader.launch.JarLauncher"]

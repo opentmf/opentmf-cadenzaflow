@@ -32,6 +32,10 @@ ENV SERVER_PORT=8080
 ENV DEBUG_PORT=5005
 EXPOSE $SERVER_PORT
 EXPOSE ${DEBUG_PORT}
+# The actuator - health probes and the /actuator/prometheus scrape endpoint - is served
+# on management.server.port (16000), not SERVER_PORT. Declared literally rather than via
+# ENV: an env var of that name would bind to the property and restate its own default.
+EXPOSE 16000
 
 ENV JVM_OPTS="-Duser.timezone=UTC -Dserver.port=${SERVER_PORT}"
 ENV DEBUG_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${DEBUG_PORT}"

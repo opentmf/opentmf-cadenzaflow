@@ -4,9 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.1.3] - 2026-08-15
+## [1.1.4] - 2026-08-19
 
 ### Changed
+
+- **The images now declare the management port (16000).** The actuator — the health
+  probes and the `/actuator/prometheus` scrape endpoint — is served on
+  `management.server.port`, never on `SERVER_PORT`, but only 8080 was `EXPOSE`d. `EXPOSE`
+  is metadata: Kubernetes routes to `containerPort` regardless, so nothing was broken by
+  its absence, but tooling that derives ports from the image could not see the one port a
+  metrics scraper needs. Declared as a literal rather than through an environment
+  variable, because a variable of that name would bind to the property and restate its
+  own default.
+
+## [1.1.3] - 2026-08-18
+
+### Changed
+
+- **CadenzaFlow engine upgraded from 1.2.1 to 1.2.2**, which fixes DMN/FEEL collection
+  results being stamped with a Java type no consumer can load. When a DMN decision
+  returned a FEEL list, the engine recorded the variable's `objectTypeName` as the FEEL
+  engine's shaded Scala bridge class
+  (`camundajar.impl.scala.collection.convert.JavaCollectionWrappers$SeqWrapper`). The JSON
+  value was correct, so Cockpit and untyped readers saw nothing wrong — but that class is
+  engine-internal, so every **typed** external-task client read of such a variable failed
+  with `TASK/CLIENT-05002` ("Cannot construct java type from string"). FEEL list and
+  context results are now materialized into `java.util.ArrayList` / `java.util.LinkedHashMap`
+  before they enter the variable machinery, so `objectTypeName` always names a loadable
+  class.
+
+  The defect was inherited from upstream Camunda 7's FEEL-Scala shading and affected every
+  DMN list result, so it is not specific to this distribution. BPMN authors who worked
+  around it at the mapping boundary — typically `${JSON(x).mapTo("java.util.ArrayList")}`
+  — no longer need to; those mappings stay harmless and can be retired at leisure.
 
 - **SBOM attestations are now per architecture.** Previously one CycloneDX SBOM was
   generated from the multi-arch index and attested to that index — but Trivy resolves
