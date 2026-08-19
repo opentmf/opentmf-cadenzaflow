@@ -310,7 +310,7 @@ sequenceDiagram
         else iss = Entra ID
             S->>E: fetch signing keys (cached)
         end
-        S->>S: verify signature, exp, aud; map the roles claim
+        S->>S: verify signature, exp and aud, then map the roles claim
         alt no or wrong role
             S-->>C: 401 / 403
         else authorized
@@ -417,111 +417,274 @@ sequenceDiagram
 
 ## 7. Data
 
-The service owns no tables of its own — it operates the engine's schema, which the
-engine creates and patches at startup. Roughly fifty tables exist; the ones below
-are the ones an operator or tester actually reads.
+The service owns no tables of its own. It operates the engine's schema, which the
+engine creates at startup from its own DDL scripts — **49 tables**, all of them the
+upstream platform's contract rather than this component's design surface.
+
+| | |
+|---|---|
+| Database | PostgreSQL |
+| Schema | `cadenzaflow` (from `SPRING_DATASOURCE_HIKARI_SCHEMA`) |
+| Table prefix | the schema qualifier *is* the prefix — table names keep their stock `ACT_` spellings |
+| Created by | the engine, when `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE=true` |
+
+**Every column of every table is catalogued in
+[docs/database-schema.md](docs/database-schema.md)** — types verbatim from the DDL,
+primary keys, the few real foreign keys, unique constraints and indexes. This section
+is the map; that file is the territory.
+
+The diagrams below show how the tables relate. Read the relationships as *logical*
+ones: the engine maintains most of them itself and only a minority are declared as
+database foreign keys, which is deliberate — history has to survive the deletion of
+the runtime rows it describes, so **no `ACT_HI_*` table declares a single foreign
+key**.
+
+### 7.1 What the five groups are
+
+| Prefix | Tables | What lives there | Lifecycle |
+|---|---:|---|---|
+| `ACT_GE_*` | 3 | General: the binary store, engine properties, schema log | Written at deploy time and on every large variable |
+| `ACT_RE_*` | 6 | Repository: deployed BPMN, DMN, CMMN and form definitions | Appended on deploy, removed only by deleting a deployment |
+| `ACT_RU_*` | 16 | Runtime: live, mutable state | Rows exist only while work is in flight — they are **deleted** when an instance ends |
+| `ACT_HI_*` | 18 | History: the audit trail | Written as work happens, deleted by TTL-driven history cleanup (§9.4) |
+| `ACT_ID_*` | 6 | Identity: engine-local users, groups, tenants | Created but effectively **unused here** — see the note in 7.5 |
+
+> **Why CMMN and DMN tables exist even if you never use them.** The engine creates a
+> sub-schema whenever its feature flag is on, and CMMN (`isCmmnEnabled`) and DMN
+> (`isDmnEnabled`) both default to on. This deployment does not disable either, so the
+> case and decision tables are created regardless of whether any CMMN or DMN model is
+> ever deployed. Empty tables cost nothing but they are not evidence of use.
+
+### 7.2 Deployments and definitions — `ACT_RE_*` and `ACT_GE_*`
+
+One deployment carries many definitions, and the model files themselves live as blobs
+in `ACT_GE_BYTEARRAY`. `ACT_GE_BYTEARRAY` is also where large variable values go,
+which is why it appears again in the runtime diagram.
 
 ```mermaid
 erDiagram
-    ACT_RE_DEPLOYMENT   ||--o{ ACT_RE_PROCDEF        : contains
-    ACT_RE_PROCDEF      ||--o{ ACT_RU_EXECUTION      : "instantiated as"
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_EXECUTION      : "parent of"
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_TASK           : "has open"
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_VARIABLE       : holds
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_JOB            : schedules
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_EXT_TASK       : "offers as external"
-    ACT_RU_EXECUTION    ||--o{ ACT_RU_INCIDENT       : raises
-    ACT_RE_PROCDEF      ||--o{ ACT_HI_PROCINST       : "historised as"
-    ACT_HI_PROCINST     ||--o{ ACT_HI_ACTINST        : "activity history"
-    ACT_HI_PROCINST     ||--o{ ACT_HI_VARINST        : "variable history"
-    ACT_HI_PROCINST     ||--o{ ACT_HI_TASKINST       : "task history"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_RE_PROCDEF          : "declares"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_RE_DECISION_DEF     : "declares"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_RE_DECISION_REQ_DEF : "declares"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_RE_CASE_DEF         : "declares"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_RE_CAMFORMDEF       : "declares"
+    ACT_RE_DEPLOYMENT       ||--o{ ACT_GE_BYTEARRAY        : "stores model files as"
+    ACT_RE_DECISION_REQ_DEF ||--o{ ACT_RE_DECISION_DEF     : "groups"
 
     ACT_RE_DEPLOYMENT {
-        string ID_ PK
-        string NAME_
-        timestamp DEPLOY_TIME_
+        varchar64  ID_ PK
+        varchar255 NAME_
+        timestamp  DEPLOY_TIME_
+        varchar64  TENANT_ID_
     }
     ACT_RE_PROCDEF {
-        string ID_ PK
-        string KEY_
-        int VERSION_
-        int HISTORY_TTL_
+        varchar64  ID_ PK
+        varchar255 KEY_
+        integer    VERSION_
+        varchar64  DEPLOYMENT_ID_ FK
+        integer    HISTORY_TTL_
+        boolean    SUSPENSION_STATE_
     }
-    ACT_RU_EXECUTION {
-        string ID_ PK
-        string PROC_INST_ID_
-        string BUSINESS_KEY_
-        int IS_ACTIVE_
-    }
-    ACT_RU_TASK {
-        string ID_ PK
-        string NAME_
-        string ASSIGNEE_
-        timestamp DUE_DATE_
-    }
-    ACT_RU_VARIABLE {
-        string ID_ PK
-        string NAME_
-        string TYPE_
-        string TEXT_
-        string BYTEARRAY_ID_
-    }
-    ACT_RU_JOB {
-        string ID_ PK
-        string TYPE_
-        int RETRIES_
-        timestamp DUEDATE_
-    }
-    ACT_RU_EXT_TASK {
-        string ID_ PK
-        string TOPIC_NAME_
-        string WORKER_ID_
-        timestamp LOCK_EXP_TIME_
-        int RETRIES_
-    }
-    ACT_RU_INCIDENT {
-        string ID_ PK
-        string INCIDENT_TYPE_
-        string INCIDENT_MSG_
-        timestamp INCIDENT_TIMESTAMP_
-    }
-    ACT_HI_PROCINST {
-        string ID_ PK
-        timestamp START_TIME_
-        timestamp END_TIME_
-        timestamp REMOVAL_TIME_
-        string STATE_
-    }
-    ACT_HI_ACTINST {
-        string ID_ PK
-        string ACT_ID_
-        timestamp END_TIME_
-        timestamp REMOVAL_TIME_
-    }
-    ACT_HI_VARINST {
-        string ID_ PK
-        string NAME_
-        string TYPE_
-        timestamp REMOVAL_TIME_
-    }
-    ACT_HI_TASKINST {
-        string ID_ PK
-        string ASSIGNEE_
-        timestamp END_TIME_
-        timestamp REMOVAL_TIME_
+    ACT_GE_BYTEARRAY {
+        varchar64  ID_ PK
+        varchar255 NAME_
+        bytea      BYTES_
+        varchar64  DEPLOYMENT_ID_ FK
+        timestamp  REMOVAL_TIME_
     }
 ```
 
-Two things worth knowing when reading this schema:
+### 7.3 Live state — `ACT_RU_*`
 
-- **`ACT_RU_*` is live state, `ACT_HI_*` is history.** A finished instance
-  disappears from `ACT_RU_EXECUTION` and remains in `ACT_HI_PROCINST`.
-- **`REMOVAL_TIME_` is what cleanup deletes on.** A `NULL` there means the row will
-  never be cleaned — that is what §9.4's backfill call is for.
+`ACT_RU_EXECUTION` is the centre of the runtime: one row per process instance plus one
+per concurrent path inside it, which is why it points at itself. Everything an operator
+troubleshoots hangs off it.
 
-Variables larger than 4KB are stored as byte arrays, which is what makes large
-JSON payloads workable (the Spin plugin, included by default, is what serializes
-them).
+**These rows are transient.** When an instance completes, its execution, task, variable,
+job and external-task rows are deleted outright — the record of what happened survives
+only in `ACT_HI_*`. An `ACT_RU_*` table that keeps growing is a sign of instances that
+never finish, not of history accumulating.
+
+```mermaid
+erDiagram
+    ACT_RE_PROCDEF   ||--o{ ACT_RU_EXECUTION    : "instantiated as"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_EXECUTION    : "parent of"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_TASK         : "has open"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_VARIABLE     : "holds"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_JOB          : "schedules"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_EXT_TASK     : "offers as external"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_INCIDENT     : "raises"
+    ACT_RU_EXECUTION ||--o{ ACT_RU_EVENT_SUBSCR : "waits on"
+    ACT_RU_TASK      ||--o{ ACT_RU_IDENTITYLINK : "assigned through"
+    ACT_RU_JOBDEF    ||--o{ ACT_RU_JOB          : "defines"
+    ACT_RU_BATCH     ||--o{ ACT_RU_JOB          : "fans out into"
+    ACT_RU_VARIABLE  }o--|| ACT_GE_BYTEARRAY    : "spills large values into"
+
+    ACT_RU_EXECUTION {
+        varchar64  ID_ PK
+        varchar64  PROC_INST_ID_
+        varchar64  PARENT_ID_
+        varchar255 BUSINESS_KEY_
+        varchar64  ACT_ID_
+        boolean    IS_ACTIVE_
+        integer    SUSPENSION_STATE_
+    }
+    ACT_RU_TASK {
+        varchar64  ID_ PK
+        varchar255 NAME_
+        varchar255 ASSIGNEE_
+        timestamp  DUE_DATE_
+        integer    PRIORITY_
+        varchar64  TASK_STATE_
+    }
+    ACT_RU_VARIABLE {
+        varchar64  ID_ PK
+        varchar255 NAME_
+        varchar255 TYPE_
+        varchar4000 TEXT_
+        varchar64  BYTEARRAY_ID_ FK
+    }
+    ACT_RU_EXT_TASK {
+        varchar64  ID_ PK
+        varchar255 TOPIC_NAME_
+        varchar255 WORKER_ID_
+        timestamp  LOCK_EXP_TIME_
+        integer    RETRIES_
+        integer    PRIORITY_
+    }
+    ACT_RU_JOB {
+        varchar64  ID_ PK
+        varchar255 TYPE_
+        integer    RETRIES_
+        timestamp  DUEDATE_
+        varchar64  HANDLER_TYPE_
+    }
+    ACT_RU_INCIDENT {
+        varchar64  ID_ PK
+        varchar255 INCIDENT_TYPE_
+        varchar4000 INCIDENT_MSG_
+        timestamp  INCIDENT_TIMESTAMP_
+        varchar64  CAUSE_INCIDENT_ID_
+    }
+```
+
+Two runtime tables are not process state at all and are easy to misread:
+
+- **`ACT_RU_METER_LOG`** is the engine's own metrics store. The counters behind
+  `cadenzaflow.engine.*` in §9.1 are sums over this table, which is why those meters
+  are cumulative and survive a restart.
+- **`ACT_RU_AUTHORIZATION`** holds engine-level permissions (§3.3's second layer). It
+  is joined into queries only when a request carries an engine authentication — which
+  worker traffic on the whitelisted external-task path does not.
+
+### 7.4 History — `ACT_HI_*`
+
+The audit trail, and the only place a finished instance still exists. This is also the
+group that grows without bound if cleanup is not working, so it is the one to watch.
+
+**`REMOVAL_TIME_` is what cleanup deletes on.** A `NULL` there means the row will never
+be cleaned — that is exactly what §9.4's backfill call exists to repair.
+
+```mermaid
+erDiagram
+    ACT_HI_PROCINST ||--o{ ACT_HI_ACTINST      : "activity history"
+    ACT_HI_PROCINST ||--o{ ACT_HI_TASKINST     : "task history"
+    ACT_HI_PROCINST ||--o{ ACT_HI_VARINST      : "variable history"
+    ACT_HI_PROCINST ||--o{ ACT_HI_DETAIL       : "each variable update"
+    ACT_HI_PROCINST ||--o{ ACT_HI_INCIDENT     : "incident history"
+    ACT_HI_PROCINST ||--o{ ACT_HI_JOB_LOG      : "job attempts"
+    ACT_HI_PROCINST ||--o{ ACT_HI_EXT_TASK_LOG : "external-task attempts"
+    ACT_HI_TASKINST ||--o{ ACT_HI_IDENTITYLINK : "who it was assigned to"
+    ACT_HI_TASKINST ||--o{ ACT_HI_COMMENT      : "comments"
+    ACT_HI_TASKINST ||--o{ ACT_HI_ATTACHMENT   : "attachments"
+    ACT_HI_DECINST  ||--o{ ACT_HI_DEC_IN       : "decision inputs"
+    ACT_HI_DECINST  ||--o{ ACT_HI_DEC_OUT      : "decision outputs"
+    ACT_HI_CASEINST ||--o{ ACT_HI_CASEACTINST  : "case activity history"
+
+    ACT_HI_PROCINST {
+        varchar64  ID_ PK
+        varchar64  PROC_INST_ID_
+        varchar255 BUSINESS_KEY_
+        timestamp  START_TIME_
+        timestamp  END_TIME_
+        varchar255 STATE_
+        timestamp  REMOVAL_TIME_
+    }
+    ACT_HI_ACTINST {
+        varchar64  ID_ PK
+        varchar255 ACT_ID_
+        varchar255 ACT_TYPE_
+        timestamp  END_TIME_
+        bigint     DURATION_
+        timestamp  REMOVAL_TIME_
+    }
+    ACT_HI_VARINST {
+        varchar64  ID_ PK
+        varchar255 NAME_
+        varchar255 VAR_TYPE_
+        varchar4000 TEXT_
+        varchar64  BYTEARRAY_ID_
+        timestamp  REMOVAL_TIME_
+    }
+    ACT_HI_EXT_TASK_LOG {
+        varchar64  ID_ PK
+        varchar255 TOPIC_NAME_
+        varchar255 WORKER_ID_
+        integer    STATE_
+        varchar4000 ERROR_MSG_
+        timestamp  REMOVAL_TIME_
+    }
+```
+
+`ACT_HI_OP_LOG` (who changed what through Cockpit or the API) and `ACT_HI_BATCH`
+(batch operations) belong to this group too, but hang off users and batches rather
+than a process instance.
+
+### 7.5 Identity — `ACT_ID_*`
+
+```mermaid
+erDiagram
+    ACT_ID_USER   ||--o{ ACT_ID_MEMBERSHIP    : "belongs to groups via"
+    ACT_ID_GROUP  ||--o{ ACT_ID_MEMBERSHIP    : "has members via"
+    ACT_ID_USER   ||--o{ ACT_ID_INFO          : "account details"
+    ACT_ID_TENANT ||--o{ ACT_ID_TENANT_MEMBER : "scopes"
+    ACT_ID_USER   ||--o{ ACT_ID_TENANT_MEMBER : "member of tenant via"
+    ACT_ID_GROUP  ||--o{ ACT_ID_TENANT_MEMBER : "member of tenant via"
+```
+
+> **These tables are created but stay empty in a normal deployment.** Users and groups
+> are resolved from the identity provider (§3) — Keycloak or Entra ID — through a
+> plugin that replaces the engine's identity session, so nothing is written here. They
+> exist because the engine's `dbIdentityUsed` flag defaults to on and the plugin does
+> not turn it off. Do not treat them as a user store, and do not seed them.
+
+### 7.6 Schema management, and why not Liquibase
+
+`schema-update: true` **creates missing tables. It does not migrate existing ones** —
+the engine issues no `ALTER` and makes no version comparison on that path. A restart
+after an engine upgrade will therefore not apply new DDL, and a mismatch shows up at
+runtime rather than at boot. Set it to `false` to make the engine assert instead: it
+then checks the recorded schema version and that every expected table is present, and
+needs no DDL rights at all — the right posture when the schema is applied out of band.
+
+**Liquibase is not a usable alternative on CadenzaFlow 1.2.2, despite the changelog
+that ships inside the engine jar.** That changelog has had its baseline changeset
+removed upstream, so it defines no tables: applied to an empty database it creates the
+two Liquibase bookkeeping tables and then fails on the first changeset, which expects
+`ACT_GE_SCHEMA_LOG` to already exist. It also stops at a `1.1.0` tag while the engine
+is 1.2.2. Adopting it would mean authoring and owning a full changelog ourselves and
+keeping it in lockstep with every engine bump — taking ownership of a schema that is
+deliberately the upstream platform's contract, and accepting a silent schema/code
+mismatch as the failure mode when the two drift.
+
+If the goal is a runtime database user without DDL rights, the cheaper route is to
+extract the engine's own `create` scripts from the engine jar
+(`org/cadenzaflow/bpm/engine/db/create/activiti.postgres.create.*.sql`), apply them
+from a deploy-time job, and run the service with `schema-update: false`. Same benefit,
+no new dependency, and the DDL stays the engine's own rather than a copy we maintain.
+
+To adopt an existing `opentmf-camunda7` database, point the datasource at it (e.g.
+schema `camunda7`); the schema is compatible.
 
 ---
 
@@ -637,8 +800,8 @@ Either as indexed environment variables:
 ```yaml
 OPENTMF_SECURITY_SECURE_ENDPOINTS_0_METHOD: GET
 OPENTMF_SECURITY_SECURE_ENDPOINTS_0_PATH: /engine-rest/**
-OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: read
-OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: write
+OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_0: reader
+OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_1: writer
 OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: admin
 ```
 
@@ -652,16 +815,30 @@ opentmf:
     secure-endpoints:
       - method: GET
         path: /engine-rest/**
-        roles: [read, write, admin]
+        roles: [reader, writer, admin]
       - method: POST
         path: /engine-rest/**
-        roles: [write, admin]
+        roles: [writer, admin]
     management:
       secure-endpoints:
         - method: GET
           path: /actuator/env
           roles: [admin]
 ```
+
+> **`/actuator/env` has two independent role gates, and they are set in different
+> places.** `opentmf.security.management.secure-endpoints` above decides who may
+> *reach* the endpoint. Whether the response shows real values or `******` is decided
+> separately by Spring Boot, through `management.endpoint.env.roles` (paired with
+> `show-values: when_authorized`). A caller who passes the first gate but is not
+> named by the second gets a 200 with every value masked — which reads like a broken
+> endpoint rather than a permission decision.
+>
+> Keep the two lists in step. The names in `management.endpoint.env.roles` are
+> matched against the caller's granted authorities **exactly as the token spells
+> them** — this service maps the roles/groups claim straight to authorities with no
+> `ROLE_` prefix added, so `admin` matches an authority named `admin` and nothing
+> else. If you rename the roles per §3.4, rename them in both places.
 
 ### 8.6 Web UI single sign-on
 
@@ -687,7 +864,7 @@ Ingress). With one reachable address, only the issuer URL needs setting.
 | Variable | Description | Default |
 |---|---|---|
 | `CADENZAFLOW_BPM_AUTHORIZATION_ENABLED` | Engine-level authorization | `true` |
-| `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE` | Create/patch `ACT_*` tables at startup | `true` |
+| `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE` | Create missing `ACT_*` tables at startup. It **creates, it does not patch**: existing tables are left untouched, so an engine upgrade that ships new DDL needs a deliberate upgrade step. Set `false` to make the engine assert the schema exists and match versions instead, without holding DDL rights | `true` |
 | `CADENZAFLOW_BPM_HISTORY_LEVEL` | `full`, `audit`, `activity`, `none`. `activity` drops per-variable history writes — a large insert-load reduction for high throughput installations that audit payloads themselves | `full` |
 | `CADENZAFLOW_BPM_JOB_EXECUTION_ENABLED` | Run background jobs on this pod | `true` |
 | `CADENZAFLOW_BPM_JOB_EXECUTION_CORE_POOL_SIZE` / `_MAX_POOL_SIZE` | Job executor threads | `3` / `10` |
@@ -742,14 +919,39 @@ combination of cloud platform and Keycloak/Entra application identity is valid.
 Probes are `:16000/actuator/health/liveness` and `/readiness`. Prometheus scrapes
 `:16000/actuator/prometheus`.
 
-Beyond the standard JVM and HTTP meters, the service publishes engine metrics:
+Beyond the standard JVM, HTTP and HikariCP meters that Spring Boot contributes, the
+service publishes **thirteen** meters of its own. Nine are cumulative counters read
+from the engine's own metrics store (`ACT_RU_METER_LOG`), two are live gauges
+queried at scrape time, and two come from the script engine.
 
-| Meter | Meaning |
-|---|---|
-| `cadenzaflow.engine.*` | Engine counters — jobs acquired, executed, failed, activity instances started |
-| `cadenzaflow.engine.process.instances.active` | Currently running process instances |
-| `cadenzaflow.engine.incidents.open` | Open incidents — the number to alert on |
-| `opentmf.graaljs.contexts.created` / `.closed` | Script-engine context lifecycle; in steady state the difference is 0 |
+Meter names are given here in Micrometer form. Prometheus renames them on the way
+out: dots become underscores and counters gain a `_total` suffix, so
+`cadenzaflow.engine.job.failed` is scraped as `cadenzaflow_engine_job_failed_total`.
+
+| Meter | Type | Meaning |
+|---|---|---|
+| `cadenzaflow.engine.root.process.instance.start` | counter | Root process instances started — the engine's unit of billable work, and the closest thing to a throughput number |
+| `cadenzaflow.engine.activity.instance.start` | counter | Activity instances entered |
+| `cadenzaflow.engine.activity.instance.end` | counter | Activity instances completed. A persistent gap against `.start` means work is entering activities and not leaving them |
+| `cadenzaflow.engine.job.successful` | counter | Jobs executed successfully (timers, async continuations) |
+| `cadenzaflow.engine.job.failed` | counter | Job executions that threw. Each failure burns a retry; the last one becomes an incident |
+| `cadenzaflow.engine.job.acquisition.attempt` | counter | Job-acquisition cycles run by the job executor |
+| `cadenzaflow.engine.job.acquired.success` | counter | Jobs successfully locked for execution |
+| `cadenzaflow.engine.job.acquired.failure` | counter | Acquisition attempts that lost the optimistic lock — a little is normal with several nodes, a lot means they are fighting over the same jobs |
+| `cadenzaflow.engine.job.execution.rejected` | counter | Jobs acquired but refused by the executor because its queue was full — the clearest signal that the job executor is undersized |
+| `cadenzaflow.engine.process.instances.active` | gauge | Process instances currently running |
+| `cadenzaflow.engine.incidents.open` | gauge | Incidents currently open — **the number to alert on** |
+| `opentmf.graaljs.contexts.created` | counter | GraalJS polyglot contexts created for script evaluation |
+| `opentmf.graaljs.contexts.closed` | counter | GraalJS contexts closed. In steady state this tracks `.created`; a widening gap is a script-engine leak |
+
+The two gauges each run one bounded `count()` query against the engine per scrape,
+so keep the scrape interval sane (15–60s) rather than sub-second. The whole bridge
+can be switched off with `CADENZAFLOW_METRICS_ENGINEBRIDGE_ENABLED=false`, which
+leaves the JVM and HTTP families in place.
+
+> The engine also keeps its own metrics API at `/engine-rest/metrics`. It reports
+> the same underlying counters, but it is JWT-gated and not in Prometheus format;
+> the meters above exist so that a scraper needs neither.
 
 ### 9.2 Logs
 
@@ -845,7 +1047,153 @@ CADENZAFLOW_BPM_WEBAPP_ENABLED: "false"
 - Keep business logic in external-task workers; the engine's own jobs then stay
   short and the real work scales in the workers.
 
-### 9.6 JavaScript script tasks
+### 9.6 Scaling: external-task throughput and `maxTasks`
+
+§9.5 splits the engine. This section is the other half: getting work *through* the
+workers. It matters because business logic lives in external-task workers, so worker
+throughput — not engine throughput — is usually what a deployment is really tuning.
+
+#### The one thing to understand first
+
+**`maxTasks` is a batch size, not a parallelism setting.** The Java client runs its
+topic subscriptions on **a single thread**: it fetches a batch, then invokes your
+handler for each task in that batch *one after another*, and only fetches again once
+the whole batch is done.
+
+So raising `maxTasks` from 10 to 100 does not make a worker faster. It makes one
+thread work through 100 tasks in sequence while the engine holds locks on all 100 —
+and locks start counting at fetch time, for the whole batch at once.
+
+> **Concurrency comes from worker *instances*, not from `maxTasks`.**
+> To run 20 tasks at once you need 20 client instances (or 20 worker pods), not one
+> client with `maxTasks: 20`.
+
+Three failure modes follow directly, and they are the ones seen in practice:
+
+- **A slow task stalls its whole batch.** One task taking 60 s holds up every task
+  behind it in the same fetch — and they stay locked the entire time.
+- **Lock expiry causes duplicate execution.** If `maxTasks × task duration` exceeds
+  `lockDuration`, the tail of every batch loses its lock mid-flight. The engine hands
+  those tasks to another worker, so the work runs twice and the original worker's
+  `complete` fails. This is self-amplifying: the duplicated work slows things further.
+- **Memory.** The fetch response carries each task's variables. `maxTasks ×` payload
+  is materialised in the engine's heap and again in the worker's — there is no
+  streaming.
+
+#### Client settings
+
+These belong to the worker application, not to this service. With the Spring Boot
+external-task client starter they sit under `cadenzaflow.bpm.client`.
+
+| Setting | Default | What to know |
+|---|---|---|
+| `maxTasks` | `10` | Batch size per fetch. Amortises round-trips; never adds parallelism |
+| `lockDuration` | `20000` ms | Lock granted at fetch, for the whole batch. Overridable per topic subscription |
+| `asyncResponseTimeout` | *unset* | **Long polling is OFF unless you set this.** Unset means every poll is an immediate round-trip and a database query |
+| `usePriority` | `true` | Orders by `PRIORITY_`, which is index-supported |
+| backoff | 500 ms → 60 s | Exponential, reset on any non-empty response. Under sustained load it stays at zero wait |
+
+**Always set `asyncResponseTimeout`.** Without it, idle workers poll in a loop and
+each poll costs a real query; with it, the request parks server-side and returns as
+soon as work appears. The engine caps it at 30 minutes.
+
+One trap: the client sets no HTTP socket timeout of its own, but if you customise the
+HTTP client, a socket timeout *shorter* than `asyncResponseTimeout` silently breaks
+long polling.
+
+#### Server settings that matter
+
+| Setting | Default | What it does |
+|---|---|---|
+| `CADENZAFLOW_BPM_RESTAPI_FETCHANDLOCK_QUEUE_CAPACITY` | `200` | How many *newly arriving* long-poll registrations can queue between handler cycles. On overflow the caller gets **HTTP 500 "too many requests at the same time"** |
+| `CADENZAFLOW_BPM_RESTAPI_FETCHANDLOCK_UNIQUE_WORKER_REQUEST` | `false` | Cancels a worker's previous parked request when the same `workerId` polls again — useful when a fleet shares worker ids |
+
+There is **no engine-side cap on `maxTasks`**; it becomes a SQL `LIMIT`. The only
+guard is the queue above, and it is a burst limiter — the realistic trigger is a whole
+worker fleet reconnecting after an engine restart, not steady state.
+
+#### Long polling does not consume server threads
+
+This is the point most deployers get backwards. `fetchAndLock` is handled
+asynchronously: a parked request holds **a connection, not a worker thread**. So:
+
+- `server.tomcat.max-connections` (default **8192**) is what limits how many workers
+  can be parked at once.
+- `server.tomcat.threads.max` (default **200**) limits *active* work — the first
+  attempt of each fetch, plus every `complete` and `failure` call. It does **not**
+  need to scale with the number of connected workers.
+
+Raising `max-threads` because "we have 500 workers" is the classic wrong move: those
+workers are parked, not running. If `tomcat_threads_busy` does track your worker
+count, long polling is not actually working — check `asyncResponseTimeout`.
+
+> **With more than one engine pod, expect up to ~30 s pickup latency on long polls.**
+> The "work has arrived" signal is in-process only: a task created on pod A does not
+> wake a worker parked on pod B. Parked requests re-check on a 30-second sweep, so
+> that is the cross-pod worst case. Workers that need faster pickup should either poll
+> more eagerly (shorter `asyncResponseTimeout`) or the deployment should accept it.
+
+#### The connection pool is the usual bottleneck
+
+Every fetch tries once **synchronously** on the request thread before parking, and
+every `complete`/`failure`/`extendLock` is its own call — so all of them draw from the
+Hikari pool. The shipped `maximum-pool-size` is **10** (§8.2), which is fine for light
+use and low for real volume: when threads queue for a connection they wait up to
+`connection-timeout` (30 s), and meanwhile locks expire — the redelivery storm again,
+this time caused by the pool rather than by `maxTasks`.
+
+> **A job pod is under-provisioned at the shipped defaults.** The job executor runs up
+> to `max-pool-size` (10) job threads *plus* a separate acquisition thread — 11
+> connection consumers against a pool of 10. If you run job pods per §9.5, raise
+> `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` above the job pool size.
+
+#### Starting points
+
+Measure rather than adopt these — they are reasoned starting values, not documented
+ones. Every number below is a judgement call; the *mechanisms* above are not.
+
+| Knob | Starting point | Why |
+|---|---|---|
+| `maxTasks` | 1–5 for slow/IO-bound tasks, 10–50 only for fast uniform ones | The batch is only as quick as its slowest member |
+| `lockDuration` | ≈ 3 × (`maxTasks` × p99 task duration), floor 30 s | Headroom for GC pauses, retries and pool waits |
+| `asyncResponseTimeout` | 20–30 s | Longer buys little — the cross-pod sweep is 30 s anyway — and interacts badly with ingress idle timeouts |
+| Worker parallelism | one client instance per concurrent task | The only real parallelism dimension |
+| Hikari pool, API pods | 20–30 | Sized from *active* threads; parked polls cost nothing here |
+| Hikari pool, job pods | ≥ job `max-pool-size` + 2 | See the box above |
+| Tomcat `threads.max` | leave at 200 | Past the pool size it only deepens the queue in front of Hikari |
+| Topic design | many narrow topics | `TOPIC_NAME_` is the only selective index on `ACT_RU_EXT_TASK` — one mega-topic degrades toward a scan |
+
+**Worked example.** 100 tasks/s at 200 ms each needs 100 × 0.2 = **20 concurrent
+executions**, so 20 client instances — not one client with `maxTasks: 20`. At
+`maxTasks: 10` each client holds a batch ~2 s, so `lockDuration` wants ≈ 30 s, above
+the 20 s default. That is 10 fetches/s and 100 completes/s against the pool, and 20
+parked connections — nowhere near Tomcat's limits.
+
+#### Reading the symptoms
+
+**Contention between workers is silent.** When several workers race for the same
+tasks, the loser does not get an error — the engine quietly drops the conflicting task
+from that response. The symptom is **short batches**: you ask for 50 and repeatedly
+get 3. That means too many workers chasing too little work, not a fault.
+
+What to watch (§9.1 for the engine meters, the rest are Spring Boot's):
+
+| Signal | Meaning |
+|---|---|
+| `hikaricp_connections_pending` > 0, acquire time rising | Pool saturated — the clearest external-task saturation signal |
+| `hikaricp_connections_timeout_total` rising | Threads hitting the 30 s timeout; expect lock expiry and duplicates |
+| `tomcat_threads_busy` near max | Completion rate exceeds thread capacity (should *not* track parked worker count) |
+| High request *count* on `fetchAndLock` | Workers getting immediate empty responses — `asyncResponseTimeout` unset or too short |
+| HTTP 500 on `fetchAndLock` | The registration queue overflowed; raise its capacity |
+| `cadenzaflow.engine.activity.instance.start` − `.end` widening | Work entering activities and not leaving: tasks fetched but not completing |
+| `cadenzaflow.engine.incidents.open` rising | Retries exhausted — the alert signal |
+
+> There is **no external-task-specific meter** today: the `job.*` meters describe the
+> engine's internal job executor, which is a different path entirely. The activity
+> counters above are the closest proxy. Nor is the number of parked workers
+> observable.
+
+### 9.7 JavaScript script tasks
 
 Script tasks with `scriptFormat="javascript"` are evaluated by GraalJS (Nashorn is
 gone from the JDK). Each evaluation's polyglot context is closed when the
@@ -863,7 +1211,7 @@ heap without bound under script-task load.
   GraalVM JDK, and this image ships Temurin JRE 25. Short BPMN scripts are
   unaffected; JS-heavy workloads want a GraalVM-based image.
 
-### 9.7 Building a local image
+### 9.8 Building a local image
 
 ```bash
 mvn -P docker clean package                       # build + Trivy scan (HIGH/CRITICAL fails)

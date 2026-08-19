@@ -6,7 +6,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.1.4] - 2026-08-19
 
+### Fixed
+
+- **`/actuator/env` masked every value, for everyone.** The endpoint is reachable by
+  callers holding the `admin` role, but whether it shows real values or `******` is a
+  *second*, independent decision made by Spring Boot through
+  `management.endpoint.env.roles`. That list named `write`,
+  `ENTERPRISE-GUI/ADMIN_ALL` and `ENTERPRISE-API/ADMIN_ALL` — none of which is a role
+  this service issues — so no caller could ever satisfy it and the endpoint returned
+  200 with the whole configuration masked. It now names `admin`, matching the role
+  that governs access. Role names here are compared against the caller's authorities
+  exactly as the token spells them, with no `ROLE_` prefix added, so a deployment that
+  renames the roles (§3.4) must rename them in both places.
+
+- **The authorization sequence diagram in README §6.1 did not render.** A semicolon
+  inside a message label is a statement separator in Mermaid, so the diagram failed to
+  parse and showed as an error instead of a picture. Every diagram in the README is
+  now checked with the Mermaid parser.
+
 ### Changed
+
+- **The database schema is fully documented.** README §7 previously showed one diagram
+  covering twelve of the engine's tables. It now has an entity-relationship diagram per
+  table group — deployments and definitions, runtime, history, identity — with what
+  each group is for and when its rows appear and disappear, and a new
+  [`docs/database-schema.md`](docs/database-schema.md) catalogues **all 49 tables**:
+  every column with its type verbatim from the DDL, primary keys, the few real foreign
+  keys, unique constraints and indexes. It also answers two questions operators keep
+  asking: why CMMN and DMN tables exist when no such model is deployed, and why the
+  `ACT_ID_*` identity tables are created but stay empty.
+
+- **New README §9.6 on external-task throughput.** `maxTasks` is a batch size, not a
+  parallelism setting — the Java client processes a batch on a single thread — so
+  raising it makes one worker hold more locks for longer rather than doing more at
+  once. The section documents that, the resulting duplicate-execution failure mode
+  when `maxTasks × task duration` exceeds `lockDuration`, why long-polling workers
+  consume connections rather than server threads (so `max-threads` should *not* scale
+  with worker count), the ~30 s cross-pod pickup latency, and the fetch-and-lock
+  registration queue. It also flags that a job pod is under-provisioned at the shipped
+  defaults: 10 job threads plus an acquisition thread against a pool of 10.
+
+- **§9.1 now lists every metric by name.** Previously one row said
+  `cadenzaflow.engine.*`; all thirteen meters are now named individually with what
+  each one means and which indicate saturation, plus the Prometheus renaming rule.
+
+- **Corrected throughout:** `schema-update` creates missing tables, it does **not**
+  patch existing ones — an engine upgrade shipping new DDL needs a deliberate step, and
+  the README, the design card and the new schema doc had all said otherwise. The role
+  override examples in §8.5 used `read`/`write`, which are not the roles this service
+  ships (`reader`/`writer`).
 
 - **The images now declare the management port (16000).** The actuator — the health
   probes and the `/actuator/prometheus` scrape endpoint — is served on

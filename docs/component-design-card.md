@@ -38,7 +38,7 @@ Business work runs in worker services, not here. It is the successor of
 | Name | `opentmf-cadenzaflow` (groupId `org.opentmf.cadenzaflow`) |
 | Provided API Specification(s) | [`docs/openapi.yaml`](openapi.yaml) — the service's own surface (security model, whitelisted paths, management endpoints). The engine REST API under `/engine-rest` is the upstream CadenzaFlow contract and is not duplicated. See [§11.1](#111-api-contract-specification) |
 | Consumed API(s) | The identity provider's directory API: Microsoft Graph (`User.Read.All`, `GroupMember.Read.All`) or the Keycloak Admin REST API. The providers' OIDC endpoints (authorize, token, JWKS, userinfo, end-session) |
-| Database Dependency | PostgreSQL. The engine owns the schema (`ACT_*`) and creates/patches it at startup. The service defines no tables of its own — [README §7](../README.md#7-data) |
+| Database Dependency | PostgreSQL. The engine owns the schema — 49 `ACT_*` tables — and creates the missing ones at startup; it does not alter existing ones. The service defines no tables of its own. [README §7](../README.md#7-data), full column catalogue in [`docs/database-schema.md`](database-schema.md) |
 | Component handled Workflow(s) | n.a. as *shipped content* — the service ships no BPMN. It **executes** the models its operators deploy, which is the point of it |
 | Other Dependencies | `openid-rbac-security` (token validation, RBAC), `cadenzaflow-keycloak-4` / `cadenzaflow-entra-identity-4` (identity providers), GraalJS (script tasks), Spin (large variables) |
 | Supported Events | n.a. — no message broker. Its event surface is the external-task protocol over REST ([README §6.3](../README.md#63-uc-10--uc-13--a-worker-runs-an-external-task)) |
@@ -78,7 +78,7 @@ through an external task, how history is cleaned) are the sequence flows in
 |---|---|---|
 | 6 | Web-service use cases | [README §6.1](../README.md#61-uc-05--uc-07--a-rest-call-is-authorized) — authorization of a REST call, with its sequence diagram |
 | 7 | Event use cases | [README §6.3](../README.md#63-uc-10--uc-13--a-worker-runs-an-external-task) — the external-task protocol |
-| 8 | Workflow tasks | [README §6.4](../README.md#64-uc-22--history-cleanup) — history cleanup, the only workflow-task-like job the service owns. Script-task execution is described in [README §9.6](../README.md#96-javascript-script-tasks) |
+| 8 | Workflow tasks | [README §6.4](../README.md#64-uc-22--history-cleanup) — history cleanup, the only workflow-task-like job the service owns. Script-task execution is described in [README §9.7](../README.md#97-javascript-script-tasks) |
 | 9 | Common referenced functionality | [README §6.2](../README.md#62-uc-30--uc-31--a-person-signs-in-to-cockpit) — SSO login and directory resolution; [README §6.5](../README.md#65-common--startup-trust-validation) — startup trust validation |
 
 ---
@@ -174,14 +174,18 @@ n.a. — no `.bpmn` files are shipped ([§5](#5-workflow--process-design)).
 
 ### 11.3 Database Tables
 
-The ERD and the two facts that matter when reading the schema (`ACT_RU_*` vs
-`ACT_HI_*`; `REMOVAL_TIME_` drives cleanup) are
+The entity-relationship diagrams, the per-table column catalogue, and the two facts
+that matter most when reading the schema (`ACT_RU_*` is live state while `ACT_HI_*`
+is history; `REMOVAL_TIME_` is what cleanup deletes on) are in
 [README §7](../README.md#7-data).
 
 The service issues no DDL of its own: `cadenzaflow.bpm.database.schema-update`
-lets the engine create and patch its tables. There is therefore no migration tool
-in this repo, and no per-table column catalogue here — the tables are the upstream
-platform's contract, not this component's design surface.
+lets the engine create its tables from its own scripts. It creates what is missing
+and does not alter what exists, so an engine version that ships new DDL needs a
+deliberate upgrade step rather than a restart. There is therefore no migration tool
+in this repo — the tables are the upstream platform's contract, not this
+component's design surface, which is also why the catalogue is documentation of a
+dependency rather than a design artefact of this component.
 
 ### 11.4 INPUT Files
 
@@ -284,7 +288,7 @@ kinds are recorded here rather than left as silent gaps.
 | groupId / package `com.dnext.dnms.*`, `dnms-*` artifact naming | Different product, different organization: `org.opentmf.cadenzaflow` |
 | Repo under `pia-team`, `develop` default branch | Public repo under `opentmf`, default branch `main` |
 | Layered package structure, contract-first controllers, DTO and exception families, `@RestControllerAdvice` | The service exposes no REST resources of its own; the API is the embedded engine's |
-| Liquibase, JPA/QueryDSL, entity and DB-design conventions | It owns no schema — the engine creates and patches its tables |
+| Liquibase, JPA/QueryDSL, entity and DB-design conventions | It owns no schema — the engine creates its own tables (Liquibase is not usable here; see [README §7](../README.md#7-data)) |
 | Kafka, transactional outbox, JSLT transformations | No broker, no dual writes, no mappings |
 | "Never embed a Camunda engine — external-task client only" | This *is* the engine that rule points other services at |
 | `opentmf-versions` BOM, PIA Nexus distribution, `ci/settings.xml` | Published to Maven Central, and it consumes the CadenzaFlow platform BOM instead |

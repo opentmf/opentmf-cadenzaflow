@@ -55,9 +55,7 @@ management:
     env:
       show-values: when_authorized
       roles:
-        - write
-        - ENTERPRISE-GUI/ADMIN_ALL
-        - ENTERPRISE-API/ADMIN_ALL
+        - admin
     loggers:
       access: unrestricted
     health:
