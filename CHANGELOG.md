@@ -28,7 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   1.1.4 to 1.1.5, since 1.1.4's attestations do not exist.
 
   Both recipes were verified by extracting the regexp from the README verbatim and
-  running it — it passes 1.1.5 and correctly rejects 1.1.3.
+  running it — it passes 1.1.5 and correctly rejects 1.1.3. The table covers the whole
+  published history rather than starting at 1.1.0: every release back to 1.0.0 is
+  signed and tag-anchored, so a failing `cosign verify` here means something genuinely
+  wrong rather than a release predating signing.
 
 ## [1.1.5] - 2026-08-19
 

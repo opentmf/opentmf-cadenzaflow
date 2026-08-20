@@ -1438,11 +1438,16 @@ answer to them, and both are our doing rather than anything wrong with your comm
 | 1.1.3 | **identity differs** — see below | **absent** |
 | 1.1.2 | works | n/a — predates per-arch attestation |
 | 1.1.0 | **identity differs** — see below | n/a |
+| 1.0.0 – 1.0.3 | works | n/a — predates per-arch attestation |
 
 **Attestations on 1.1.3 and 1.1.4 do not exist.** Those releases attested an
 intermediate digest that never shipped, so `verify-attestation` returns `no matching
 attestations` however you target it. Their SBOM contents are on each release page as
 `sbom[-flavour]-<arch>.cdx.json`. Fixed in 1.1.5 — see that CHANGELOG entry.
+
+Every published release is signed; there is no unsigned era in this repository's
+history, so a `cosign verify` that fails here means something genuinely wrong rather
+than a release predating signing.
 
 **1.1.0 and 1.1.3 are signed under a branch identity, not a tag.** Both were rebuilt
 through the documented recovery path (a `workflow_dispatch` from `develop`), so their
