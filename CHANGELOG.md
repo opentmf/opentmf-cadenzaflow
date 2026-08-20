@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.6] - 2026-08-20
+
+### Fixed
+
+- **The verification recipes in README §8.9 could not succeed against two of our own
+  releases, and left the tag unpinned.** Two separate problems, both ours:
+
+  **1.1.0 and 1.1.3 are signed under a branch identity.** Both were rebuilt through the
+  documented recovery path — a `workflow_dispatch` from `develop` — so their signing
+  certificate records `...docker-image-on-release.yml@refs/heads/develop` rather than
+  `@refs/tags/<version>`. The published recipe is tag-anchored, so it rejects them.
+  Nothing is mis-signed and the identity is accurate; the recipe simply described only
+  the releases produced the ordinary way. §8.9 now carries a per-release table saying
+  exactly which command works against which release, and notes that a deployment policy
+  requiring a tag-anchored identity will refuse those two — which is usually the
+  behaviour you want rather than something to work around.
+
+  **The identity was not pinned to a version.** It ended `@refs/tags/` with nothing
+  after it, which accepts *any* tag of this workflow. The recipes now pin the version
+  and anchor the end, with a note on why: a placeholder you must substitute fails
+  **closed**, while a trailing wildcard fails **open**. The examples also moved from
+  1.1.4 to 1.1.5, since 1.1.4's attestations do not exist.
+
+  Both recipes were verified by extracting the regexp from the README verbatim and
+  running it — it passes 1.1.5 and correctly rejects 1.1.3.
+
 ## [1.1.5] - 2026-08-19
 
 ### Fixed

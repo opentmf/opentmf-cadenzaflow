@@ -1385,18 +1385,26 @@ carries its own CycloneDX SBOM attestation. Both are worth checking before you r
 one in an environment you care about.
 
 **Signature.** The signature is on the *index* — the multi-architecture manifest the
-tag points at — because that is the thing you pull:
+tag points at — because that is the thing you pull. Substitute the version you are
+verifying in **both** places:
 
 ```bash
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/' \
-  ghcr.io/opentmf/opentmf-cadenzaflow:1.1.4
+  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/1\.1\.5$' \
+  ghcr.io/opentmf/opentmf-cadenzaflow:1.1.5
 ```
 
-The identity regexp is the point of the exercise: it asserts *which workflow, in
-which repository, at a tag* produced the image. Verifying without it only proves
-that something signed it.
+The identity regexp is the point of the exercise: it asserts *which workflow, in which
+repository, at which tag* produced the image. Verifying without it only proves that
+something signed it.
+
+**Pin the version rather than leaving the tag open.** An identity ending `@refs/tags/`
+with nothing after it accepts *any* tag of this workflow, and one ending `@.+` accepts
+any ref at all. A placeholder you must substitute fails **closed** — forget it and
+verification fails loudly; a wildcard fails **open**, and quietly accepts something you
+did not mean to trust. For the same reason, never relax the repository or workflow
+segments: every segment should be named.
 
 **SBOM attestation.** This one has a wrinkle worth knowing before it confuses you:
 **the attestations hang off the per-architecture child digests, not the tag.** A
@@ -1404,12 +1412,12 @@ that something signed it.
 child for your platform first:
 
 ```bash
-DIGEST=$(docker buildx imagetools inspect ghcr.io/opentmf/opentmf-cadenzaflow:1.1.4 \
+DIGEST=$(docker buildx imagetools inspect ghcr.io/opentmf/opentmf-cadenzaflow:1.1.5 \
   --format '{{ range .Manifest.Manifests }}{{ if and (eq .Platform.OS "linux") (eq .Platform.Architecture "amd64") }}{{ .Digest }}{{ end }}{{ end }}')
 
 cosign verify-attestation --type cyclonedx \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/' \
+  --certificate-identity-regexp '^https://github\.com/opentmf/opentmf-cadenzaflow/\.github/workflows/docker-image-on-release\.yml@refs/tags/1\.1\.5$' \
   "ghcr.io/opentmf/opentmf-cadenzaflow@${DIGEST}"
 ```
 
@@ -1418,13 +1426,34 @@ pull, so it belongs on the index; an SBOM lists the packages of *one* filesystem
 attesting it to the index would describe one architecture while appearing to cover
 both. See the `[1.1.3]` CHANGELOG entry for the full reasoning.
 
-> **Attestations work from 1.1.5 onward. On 1.1.3 and 1.1.4 they are not there.**
-> Those two releases attested an intermediate digest that never shipped, so
-> `cosign verify-attestation` returns `no matching attestations` against them however
-> you target it — that is a defect on our side, not a problem with your command or a
-> reason to distrust the image. Their **signatures** verify normally, and their SBOM
-> contents are attached to each release page as `sbom[-flavour]-<arch>.cdx.json`. See
-> the `[1.1.5]` CHANGELOG entry.
+#### What these commands do and do not verify on older releases
+
+The recipes above are correct for **1.1.5 and later**. Two earlier releases do not
+answer to them, and both are our doing rather than anything wrong with your command:
+
+| Release | `cosign verify` (signature) | `cosign verify-attestation` |
+|---|---|---|
+| 1.1.5 and later | works | works |
+| 1.1.4 | works | **absent** — attested a digest that never shipped |
+| 1.1.3 | **identity differs** — see below | **absent** |
+| 1.1.2 | works | n/a — predates per-arch attestation |
+| 1.1.0 | **identity differs** — see below | n/a |
+
+**Attestations on 1.1.3 and 1.1.4 do not exist.** Those releases attested an
+intermediate digest that never shipped, so `verify-attestation` returns `no matching
+attestations` however you target it. Their SBOM contents are on each release page as
+`sbom[-flavour]-<arch>.cdx.json`. Fixed in 1.1.5 — see that CHANGELOG entry.
+
+**1.1.0 and 1.1.3 are signed under a branch identity, not a tag.** Both were rebuilt
+through the documented recovery path (a `workflow_dispatch` from `develop`), so their
+certificate records
+`...docker-image-on-release.yml@refs/heads/develop` instead of `@refs/tags/<version>`.
+Nothing is mis-signed and the identity is accurate — a dispatch from `develop` really
+did build them — but a tag-anchored regexp, including the one above, will reject them.
+To verify those two specifically, substitute `@refs/heads/develop$` for the tag segment,
+and satisfy yourself that a build from that branch is what you expect. **A deployment
+policy that requires a tag-anchored identity will refuse 1.1.0 and 1.1.3**, which for
+most purposes is the correct behaviour rather than a problem to work around.
 
 The same SBOMs are attached to each GitHub Release as
 `sbom[-flavour]-<arch>.cdx.json` for reading without cosign — convenient, but the
