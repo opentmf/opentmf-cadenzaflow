@@ -64,9 +64,11 @@ class IncidentGroupRollupTests {
     assertThat(group.newestIncident()).isEqualTo(LATE);
     assertThat(group.sampleMessage()).isEqualTo("newest message");
     assertThat(group.calledFrom()).isEqualTo(new CalledFrom("orderFulfilment", "reserve"));
+    // calledFrom is part of the group key, so the selector must carry it: without it a
+    // retry would also hit the same child called from another call activity.
     assertThat(group.selector()).isEqualTo(new IncidentGroupSelector(
         "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null,
-        null, null));
+        new CalledFrom("orderFulfilment", "reserve"), null, null));
   }
 
   @Test
@@ -105,6 +107,7 @@ class IncidentGroupRollupTests {
         null, null);
 
     assertThat(groups.get(0).calledFrom()).isNull();
+    assertThat(groups.get(0).selector().calledFrom()).isNull();
   }
 
   @Test

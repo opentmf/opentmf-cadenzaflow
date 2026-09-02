@@ -33,7 +33,10 @@ public final class EngineRestDateUtil {
       // Fall through to the engine REST date format.
     }
     try {
-      return new SimpleDateFormat(JacksonConfigurator.DEFAULT_DATE_FORMAT).parse(raw);
+      SimpleDateFormat engineFormat = new SimpleDateFormat(JacksonConfigurator.DEFAULT_DATE_FORMAT);
+      // Strict: a lenient parser would roll month 13 into the next year silently.
+      engineFormat.setLenient(false);
+      return engineFormat.parse(raw);
     } catch (ParseException _) {
       throw new InvalidRequestException(Status.BAD_REQUEST,
           parameter + " must be an ISO-8601 offset date-time or use the engine date"

@@ -1,5 +1,21 @@
 # Plan: incident operations endpoints (grouped report, group retry, pageable list)
 
+> **Status (2026-09-02): implemented in 1.2.0 (PR #8), with deliberate departures from
+> the layout below.** The normative description is now README §9.3 and
+> `ci/openapi-service.yaml`. What changed against this plan:
+>
+> | Plan | Implementation |
+> |---|---|
+> | Spring MVC controllers under `/opentmf/incidents/**`, own ACL rules | JAX-RS resources registered in `JerseyConfig`, mounted **inside** the engine REST application under `/engine-rest/extensions/incident` (`/groups`, `/retry`); they inherit the `/engine-rest/**` rules, plus one dedicated rule for the retry POST |
+> | `tmf630-toolkit-paging-sorting-autoconfigure` + `@Tmf630Response` | `tmf630-toolkit-paging-sorting-core` called programmatically (`Tmf630JaxrsPaging`); the autoconfigure module is Spring-MVC-only and never sees a Jersey request |
+> | Package `org.opentmf.cadenzaflow.incident` | `org.opentmf.cadenzaflow.extensions` (resource / service / repository / model) |
+> | Selector = root key, definition key, activity, type, tenant | plus `calledFrom` and the echoed time window — the caller is part of the group key, so a retry cannot cross into the sibling group of the same child BPMN called from elsewhere |
+> | Part C deferred (decision 6) | implemented in the same release |
+> | Version 1.1.6 vs 1.2.0 (decision 1) | 1.2.0 |
+>
+> Wherever the text below says `/opentmf/incidents…`, read `/engine-rest/extensions/incident…`.
+
+
 **Owner decision (2026-09-01):** DNMS needs three incident capabilities that the stock
 engine REST API does not provide in a usable form at DNMS volume (about 10 million
 process starts a day, hundreds of thousands of active incidents at a time):
@@ -346,7 +362,7 @@ Two DNMS deployment facts belong here:
   and any `invocations-per-batch-job` tuning (§5.4) belongs to that deployment.
 - **At the DNMS edge the journal ruling applies** (2026-08-20: bulk retry = admin +
   cap + count-confirmation + audit — blast radius is availability). The deploy-profile
-  mapping for `POST /opentmf/incidents/groups/retry` should be `dnms-admin` (owner
+  mapping for `POST /engine-rest/extensions/incident/retry` should be `dnms-admin` (owner
   decision 7); the in-service writer/admin rule stays for non-DNMS deployments.
 
 ---
@@ -496,7 +512,7 @@ per PR.
 | 4 | Engine batch tuning `invocations-per-batch-job-by-batch-type` (§5.4) | documented, unchanged |
 | 5 | Should Part C expose `incidentMessageLike` at all (a leading-wildcard LIKE on a 4000-char column is a sequential scan at DNMS size) | expose, document the cost |
 | 6 | Part C now or defer — the journal’s shipped list plus the stock runtime `processDefinitionKeyIn` query already serve the UI (§1.3) | defer; implement PRs 1–2 first |
-| 7 | dnms-deploy ripple: `/opentmf/incidents/**` rows in the mounted serving-profile ACL — GET → dnms-read/write/admin, group-retry POST → **dnms-admin** (§5.6); without the rows the endpoints 403 by design | rows land with the adopting release |
+| 7 | dnms-deploy ripple: the endpoints ride the existing `/engine-rest/**` rows of the mounted serving-profile ACL; only the dedicated `POST /engine-rest/extensions/incident/retry` row needs adding, mapped to **dnms-admin** (§5.6) | row lands with the adopting release |
 
 ---
 

@@ -1694,12 +1694,14 @@ POST /cadenzaflow/v1/engine-rest/extensions/incident/retry
   "processDefinitionKey": "reserveStock",
   "activityId": "callWms",
   "incidentType": "failedExternalTask",
+  "calledFrom": { "processDefinitionKey": "orderFulfilment", "callActivityId": "reserve" },
   "retries": 1
 }
 ```
 
-Body fields — the first four are the mandatory group key (exactly a group's
-`selector`); the rest narrow the retried set:
+Body fields — the first four are the mandatory group key; together with
+`tenantId` and `calledFrom` they are exactly a group's `selector`. The rest narrow
+the retried set:
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -1709,6 +1711,7 @@ Body fields — the first four are the mandatory group key (exactly a group's
 | `incidentType` | **yes** | `failedJob` or `failedExternalTask` |
 | `retries` | **yes** | remaining attempts to **set** (absolute, ≥ 1 — not an increment) |
 | `tenantId` | no | one tenant only |
+| `calledFrom` | no | `{processDefinitionKey, callActivityId}` — the caller of the failing instance. Part of the group key, so the report always echoes it; omit it only to retry the activity across every caller under the root |
 | `processDefinitionVersion` | no | one definition version only |
 | `incidentTimestampAfter` / `incidentTimestampBefore` | no | half-open time window, as above |
 

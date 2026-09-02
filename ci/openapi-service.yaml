@@ -14,7 +14,7 @@ info:
     duplicate it. Documented here: the security model applied in front of it, the
     whitelisted paths, the service's own incident operations, and the management-port
     endpoints. For the WHOLE picture in one spec — every engine endpoint plus these
-    additions — see `docs/openapi-full.json`, generated (never hand-edited) by
+    additions — see `docs/openapi.yaml`, generated (never hand-edited) by
     `ci/merge-openapi.py` from the engine's own spec artifact at the exact embedded
     version; regenerate it on engine version bumps.
   contact:
@@ -128,7 +128,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/IncidentGroup' }
-        '400': { description: rootProcessDefinitionKey missing }
+        '400': { description: rootProcessDefinitionKey missing, or a malformed minIncidents / timestamp }
         '401': { description: unauthenticated }
         '403': { description: insufficient role }
 
@@ -331,6 +331,18 @@ components:
         activityId: { type: string }
         incidentType: { type: string, enum: [failedJob, failedExternalTask] }
         tenantId: { type: [string, 'null'] }
+        calledFrom:
+          type: [object, 'null']
+          description: >
+            The caller of the failing instance — part of the group key. The report
+            always echoes the group's own value (null for a root-level group), so a
+            selector posted back verbatim stays inside its group: the same child BPMN
+            called from another call activity under the same root is a different
+            group. Omit it in a hand-written request to retry across every caller.
+          required: [processDefinitionKey, callActivityId]
+          properties:
+            processDefinitionKey: { type: string }
+            callActivityId: { type: string }
         incidentTimestampAfter:
           type: [string, 'null']
           description: >

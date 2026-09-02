@@ -72,8 +72,8 @@ class IncidentGroupRetryServiceTests {
 
   private static IncidentGroupRetryRequest request(String incidentType) {
     return new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", incidentType, null, null,
-        null, null, 1);
+        "orderFulfilment", "reserveStock", "callWms", incidentType, null,
+        null, null, null, null, 1);
   }
 
   /**

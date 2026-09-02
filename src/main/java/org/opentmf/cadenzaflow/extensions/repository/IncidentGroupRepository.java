@@ -71,10 +71,7 @@ public class IncidentGroupRepository {
                    min(substr(i.INCIDENT_MSG_, 1, 300)) as SAMPLE_MSG_
             """)
         .append(treeJoins())
-        .append("left join ").append(sql.table(EXECUTION))
-        .append(" sup on sup.ID_ = pi.SUPER_EXEC_\n")
-        .append("left join ").append(sql.table(PROCESS_DEFINITION))
-        .append(" sd  on sd.ID_  = sup.PROC_DEF_ID_\n")
+        .append(callerJoins("left join"))
         .append("""
             where  rd.KEY_ = :rootKey
             and    i.ID_   = i.ROOT_CAUSE_INCIDENT_ID_
@@ -118,15 +115,28 @@ public class IncidentGroupRepository {
     params.put("activityId", request.activityId());
 
     StringBuilder select = new StringBuilder("select distinct i.CONFIGURATION_\n")
-        .append(treeJoins())
-        .append("""
-            where  rd.KEY_ = :rootKey
-            and    i.ID_   = i.ROOT_CAUSE_INCIDENT_ID_
-            and    pd.KEY_ = :defKey
-            and    i.ACTIVITY_ID_ = :activityId
-            and    i.CONFIGURATION_ is not null
-            """);
+        .append(treeJoins());
+    if (request.calledFrom() != null) {
+      // Inner joins here: a root-level incident has no caller and cannot match.
+      select.append(callerJoins("join"));
+    }
+    select.append("""
+        where  rd.KEY_ = :rootKey
+        and    i.ID_   = i.ROOT_CAUSE_INCIDENT_ID_
+        and    pd.KEY_ = :defKey
+        and    i.ACTIVITY_ID_ = :activityId
+        and    i.CONFIGURATION_ is not null
+        """);
     appendOptionalIncidentFilters(select, params, request.incidentType(), request.tenantId());
+    if (request.calledFrom() != null) {
+      // The caller is part of the group key: the same child BPMN called from two call
+      // activities under one root is two report groups, and a retry posted from one
+      // must not cross into the other.
+      select.append("and    sd.KEY_ = :parentKey\n");
+      select.append("and    sup.ACT_ID_ = :callActivityId\n");
+      params.put("parentKey", request.calledFrom().processDefinitionKey());
+      params.put("callActivityId", request.calledFrom().callActivityId());
+    }
     if (request.processDefinitionVersion() != null) {
       select.append("and    pd.VERSION_ = :defVersion\n");
       params.put("defVersion", request.processDefinitionVersion());
@@ -151,6 +161,16 @@ public class IncidentGroupRepository {
         + "join   " + sql.table(EXECUTION) + " root on root.ID_ = pi.ROOT_PROC_INST_ID_\n"
         + "join   " + sql.table(PROCESS_DEFINITION) + "   rd   on rd.ID_   = root.PROC_DEF_ID_\n"
         + "join   " + sql.table(PROCESS_DEFINITION) + "   pd   on pd.ID_   = i.PROC_DEF_ID_\n";
+  }
+
+  /**
+   * The caller of the failing instance: its call-activity execution in the parent and
+   * that parent's definition. Outer for the report (root-level incidents have none),
+   * inner for a caller-scoped retry.
+   */
+  private String callerJoins(String joinKind) {
+    return joinKind + " " + sql.table(EXECUTION) + " sup on sup.ID_ = pi.SUPER_EXEC_\n"
+        + joinKind + " " + sql.table(PROCESS_DEFINITION) + " sd  on sd.ID_  = sup.PROC_DEF_ID_\n";
   }
 
   private static void appendOptionalIncidentFilters(

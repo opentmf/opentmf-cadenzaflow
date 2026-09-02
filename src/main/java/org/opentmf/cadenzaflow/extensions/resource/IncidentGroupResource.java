@@ -57,7 +57,7 @@ public class IncidentGroupResource {
       @QueryParam("tenantId") String tenantId,
       @QueryParam("incidentTimestampAfter") String incidentTimestampAfter,
       @QueryParam("incidentTimestampBefore") String incidentTimestampBefore,
-      @QueryParam("minIncidents") Integer minIncidents) {
+      @QueryParam("minIncidents") String minIncidents) {
     if (rootProcessDefinitionKey == null || rootProcessDefinitionKey.isBlank()) {
       throw new InvalidRequestException(Status.BAD_REQUEST,
           "Query parameter 'rootProcessDefinitionKey' is required");
@@ -67,9 +67,30 @@ public class IncidentGroupResource {
             rootProcessDefinitionKey, incidentType, tenantId,
             EngineRestDateUtil.parse("incidentTimestampAfter", incidentTimestampAfter),
             EngineRestDateUtil.parse("incidentTimestampBefore", incidentTimestampBefore),
-            minIncidents),
+            parseMinIncidents(minIncidents)),
         // Echoed verbatim into every selector, so a retry posted from this filtered
         // view is scoped to the same window.
         incidentTimestampAfter, incidentTimestampBefore);
+  }
+
+  /**
+   * Taken as a string on purpose: JAX-RS answers a failed {@code Integer} conversion
+   * with 404, and a malformed query parameter is a 400 like everywhere else here.
+   */
+  private static Integer parseMinIncidents(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    try {
+      int value = Integer.parseInt(raw.trim());
+      if (value < 1) {
+        throw new InvalidRequestException(Status.BAD_REQUEST,
+            "Query parameter 'minIncidents' must be >= 1: " + raw);
+      }
+      return value;
+    } catch (NumberFormatException _) {
+      throw new InvalidRequestException(Status.BAD_REQUEST,
+          "Query parameter 'minIncidents' must be an integer: " + raw);
+    }
   }
 }

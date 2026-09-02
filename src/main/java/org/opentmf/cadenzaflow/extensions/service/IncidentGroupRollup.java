@@ -97,7 +97,7 @@ public class IncidentGroupRollup {
         newest.sampleMessage(),
         new IncidentGroupSelector(
             newest.rootProcessDefinitionKey(), key.processDefinitionKey(), key.activityId(),
-            key.incidentType(), key.tenantId(),
+            key.incidentType(), key.tenantId(), calledFrom,
             incidentTimestampAfter, incidentTimestampBefore));
   }
 }

@@ -52,8 +52,8 @@ class IncidentRetryResourceTests {
   @Test
   void retryDelegatesAValidRequestToTheService() {
     IncidentGroupRetryRequest request = new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", "failedJob", null, null,
-        null, null, 1);
+        "orderFulfilment", "reserveStock", "callWms", "failedJob", null,
+        null, null, null, null, 1);
     IncidentGroupRetryResult result = new IncidentGroupRetryResult(0, List.of());
     when(retryService.retry(request)).thenReturn(result);
 
@@ -72,7 +72,8 @@ class IncidentRetryResourceTests {
   @Test
   void retryRefusesAnInvalidRequestNamingEveryViolatedField() {
     IncidentGroupRetryRequest request = new IncidentGroupRetryRequest(
-        " ", "reserveStock", "callWms", "failedConnector", null, null, null, null, 0);
+        " ", "reserveStock", "callWms", "failedConnector", null,
+        null, null, null, null, 0);
 
     assertThatExceptionOfType(InvalidRequestException.class)
         .isThrownBy(() -> resource.retry(request))
@@ -85,8 +86,8 @@ class IncidentRetryResourceTests {
   @Test
   void retryRefusesAnUnparseableWindowBeforeTouchingTheEngine() {
     IncidentGroupRetryRequest request = new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", "failedJob", null, null,
-        "yesterday", null, 1);
+        "orderFulfilment", "reserveStock", "callWms", "failedJob", null,
+        null, null, "yesterday", null, 1);
     assertThatExceptionOfType(InvalidRequestException.class)
         .isThrownBy(() -> resource.retry(request))
         .withMessageContaining("incidentTimestampAfter");

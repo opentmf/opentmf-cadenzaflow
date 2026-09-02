@@ -248,6 +248,9 @@ class IncidentOperationsIT {
     assertThat(selector.get("processDefinitionKey").asText()).isEqualTo("childFlow");
     assertThat(selector.get("activityId").asText()).isEqualTo("callWms");
     assertThat(selector.get("incidentType").asText()).isEqualTo("failedExternalTask");
+    assertThat(selector.get("calledFrom").get("processDefinitionKey").asText())
+        .isEqualTo("parentFlow");
+    assertThat(selector.get("calledFrom").get("callActivityId").asText()).isEqualTo("reserve");
   }
 
   @Test
@@ -261,6 +264,10 @@ class IncidentOperationsIT {
 
     assertThat(get("/engine-rest/extensions/incident/groups", READER_TOKEN).statusCode())
         .as("rootProcessDefinitionKey is required")
+        .isEqualTo(400);
+    assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
+        + "&minIncidents=abc", READER_TOKEN).statusCode())
+        .as("a malformed minIncidents is a 400, not JAX-RS's 404")
         .isEqualTo(400);
     assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow", null)
         .statusCode()).isEqualTo(401);
@@ -410,6 +417,22 @@ class IncidentOperationsIT {
         .as("a windowed retry must not touch incidents outside its window")
         .isEqualTo(6);
 
+    // The caller is part of the group key: the same activity reached through another
+    // call activity is a different group, so a selector naming one matches only that one.
+    HttpResponse<String> otherCaller = post("/engine-rest/extensions/incident/retry", """
+        {
+          "rootProcessDefinitionKey": "parentFlow",
+          "processDefinitionKey": "childFlow",
+          "activityId": "callWms",
+          "incidentType": "failedExternalTask",
+          "calledFrom": { "processDefinitionKey": "parentFlow", "callActivityId": "otherReserve" },
+          "retries": 1
+        }
+        """, WRITER_TOKEN);
+    assertThat(otherCaller.statusCode()).isEqualTo(200);
+    assertThat(objectMapper.readTree(otherCaller.body()).get("incidentCount").asLong()).isZero();
+    assertThat(processEngine.getRuntimeService().createIncidentQuery().count()).isEqualTo(6);
+
     // An unparseable window is refused before anything happens.
     assertThat(post("/engine-rest/extensions/incident/retry", """
         {
@@ -483,6 +506,7 @@ class IncidentOperationsIT {
           "processDefinitionKey": "childFlow",
           "activityId": "callWms",
           "incidentType": "failedExternalTask",
+          "calledFrom": { "processDefinitionKey": "parentFlow", "callActivityId": "reserve" },
           "retries": %d
         }
         """.formatted(retries);

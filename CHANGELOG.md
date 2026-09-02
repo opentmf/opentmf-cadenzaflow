@@ -28,8 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A whole group of failures can be retried with one call instead of one Cockpit
   click per incident.** `POST /engine-rest/extensions/incident/retry` takes a group's
   `selector` verbatim from the report plus a retry count, re-resolves it against the
-  live incident table (optionally narrowed to one definition version, one tenant,
-  and/or one half-open time window — a report queried with a time filter echoes that
+  live incident table (scoped to the group's caller — the same child BPMN reached
+  through another call activity is a different group — and optionally narrowed to
+  one definition version, one tenant, and/or one half-open time window — a report queried with a time filter echoes that
   window into its selectors, so a retry from a filtered view touches exactly the
   displayed slice), and hands the job / external-task ids to the engine's
   set-retries batch API in chunks (`CADENZAFLOW_INCIDENTS_RETRY_CHUNK_SIZE`, default
@@ -73,9 +74,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `openid-rbac-security` 2.3.0 → 3.0.0: denied requests on a Spring-MVC-served path
   now answer 405 with an `Allow` header when the path exists but not for that HTTP
   method (`opentmf.security.unmatched-method-response` restores the old always-403).
-  Inert for this service — it serves no Spring MVC endpoints of its own, and
-  Jersey-served paths are invisible to the method resolver, so every existing
-  401/403 answer is unchanged (re-verified by the full IT suite). Also: CadenzaFlow
+  Inert for the engine surface — Jersey-served `/engine-rest/**` paths are invisible
+  to the method resolver, so every existing 401/403 answer there is unchanged
+  (re-verified by the full IT suite). The only Spring-MVC-served paths are the
+  actuator endpoints, where an authenticated request with an unserved method now
+  answers 405 instead of 403. Also: CadenzaFlow
   engine 1.2.2 → 1.2.3, Spring Boot 4.1.0 → 4.1.1 — whose BOM now manages the fixed
   postgresql/netty/httpcore5 versions itself, so the three CVE override pins are
   deleted from the pom — GraalJS 25.3.4.1, and the aws-flavour SDK pair.

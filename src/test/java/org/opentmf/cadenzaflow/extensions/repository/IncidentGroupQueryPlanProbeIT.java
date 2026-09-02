@@ -92,8 +92,8 @@ class IncidentGroupQueryPlanProbeIT {
         });
 
         IncidentGroupRetryRequest selector = new IncidentGroupRetryRequest(
-            "rootFlow", "childFlow", "callWms", "failedExternalTask", null, null,
-            null, null, 1);
+            "rootFlow", "childFlow", "callWms", "failedExternalTask", null,
+            null, null, null, null, 1);
         start = System.nanoTime();
         List<String> configurations = repository.retryConfigurations(selector);
         long retryMillis = (System.nanoTime() - start) / 1_000_000;

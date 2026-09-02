@@ -18,6 +18,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.opentmf.cadenzaflow.extensions.model.incident.group.CalledFrom;
 import org.opentmf.cadenzaflow.extensions.model.incident.group.IncidentGroupRetryRequest;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -165,7 +166,7 @@ class IncidentGroupRepositoryTests {
         .thenReturn(List.of("job-1"));
 
     List<String> ids = repository.retryConfigurations(new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask",
+        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null,
         null, null, null, null, 1));
 
     assertThat(ids).containsExactly("job-1");
@@ -178,6 +179,10 @@ class IncidentGroupRepositoryTests {
         .contains("select distinct i.CONFIGURATION_")
         .contains("i.ID_   = i.ROOT_CAUSE_INCIDENT_ID_")
         .contains("i.CONFIGURATION_ is not null")
+        .as("without a caller the retry spans every caller: no caller joins, no predicates")
+        .doesNotContain("SUPER_EXEC_")
+        .doesNotContain(":parentKey")
+        .doesNotContain(":callActivityId")
         .doesNotContain("group by")
         .doesNotContain("TENANT_ID_ = :tenantId")
         .doesNotContain("VERSION_ = :defVersion")
@@ -186,9 +191,27 @@ class IncidentGroupRepositoryTests {
   }
 
   @Test
+  void retrySelectStaysInsideTheCallerWhenTheSelectorNamesOne() {
+    repository.retryConfigurations(new IncidentGroupRetryRequest(
+        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null,
+        new CalledFrom("orderFulfilment", "reserve"), null, null, null, 1));
+
+    String sql = capturedRetrySql(Map.of("parentKey", "orderFulfilment",
+        "callActivityId", "reserve"));
+    assertThat(sql)
+        .as("the caller is part of the group key - the same child called from another "
+            + "call activity is a different group and must not be retried")
+        .contains("join cadenzaflow.ACT_RU_EXECUTION sup on sup.ID_ = pi.SUPER_EXEC_")
+        .contains("join cadenzaflow.ACT_RE_PROCDEF sd  on sd.ID_  = sup.PROC_DEF_ID_")
+        .doesNotContain("left join")
+        .contains("sd.KEY_ = :parentKey")
+        .contains("sup.ACT_ID_ = :callActivityId");
+  }
+
+  @Test
   void retrySelectHonoursTheSelectorsHalfOpenWindow() {
     repository.retryConfigurations(new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask",
+        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null,
         null, null, "2026-09-01T14:00:00Z", "2026-09-02T14:00:00Z", 1));
 
     String sql = capturedRetrySql(Map.of(
@@ -203,8 +226,8 @@ class IncidentGroupRepositoryTests {
   @Test
   void retrySelectScopesToTenantAndVersionWhenTheSelectorNamesThem() {
     repository.retryConfigurations(new IncidentGroupRetryRequest(
-        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask",
-        "tenant-1", 8, null, null, 1));
+        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", "tenant-1",
+        null, 8, null, null, 1));
 
     String sql = capturedRetrySql(Map.of("tenantId", "tenant-1", "defVersion", 8));
     assertThat(sql)

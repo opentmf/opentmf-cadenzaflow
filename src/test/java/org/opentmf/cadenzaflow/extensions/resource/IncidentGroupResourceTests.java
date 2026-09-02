@@ -3,6 +3,7 @@ package org.opentmf.cadenzaflow.extensions.resource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -48,7 +49,28 @@ class IncidentGroupResourceTests {
     when(rollup.rollUp(rows, "2026-09-01T14:00:00Z", null)).thenReturn(groups);
 
     assertThat(resource.groups("orderFulfilment", "failedJob", "tenant-1",
-        "2026-09-01T14:00:00Z", null, 4)).isSameAs(groups);
+        "2026-09-01T14:00:00Z", null, "4")).isSameAs(groups);
+  }
+
+  @Test
+  void reportRefusesAMalformedMinIncidentsAsABadRequest() {
+    // JAX-RS would answer a failed Integer conversion with 404; the parameter is taken
+    // as text so that a malformed value is a 400 like every other bad parameter here.
+    assertThatExceptionOfType(InvalidRequestException.class)
+        .isThrownBy(() -> resource.groups("orderFulfilment", null, null, null, null, "abc"))
+        .withMessageContaining("minIncidents");
+    assertThatExceptionOfType(InvalidRequestException.class)
+        .isThrownBy(() -> resource.groups("orderFulfilment", null, null, null, null, "0"))
+        .withMessageContaining(">= 1");
+    verifyNoInteractions(repository);
+  }
+
+  @Test
+  void reportTreatsABlankMinIncidentsAsAbsent() {
+    when(repository.groups("orderFulfilment", null, null, null, null, null))
+        .thenReturn(List.of());
+    resource.groups("orderFulfilment", null, null, null, null, " ");
+    verify(repository).groups("orderFulfilment", null, null, null, null, null);
   }
 
   @Test

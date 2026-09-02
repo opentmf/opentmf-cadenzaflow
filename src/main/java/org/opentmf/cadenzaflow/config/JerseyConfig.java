@@ -5,8 +5,8 @@ import java.util.logging.Level;
 import org.cadenzaflow.bpm.spring.boot.starter.rest.CamundaJerseyResourceConfig;
 import org.glassfish.jersey.logging.LoggingFeature;
 import org.opentmf.cadenzaflow.extensions.resource.IncidentGroupResource;
-import org.opentmf.cadenzaflow.extensions.resource.IncidentRetryResource;
 import org.opentmf.cadenzaflow.extensions.resource.IncidentListResource;
+import org.opentmf.cadenzaflow.extensions.resource.IncidentRetryResource;
 import org.springframework.context.annotation.Configuration;
 
 /**

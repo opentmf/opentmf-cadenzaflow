@@ -1,5 +1,6 @@
 package org.opentmf.cadenzaflow.extensions.model.incident.group;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -13,6 +14,11 @@ import org.opentmf.cadenzaflow.extensions.util.EngineRestDateUtil;
  * an increment — deliberate: set is idempotent under duplicated requests, the engine
  * batch API offers no atomic increment, and incident-matched tasks have zero retries
  * by definition, so the two semantics only differ on races, where set converges.
+ *
+ * <p>{@code calledFrom} narrows the retry to incidents in instances called from that
+ * parent definition's call activity. The report always echoes the group's own value, so
+ * a selector posted back verbatim stays inside its group; a hand-written request may
+ * omit it to retry the activity across every caller under the root.</p>
  *
  * <p>The optional time window ({@code incidentTimestampAfter} inclusive,
  * {@code incidentTimestampBefore} exclusive — the same half-open contract as the
@@ -29,6 +35,7 @@ public record IncidentGroupRetryRequest(
     @NotBlank String activityId,
     @NotBlank @Pattern(regexp = "failedJob|failedExternalTask") String incidentType,
     String tenantId,
+    @Valid CalledFrom calledFrom,
     Integer processDefinitionVersion,
     String incidentTimestampAfter,
     String incidentTimestampBefore,

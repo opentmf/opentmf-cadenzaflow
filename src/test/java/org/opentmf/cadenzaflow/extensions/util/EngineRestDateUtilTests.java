@@ -35,6 +35,13 @@ class EngineRestDateUtilTests {
   }
 
   @Test
+  void refusesAnOutOfRangeEngineFormatValueInsteadOfRollingItOver() {
+    // A lenient SimpleDateFormat would read month 13 as January of the next year.
+    assertThatExceptionOfType(InvalidRequestException.class)
+        .isThrownBy(() -> EngineRestDateUtil.parse("p", "2026-13-01T07:58:41.000+0000"));
+  }
+
+  @Test
   void refusesGarbageNamingTheParameter() {
     assertThatExceptionOfType(InvalidRequestException.class)
         .isThrownBy(() -> EngineRestDateUtil.parse("incidentTimestampAfter", "yesterday"))

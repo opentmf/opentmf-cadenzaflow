@@ -36253,6 +36253,7 @@ paths:
                   $ref: '#/components/schemas/IncidentGroup'
         '400':
           description: rootProcessDefinitionKey missing
+          or a malformed minIncidents / timestamp: null
         '401':
           description: unauthenticated
         '403':
@@ -48177,6 +48178,24 @@ components:
           type:
           - string
           - 'null'
+        calledFrom:
+          type:
+          - object
+          - 'null'
+          description: 'The caller of the failing instance — part of the group key. The report always
+            echoes the group''s own value (null for a root-level group), so a selector posted back verbatim
+            stays inside its group: the same child BPMN called from another call activity under the same
+            root is a different group. Omit it in a hand-written request to retry across every caller.
+
+            '
+          required:
+          - processDefinitionKey
+          - callActivityId
+          properties:
+            processDefinitionKey:
+              type: string
+            callActivityId:
+              type: string
         incidentTimestampAfter:
           type:
           - string

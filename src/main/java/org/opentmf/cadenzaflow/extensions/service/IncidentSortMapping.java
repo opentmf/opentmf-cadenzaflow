@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow.extensions.service;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.cadenzaflow.bpm.engine.runtime.IncidentQuery;
 import org.springframework.data.domain.Sort;
@@ -39,7 +40,7 @@ final class IncidentSortMapping {
    * and together they must cover the engine's own sort capabilities so an engine
    * upgrade that adds one fails the build instead of passing silently.
    */
-  static java.util.Set<String> sortableFields() {
+  static Set<String> sortableFields() {
     return ORDER_BY.keySet();
   }
 
