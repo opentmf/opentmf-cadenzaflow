@@ -60,6 +60,40 @@ Only **active** incidents (`ACT_RU_INCIDENT`) are in scope. History is not.
 
 ---
 
+### 1.3 What the DNMS estate already provides (checked 2026-09-02)
+
+**dnms-journal already ships an engine-ops BFF** (`EngineOpsApi`, develop, deployed):
+`GET /ops/engine/incidents/summary|incidents|incidents/grouped`, `POST .../{id}/retry`
+(dnms-write), `POST .../retry-batch` (dnms-admin, capped, count-confirmed, audited to
+its `engine_retry_audit` ledger), `GET /ops/engine/batches/{id}`,
+`GET /ops/engine/instances?requestId=`, `GET /ops/engine/cockpit-link`. It is a
+pass-through over **engine-rest history queries**: fetch per definition key, filter
+originating (`id == rootCauseIncidentId`) and group (`incidentType` + activity) in the
+BFF, cursor-page over a short-lived snapshot.
+
+**Stock engine-rest also covers the single-definition live view**:
+`GET /process-definition/key/{key}/statistics?incidents=true` returns per-activity
+`{incidentType, incidentCount}` rows in one call (`?failedJobs=true` adds job counts),
+and the runtime `GET /incident?processDefinitionKeyIn=...` DOES exist on this engine
+(verified in `cadenzaflow-engine-rest-core-jakarta` 1.2.2: `IncidentQueryDto` carries
+`processDefinitionKeyIn`). Their limits: key-addressed statistics resolve the **latest
+version only**, and neither distinguishes originating from propagated incidents — on
+any non-leaf definition the numbers double-count each failure once per tree level.
+
+**So this plan is the engine-native layer, not a duplicate.** What only it can do:
+
+- **Part A**: true call-tree scoping (`ROOT_PROC_INST_ID_` join) across all deployed
+  versions with propagation-free grouping — impossible over REST (no root-instance
+  filter, no originating filter; the journal pays fetch-all + client-side filtering).
+- **Part B**: selector-resolved group retry at engine scale (the journal's retry-batch
+  collects ids by paging history REST and is capped accordingly).
+
+**Consumer contract**: the DNMS ops-ui keeps calling **only the journal BFF** (one auth
+model, one CORS surface). Once these endpoints ship, the journal swaps its
+grouped/summary/retry-batch internals to delegate here — a journal follow-up row, not
+part of this change. Part C overlaps the journal's existing list and the stock runtime
+query; owner decision 6.
+
 ## 2. Decisions
 
 ### 2.1 Aggregate in the database, roll up in Java
@@ -209,6 +243,9 @@ order by INCIDENTS_ desc
 Notes:
 - The row set is bounded by definitions × activities × types. No paging.
 - `substr` is portable across PostgreSQL and H2; keep it, do not use `left()`.
+- The group key is `i.ACTIVITY_ID_`, deliberately NOT `FAILED_ACTIVITY_ID_`: the engine
+  leaves `FAILED_ACTIVITY_ID_` null on external-task incidents (dnms ops-ui finding 11 —
+  grouping on it collapsed every external-task failure into one empty-activity group).
 - ❓ Run `EXPLAIN (ANALYZE, BUFFERS)` once on a DNMS-sized copy to confirm the planner
   probes `ACT_RU_EXECUTION` by primary key (nested loop) rather than hashing the whole
   table. Record the plan in the PR description.
@@ -301,6 +338,16 @@ Owner decision (§9): whether groups above a size threshold require `admin`. If 
 `cadenzaflow.incidents.retry.admin-threshold` and check the authority in the service
 (403 with a message naming the threshold). Default in this plan: **no threshold**, since
 RBAC already gates POST to writer/admin.
+
+Two DNMS deployment facts belong here:
+
+- **The retry Batch executes on the `camunda-jobs` flavor only** (the serving flavor
+  runs with the job executor off) — batch progress stalls while `camunda-jobs` is down,
+  and any `invocations-per-batch-job` tuning (§5.4) belongs to that deployment.
+- **At the DNMS edge the journal ruling applies** (2026-08-20: bulk retry = admin +
+  cap + count-confirmation + audit — blast radius is availability). The deploy-profile
+  mapping for `POST /opentmf/incidents/groups/retry` should be `dnms-admin` (owner
+  decision 7); the in-service writer/admin rule stays for non-DNMS deployments.
 
 ---
 
@@ -448,6 +495,8 @@ per PR.
 | 3 | Admin-only above a group size threshold (§5.6) | no threshold |
 | 4 | Engine batch tuning `invocations-per-batch-job-by-batch-type` (§5.4) | documented, unchanged |
 | 5 | Should Part C expose `incidentMessageLike` at all (a leading-wildcard LIKE on a 4000-char column is a sequential scan at DNMS size) | expose, document the cost |
+| 6 | Part C now or defer — the journal’s shipped list plus the stock runtime `processDefinitionKeyIn` query already serve the UI (§1.3) | defer; implement PRs 1–2 first |
+| 7 | dnms-deploy ripple: `/opentmf/incidents/**` rows in the mounted serving-profile ACL — GET → dnms-read/write/admin, group-retry POST → **dnms-admin** (§5.6); without the rows the endpoints 403 by design | rows land with the adopting release |
 
 ---
 
