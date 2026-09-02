@@ -141,6 +141,7 @@ published through an Ingress.
 |---|---|---|
 | `:8080/cadenzaflow/v1/engine-rest/**` | The engine REST API: deployments, process definitions and instances, tasks, variables, history, batches | bearer token with a role (§3) |
 | `:8080/cadenzaflow/v1/engine-rest/external-task/**` | External-task fetch/lock/complete | **no token by default** — see §3 |
+| `:8080/cadenzaflow/v1/engine-rest/extensions/incident` (+ `/groups`, `/retry`) | The service's own incident operations, mounted inside the engine REST application — the collection (a TMF-630 pageable incident list), its aggregate view (a grouped report per root BPMN's call tree), and its action (bulk retry as engine batches) — §9.3. Not part of the upstream contract | bearer token with a role (§3) |
 | `:8080/cadenzaflow/v1/app/cockpit` | Cockpit — monitoring and operations UI | browser, SSO login |
 | `:8080/cadenzaflow/v1/app/tasklist` | Tasklist — human task UI | browser, SSO login |
 | `:8080/cadenzaflow/v1/app/admin` | Admin — users, groups, authorizations | browser, SSO login |
@@ -149,10 +150,11 @@ published through an Ingress.
 | `:16000/actuator/metrics/**`, `/loggers/**` | Metrics; runtime log-level changes | anonymous |
 | `:16000/actuator/env` | Effective configuration | bearer token with `admin` |
 
-The normative contract for this service's own surface — the security model, the
-whitelisted paths, the management endpoints — is
-[docs/openapi.yaml](docs/openapi.yaml). The engine REST API beneath `/engine-rest`
-is the upstream CadenzaFlow contract and is not duplicated there.
+The complete API is described in [docs/openapi.yaml](docs/openapi.yaml) — every
+engine REST endpoint plus this service's additions under
+`/engine-rest/extensions/**`, with the security model as deployed. Open it in
+Swagger UI or Redoc: the additions are grouped under the **`Extensions: Incidents`**
+tag at the top. The document tracks the exact embedded engine version.
 
 ---
 
@@ -213,12 +215,18 @@ caller needs **any one** of them.
 | `POST` | `/engine-rest/**` | `writer`, `admin` | starting, completing, correlating |
 | `PUT` | `/engine-rest/**` | `writer`, `admin` | modifying |
 | `DELETE` | `/engine-rest/**` | `writer`, `admin` | deleting instances, deployments |
+| `POST` | `/engine-rest/extensions/incident/retry` | `writer`, `admin` | bulk incident retry (§9.3). Shipped with the same roles as the POST wildcard, as a **dedicated rule listed before the wildcards** so a deployment can tighten this one operation (e.g. `admin` only) without touching them |
 | any | `/engine-rest/external-task/**` | **none — open** | worker polling; see the warning below |
 | any | the web UIs (`/app/**`, `/api/**`, static assets) | **none at this layer** | not whitelisted — the OIDC login chain redirects an unauthenticated browser to the provider |
 | `GET` | `/actuator/health`, `/prometheus`, `/metrics/**`, `/loggers/**` | **none — open** | management port, internal only |
 | `GET` | `/actuator/env` | `admin` | shows effective configuration |
 | any | anything else on the application port | **denied** | unmatched paths are refused, not allowed |
 
+> **Rule order is load-bearing.** The list is applied to Spring Security in the
+> order written and the **first matching rule wins** — a specific rule placed after
+> a wildcard that also matches is unreachable and silently does nothing. That is
+> why the incident-retry rule stands above the `/engine-rest/**` wildcards.
+>
 > **The external-task path is deliberately open** so high-frequency worker polling
 > costs no token round-trips. This is only safe where the application port is
 > reachable by trusted clients alone. If it is not, remove
@@ -253,6 +261,9 @@ map them onto whatever their provider issues — see
 | UC-06 | RejectUnauthorized | A call with a valid token but no sufficient role is refused | FR-03 |
 | UC-07 | AcceptEitherIssuer | Tokens from either configured issuer are accepted on the same endpoints | FR-04 |
 | UC-08 | InspectConfiguration | An administrator reads the effective configuration | FR-03 |
+| UC-40 | ViewGroupedIncidents | An operator reads the active incidents of one root BPMN's call tree, grouped and counted without propagation double-counting | FR-13 |
+| UC-41 | RetryIncidentGroup | An operator retries every incident of one reported group; the engine works through them as batches | FR-14 |
+| UC-42 | BrowseIncidents | A client pages, sorts and filters individual incidents with the estate's TMF-630 paging contract | FR-15 |
 
 ### 4.2 Event / message driven
 
@@ -309,6 +320,9 @@ map them onto whatever their provider issues — see
 | FR-10 | Security | Web UIs authenticate through OpenID Connect; logout ends the provider session |
 | FR-11 | Identity | Users and group memberships are read from the configured provider on demand, with no background synchronization |
 | FR-12 | Observability | The service publishes engine and JVM metrics on the management port in Prometheus format |
+| FR-13 | Operability | Active originating incidents of one root BPMN's whole call tree are reported grouped by called BPMN, activity and incident type, counting each failure once regardless of call depth |
+| FR-14 | Operability | Every incident of one reported group can be retried in bulk through engine batches, and each retry request is logged with the calling principal |
+| FR-15 | Operability | Individual incidents are listable with TMF-630 paging semantics — offset/limit, count and range headers, pagination links, 200/206/416, allowlisted sorting, field selection |
 
 ### 5.2 Business validation rules
 
@@ -469,6 +483,17 @@ sequenceDiagram
 | **Main flow (THEN)** | Exactly one of "a single issuer" or "a list of issuers" must be configured, issuers must be unique, and each issuer must have signing keys. Anything else fails the boot with a message naming the problem. |
 | **Post-conditions** | The service either serves with a well-defined trust set, or does not start (BVR-09) |
 | **Notes** | Deliberate: a service that silently trusts the wrong issuer is worse than one that will not start |
+
+### 6.6 UC-40 / UC-41 — grouped incidents are reported and retried
+
+| | |
+|---|---|
+| **UC ID / Name** | UC-40 ViewGroupedIncidents / UC-41 RetryIncidentGroup |
+| **Pre-conditions (GIVEN)** | Instances of one root BPMN — possibly calling other BPMNs through call activities, any depth — carry active incidents |
+| **Trigger (WHEN)** | `GET /engine-rest/extensions/incident/groups?rootProcessDefinitionKey=…`; then `POST /engine-rest/extensions/incident/retry` with a group's `selector` plus `retries` |
+| **Main flow (THEN)** | The report joins each incident to its process instance and that instance's **root** (`ACT_RU_EXECUTION.ROOT_PROC_INST_ID_`), so one indexed join covers the whole call tree with no BPMN parsing. The engine copies every incident into each ancestor instance; the report keeps only originating rows (`ID_ = ROOT_CAUSE_INCIDENT_ID_`), so a failure counts once regardless of call depth. Grouping runs in the database per definition **version**; the service merges versions per definition key and attaches names from the newest model. The retry re-runs the same join for the selector, collects the job / external-task ids, and hands them to the engine's set-retries batch API in chunks — setting retries above zero is also what resolves the incidents and their copies. One INFO line records the principal, selector, count and batch ids. |
+| **Post-conditions** | Report: groups with counts, sorted worst-first. Retry: engine batches exist and execute on job-executor pods; poll them via `GET /engine-rest/batch/{id}` |
+| **Notes** | This is what the stock statistics endpoint cannot do: it sees one definition version, counts propagated copies per tree level, and cannot scope to one root's tree. Only originating incidents carry a retryable id — the copies have none, which is why the originating filter is correctness, not cosmetics |
 
 ---
 
@@ -1272,12 +1297,18 @@ OPENTMF_SECURITY_SECURE_ENDPOINTS_0_ROLES_2: admin
 
 …or, more readably, by mounting a file and setting
 `SPRING_CONFIG_ADDITIONAL_LOCATION=file:/application/` plus
-`SPRING_PROFILES_ACTIVE=test`, with `/application/application-test.yml`:
+`SPRING_PROFILES_ACTIVE=test`, with `/application/application-test.yml`. An override
+**replaces the whole list**, and rules apply **first-match-wins in list order** — so
+repeat every rule you mean to keep, and keep specific paths above wildcards:
 
 ```yaml
 opentmf:
   security:
     secure-endpoints:
+      # First match wins: specific rules BEFORE wildcards, or they never apply.
+      - method: POST
+        path: /engine-rest/extensions/incident/retry
+        roles: [admin]        # example: only admins may bulk-retry incidents
       - method: GET
         path: /engine-rest/**
         roles: [reader, writer, admin]
@@ -1339,6 +1370,16 @@ Ingress). With one reachable address, only the issuer URL needs setting.
 | `CADENZAFLOW_BPM_WEBAPP_ENABLED` | Serve the web UIs on this pod. Turn it off on job pods — see §9.5 for which pods should carry the UI | `true` |
 | `CADENZAFLOW_BPM_METRICS_ENABLED` | Collect engine metrics at all. `false` also empties the nine `cadenzaflow.engine.*` counters | `true` |
 | `CADENZAFLOW_BPM_METRICS_DB_REPORTER_ACTIVATE` | Flush collected metrics to `ACT_RU_METER_LOG`. The flush runs every 15 minutes and that interval is not configurable, which is why those counters lag — §9.1 | `true` |
+| `CADENZAFLOW_INCIDENTS_RETRY_CHUNK_SIZE` | Ids per engine batch for a group retry (§9.3). One batch per chunk, so a failing chunk does not stall the others | `20000` |
+
+> **Batch throughput is a separate, engine-wide knob.** The engine executes a batch
+> as jobs, and with its default `invocationsPerBatchJob` of **1** a 200k-incident
+> retry seeds 200 000 jobs, 100 per seed cycle. Raising
+> `invocationsPerBatchJobByBatchType` for `set-job-retries` /
+> `set-external-task-retries` (e.g. to 100) cuts that hundredfold — but it applies to
+> *every* batch of those types, so it is a deliberate engine-tuning decision, made
+> under `generic-properties.properties` via a mounted file (camelCase keys — see the
+> note below). Batches only progress on pods whose job executor is enabled (§9.5).
 
 > Settings under `generic-properties.properties` (history cleanup times, TTLs) are
 > camelCase map keys, and environment variables do **not** map onto them reliably.
@@ -1560,6 +1601,132 @@ When a task's retries reach zero the engine raises an incident and the service l
 it at WARN. Engine behaviour is unchanged — this only makes incidents visible in a
 log pipeline. Incidents without an execution (raised during instance migrations)
 are intentionally not logged.
+
+The incident operations below are mounted **inside the engine REST application**,
+namespaced under `/engine-rest/extensions/**`: they share `/engine-rest`'s base path
+and its access rules (GET → `reader`/`writer`/`admin`, POST → `writer`/`admin`),
+while the `extensions` segment keeps this service's additions apart from the
+upstream contract — nothing there is shadowed, and nothing ever can collide. They
+are not in the upstream engine REST documentation. The retry POST additionally ships with a
+**dedicated ACL rule** (§3.3) carrying the same roles, so a deployment can require a
+stronger role for bulk retry alone — the blast radius of a 200k-incident retry is
+job-executor availability — by overriding just that rule (§8.5).
+
+**Reading the situation.** For "what is broken under this business flow, and how
+badly", ask the grouped report:
+
+```
+GET /cadenzaflow/v1/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=orderFulfilment
+```
+
+One JSON array, sorted worst-first: each entry is one activity × incident type in one
+BPMN of that root's call tree — the root's own tasks and everything reached through
+call activities, all deployed versions — with `incidentCount`, `processInstanceCount`,
+first/last occurrence, a `sampleMessage`, and `calledFrom` naming the call path.
+Counts are **originating incidents only**: the engine copies each incident into every
+ancestor instance, and the report filters the copies, so the numbers do not multiply
+with call depth (the stock `/process-definition/{id}/statistics?incidents=true` does
+multiply, and sees only one definition version).
+
+Query parameters of the report:
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `rootProcessDefinitionKey` | **yes** | definition key of the root processes whose call trees to report |
+| `incidentType` | no | `failedJob` or `failedExternalTask` |
+| `tenantId` | no | one tenant only |
+| `incidentTimestampAfter` | no | **inclusive** lower bound on the originating incident's raise time |
+| `incidentTimestampBefore` | no | **exclusive** upper bound |
+| `minIncidents` | no | drop groups with fewer incidents |
+
+Time ranges are **half-open** — `[after, before)` — on this report, on the incident
+list, and on the retry alike: "what broke since the 14:00 deploy" includes
+14:00:00.000 exactly, and consecutive windows chain without gaps. (The stock engine
+`/incident` filter's after is exclusive; these endpoints deliberately standardize on
+the half-open contract.) Timestamps are accepted in ISO-8601 or in the engine format
+the report's own timestamps come back in.
+
+**Drilling into individual incidents.** `GET …/engine-rest/extensions/incident`
+lists single incidents with the TMF-630 paging contract the rest of the estate
+speaks: `X-Total-Count`/`X-Result-Count`/`Content-Range` headers, a `Link` header
+with first/prev/next/last, and 200/206/416 statuses. Rows carry the engine's fields
+plus definition key/name/version, the activity name, and an `originating` flag —
+`false` marks a copy the engine propagated into an ancestor instance.
+
+Query parameters of the list — paging and shaping:
+
+| Parameter | Meaning |
+|---|---|
+| `offset` / `limit` | TMF-630 paging; `limit` defaults to 50, capped at 500 |
+| `sort` | comma-separated, `-` prefix for descending, e.g. `-incidentTimestamp,activityId`; default `-incidentTimestamp`. Sortable: `id`, `incidentTimestamp`, `incidentType`, `incidentMessage`, `activityId`, `processInstanceId`, `processDefinitionId`, `executionId`, `causeIncidentId`, `rootCauseIncidentId`, `configuration`, `tenantId` |
+| `fields` | comma-separated response-field selection, e.g. `fields=id,activityName` |
+
+…and filters (all optional, combinable):
+
+| Parameter | Meaning |
+|---|---|
+| `incidentType` | `failedJob` or `failedExternalTask` |
+| `processDefinitionKeyIn` | comma-separated definition keys |
+| `processDefinitionId` | one exact definition (pins a version) |
+| `processInstanceId`, `executionId` | one instance / execution |
+| `activityId`, `failedActivityId` | the failing task |
+| `incidentMessageLike` | SQL LIKE pattern (`%` wildcards); leading-wildcard patterns scan the whole table — prefer anchored patterns at high volume |
+| `incidentTimestampAfter` / `incidentTimestampBefore` | half-open time window, as above |
+| `tenantIdIn`, `jobDefinitionIdIn` | comma-separated |
+| `rootCauseIncidentId` | all incidents propagated from one originating incident |
+
+Drill into one report group with
+`processDefinitionKeyIn=<key>&activityId=<id>&incidentType=<type>` — the propagated
+copies fall out of that filter naturally, because a copy sits in a different
+definition, on the call activity. (Paging defaults are configurable via the
+estate-standard `opentmf.tmf630.paging.*` keys in a mounted file.)
+
+**Retrying a group.** Each entry carries a ready-made `selector`. Post it back with a
+retry count (roles: `writer`/`admin`). If the report was queried with a time window,
+the selector echoes that window verbatim (same half-open contract, `after` inclusive /
+`before` exclusive), so a retry posted from a filtered view touches exactly the slice
+that was displayed — never the whole group:
+
+```
+POST /cadenzaflow/v1/engine-rest/extensions/incident/retry
+{
+  "rootProcessDefinitionKey": "orderFulfilment",
+  "processDefinitionKey": "reserveStock",
+  "activityId": "callWms",
+  "incidentType": "failedExternalTask",
+  "calledFrom": { "processDefinitionKey": "orderFulfilment", "callActivityId": "reserve" },
+  "retries": 1
+}
+```
+
+Body fields — the first four are the mandatory group key; together with
+`tenantId` and `calledFrom` they are exactly a group's `selector`. The rest narrow
+the retried set:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `rootProcessDefinitionKey` | **yes** | root BPMN whose call tree scopes the retry |
+| `processDefinitionKey` | **yes** | the BPMN the incidents sit in |
+| `activityId` | **yes** | the failing task |
+| `incidentType` | **yes** | `failedJob` or `failedExternalTask` |
+| `retries` | **yes** | remaining attempts to **set** (absolute, ≥ 1 — not an increment) |
+| `tenantId` | no | one tenant only |
+| `calledFrom` | no | `{processDefinitionKey, callActivityId}` — the caller of the failing instance. Part of the group key, so the report always echoes it; omit it only to retry the activity across every caller under the root |
+| `processDefinitionVersion` | no | one definition version only |
+| `incidentTimestampAfter` / `incidentTimestampBefore` | no | half-open time window, as above |
+
+The service re-resolves the selector against the live incident table, hands the
+matched job / external-task ids to the engine's set-retries batch API in chunks
+(`CADENZAFLOW_INCIDENTS_RETRY_CHUNK_SIZE`, one engine batch per chunk), and answers
+with the incident count and batch ids. Setting retries is also what resolves the
+incidents — there is no separate resolve step. `{"incidentCount": 0}` means someone
+(or something) got there first; that is an outcome, not an error.
+
+Follow the batches with `GET /engine-rest/batch/{id}` (running) and
+`GET /engine-rest/history/batch/{id}` (finished); they execute on pods whose job
+executor is on, and their throughput knob is in §8.7. Every retry request writes one
+INFO line naming the caller, the selector, the count and the batch ids — the log
+pipeline is the audit trail.
 
 ### 9.4 History cleanup
 
