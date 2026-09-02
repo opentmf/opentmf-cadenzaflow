@@ -4,7 +4,7 @@
   <groupId>org.opentmf.cadenzaflow</groupId>
   <artifactId>opentmf-cadenzaflow</artifactId>
   <name>opentmf-cadenzaflow</name>
-  <version>1.2.0</version>
+  <version>1.2.1-SNAPSHOT</version>
 
   <description>
     An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
@@ -872,7 +872,7 @@
     <url>https://github.com/opentmf/opentmf-cadenzaflow</url>
     <connection>scm:git:git@github.com:opentmf/opentmf-cadenzaflow.git</connection>
     <developerConnection>scm:git:git@github.com:opentmf/opentmf-cadenzaflow.git</developerConnection>
-    <tag>1.2.0</tag>
+    <tag>HEAD</tag>
   </scm>
 
 </project>
