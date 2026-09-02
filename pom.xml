@@ -4,7 +4,7 @@
   <groupId>org.opentmf.cadenzaflow</groupId>
   <artifactId>opentmf-cadenzaflow</artifactId>
   <name>opentmf-cadenzaflow</name>
-  <version>1.1.6-SNAPSHOT</version>
+  <version>1.2.0-SNAPSHOT</version>
 
   <description>
     An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
@@ -53,38 +53,33 @@
     <maven.version.ignore>.*-M\d+,.*-RC\d+,.*-SNAPSHOT,(?i).*-(alpha|beta|rc|cr|pre)[-.]?\d*</maven.version.ignore>
 
     <!-- Application dependencies -->
-    <!-- Spring Boot 4 - aligned with the version the CadenzaFlow spring-boot-starter-4 is built against -->
-    <spring-boot.version>4.1.0</spring-boot.version>
-    <cadenzaflow.version>1.2.2</cadenzaflow.version>
+    <!-- Spring Boot 4. Ahead of the CadenzaFlow SB4 starters' own baseline (their
+         parent pins 4.0.7); the compatibility proof is this repo's full IT suite,
+         which boots the engine, both identity plugins and the REST surface. -->
+    <spring-boot.version>4.1.1</spring-boot.version>
+    <cadenzaflow.version>1.2.3</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
-    <!-- 2.3.0+: multi-issuer support (opentmf.security.issuers[]) -->
-    <openid-rbac-security.version>2.3.0</openid-rbac-security.version>
-    <graalvm.version>25.2.4</graalvm.version>
+    <!-- 3.0.0: denied requests on an MVC-served path answer 405 for an unserved
+         method (opentmf.security.unmatched-method-response). Inert here - this
+         service serves no Spring MVC endpoints of its own; Jersey-served paths are
+         invisible to the resolver and keep answering 401/403 exactly as before. -->
+    <openid-rbac-security.version>3.0.0</openid-rbac-security.version>
+    <graalvm.version>25.3.4.1</graalvm.version>
     <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
     <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 
-    <!-- Overrides the Spring Boot 4.1.0 BOM's 42.7.11: CVE-2026-54291 (HIGH,
-         SCRAM-SHA-256-PLUS downgrade MITM), fixed in 42.7.13. Trivy gates the
-         docker profile on HIGH/CRITICAL. Drop when the BOM catches up. -->
-    <postgresql.version>42.7.13</postgresql.version>
+    <!-- The postgresql/netty/httpcore5 CVE overrides that lived here until 1.2.0
+         are gone: the Spring Boot 4.1.1 BOM manages 42.7.13 / 4.2.17.Final / 5.4.3
+         itself - exactly the fixed versions the overrides pinned. -->
 
-    <!-- Overrides the Spring Boot 4.1.0 BOM's 4.2.15.Final: CVE-2026-59901,
-         CVE-2026-55831, CVE-2026-55833, CVE-2026-56745, CVE-2026-56819 (all HIGH,
-         DoS in netty codecs), first fixed in 4.2.16.Final and tracked forward
-         since. Netty is only pulled in by the aws profile (AWS SDK async
-         client), where Trivy gates the -aws image on HIGH/CRITICAL. Drop when
-         the BOM catches up. -->
-    <netty.version>4.2.17.Final</netty.version>
-
-    <!-- Overrides the Spring Boot 4.1.0 BOM's 5.4.2: CVE-2026-54399 (HIGH) in
-         httpcore5 and CVE-2026-54428 in httpcore5-h2, both DoS via oversized
-         HTTP/2 HPACK headers, first fixed in 5.4.3. Reached through
-         cadenzaflow-keycloak-4 -> httpclient5, so it is in EVERY flavour, not
-         just one - all six build legs of 1.1.1 failed the Trivy gate on it.
-         Drop when the BOM catches up. -->
-    <httpcore5.version>5.4.3</httpcore5.version>
+    <!-- TMF-630 paging/sorting semantics for the incident list. The -core module
+         only: its logic (status resolution, range/link headers, sort grammar with
+         allowlist) is plain public API, called programmatically from the Jersey
+         resource - the -autoconfigure sibling is Spring-MVC-only and would never
+         see a request under /engine-rest. -->
+    <tmf630-toolkit.version>3.1.1</tmf630-toolkit.version>
 
     <archunit.version>1.5.0</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
@@ -114,36 +109,18 @@
     <sonar.organization>opentmf</sonar.organization>
     <sonar.projectKey>opentmf_opentmf-cadenzaflow</sonar.projectKey>
     <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
+    <!-- java:S2143 (use java.time) is exempted for the extensions tree, where
+         java.util.Date IS the API's date vocabulary on purpose: the engine's query
+         API takes Date and the engine REST Jackson setup formats Date - java.time
+         would mean converters at every engine boundary. The rule is file-level, so
+         this cannot be an in-code @SuppressWarnings. -->
+    <sonar.issue.ignore.multicriteria>engineDates</sonar.issue.ignore.multicriteria>
+    <sonar.issue.ignore.multicriteria.engineDates.ruleKey>java:S2143</sonar.issue.ignore.multicriteria.engineDates.ruleKey>
+    <sonar.issue.ignore.multicriteria.engineDates.resourceKey>**/extensions/**</sonar.issue.ignore.multicriteria.engineDates.resourceKey>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <!-- Must be imported before spring-boot-dependencies: among imported BOMs the
-           first declaration wins, and this one overrides the netty version managed
-           by the Spring Boot BOM (see the netty.version property for the CVEs). -->
-      <dependency>
-        <groupId>io.netty</groupId>
-        <artifactId>netty-bom</artifactId>
-        <version>${netty.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <!-- Also before spring-boot-dependencies, and declared as explicit entries
-           rather than a property override: `httpcore5.version` is the Spring Boot
-           BOM's OWN property name, and with a BOM-only import (no parent) the BOM
-           resolves its properties internally - setting it here is silently ignored
-           and the vulnerable 5.4.2 still resolves. Verified with dependency:tree.
-           See the httpcore5.version property above for the CVEs. -->
-      <dependency>
-        <groupId>org.apache.httpcomponents.core5</groupId>
-        <artifactId>httpcore5</artifactId>
-        <version>${httpcore5.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.httpcomponents.core5</groupId>
-        <artifactId>httpcore5-h2</artifactId>
-        <version>${httpcore5.version}</version>
-      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
@@ -213,6 +190,27 @@
       <version>${openid-rbac-security.version}</version>
     </dependency>
 
+    <!-- Bean Validation for the incident-operations request bodies and the
+         @Validated properties class; nothing else on the classpath ships an
+         implementation. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- TMF-630 paging/sorting core (see the version property for why not the
+         -autoconfigure module). spring-data-commons is its Page/Pageable/Sort
+         vocabulary - JPA-free; version from the Spring Boot BOM. -->
+    <dependency>
+      <groupId>org.opentmf.query</groupId>
+      <artifactId>tmf630-toolkit-paging-sorting-core</artifactId>
+      <version>${tmf630-toolkit.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.data</groupId>
+      <artifactId>spring-data-commons</artifactId>
+    </dependency>
+
     <!-- Database dependencies -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -221,8 +219,6 @@
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <!-- Explicit version overrides the BOM: CVE-2026-54291 (see property) -->
-      <version>${postgresql.version}</version>
       <scope>runtime</scope>
     </dependency>
 
@@ -652,8 +648,8 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk.version>2.53.3</awssdk.version>
-        <aws-advanced-jdbc-wrapper.version>4.3.0</aws-advanced-jdbc-wrapper.version>
+        <awssdk.version>2.54.10</awssdk.version>
+        <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
         <dependencies>

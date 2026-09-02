@@ -20,6 +20,13 @@ management:
 opentmf:
   security:
     secure-endpoints:
+      # First match wins - the specific retry rule must precede the wildcards,
+      # mirroring config-security.yml.
+      - method: POST
+        path: /engine-rest/extensions/incident/retry
+        roles:
+          - ebu-federation-writer
+          - ebu-federation-admin
       - method: GET
         path: /engine-rest/**
         roles:

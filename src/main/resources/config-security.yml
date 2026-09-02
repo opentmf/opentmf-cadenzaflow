@@ -5,6 +5,20 @@ opentmf:
     user-claim: email
     authorities-claim: groups
     secure-endpoints:
+      # Rules are registered with Spring Security IN THIS ORDER and the FIRST
+      # match wins - an endpoint-specific rule placed after a wildcard that also
+      # matches is unreachable and silently does nothing. Keep specific rules
+      # above the /engine-rest/** wildcards.
+      #
+      # Group retry (this service's own endpoint inside the engine REST app,
+      # README §9.3). Same roles as the POST wildcard below on purpose: the
+      # dedicated rule exists so a deployment can tighten this one operation
+      # (e.g. to admin only) without touching the wildcard rules.
+      - method: POST
+        path: /engine-rest/extensions/incident/retry
+        roles:
+          - writer
+          - admin
       - method: GET
         path: /engine-rest/**
         roles:

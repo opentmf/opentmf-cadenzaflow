@@ -1,0 +1,448 @@
+# GENERATOR INPUT, not a published contract. This fragment describes only the
+# service's OWN surface (incident operations, security model, management
+# endpoints); ci/merge-openapi.py merges it with the engine's generated spec
+# artifact into docs/openapi.yaml - the single published API document.
+# Edit THIS file for service-surface changes, then regenerate.
+openapi: 3.2.0
+info:
+  title: opentmf-cadenzaflow
+  version: 1.0.0
+  description: >
+    The service's OWN API surface. The primary BPM API is the embedded CadenzaFlow
+    engine's REST API, mounted under `/engine-rest` and documented upstream
+    (https://github.com/cadenzaflow/cadenzaflow-bpm-platform); this contract does not
+    duplicate it. Documented here: the security model applied in front of it, the
+    whitelisted paths, the service's own incident operations, and the management-port
+    endpoints. For the WHOLE picture in one spec — every engine endpoint plus these
+    additions — see `docs/openapi-full.json`, generated (never hand-edited) by
+    `ci/merge-openapi.py` from the engine's own spec artifact at the exact embedded
+    version; regenerate it on engine version bumps.
+  contact:
+    name: Cezmi Aslan
+    email: cezmiaslan@gmail.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.txt
+
+servers:
+  - url: http://localhost:8091/cadenzaflow/v1
+    description: application port (context path /cadenzaflow/v1)
+  - url: http://localhost:16000
+    description: management port (actuator; internal only, never exposed via Ingress)
+
+tags:
+  - name: engine-rest
+    description: CadenzaFlow engine REST API passthrough (contract owned upstream)
+  - name: "Extensions: Incidents"
+    description: >
+      The service's own incident operations: a call-tree-scoped grouped report over
+      the active originating incidents, a per-group retry through engine batches, and
+      a TMF-630 pageable incident list. Mounted INSIDE the engine REST application,
+      so the /engine-rest/** access rules apply — namespaced under
+      /engine-rest/extensions/** because these paths are this service's addition,
+      not part of the upstream engine contract.
+  - name: actuator
+    description: management-port endpoints
+
+security:
+  - bearerJwt: []
+
+paths:
+  /engine-rest/{enginePath}:
+    parameters:
+      - name: enginePath
+        in: path
+        required: true
+        schema: { type: string }
+        description: Any engine REST resource, e.g. `engine`, `task`, `process-definition`.
+    get:
+      tags: [engine-rest]
+      summary: Engine REST passthrough (read)
+      description: >
+        Requires a JWT from a trusted issuer with one of the roles
+        `reader`/`writer`/`admin` (role vocabulary configurable in
+        config-security.yml; multi-issuer trust via `opentmf.security.issuers[]`).
+        Exception - `/engine-rest/external-task/**` is whitelisted for the external
+        task workers.
+      responses:
+        '200': { description: proxied engine response }
+        '401': { description: missing/invalid token (unknown issuer, bad signature, wrong audience) }
+        '403': { description: valid token without a required role }
+    post:
+      tags: [engine-rest]
+      summary: Engine REST passthrough (write)
+      description: Requires `writer` or `admin`.
+      responses:
+        '200': { description: proxied engine response }
+        '401': { description: unauthenticated }
+        '403': { description: insufficient role }
+
+  /engine-rest/extensions/incident/groups:
+    get:
+      tags: ["Extensions: Incidents"]
+      summary: Grouped incident report for one root BPMN's call tree
+      description: >
+        Active ORIGINATING incidents for the root definition key and everything it
+        called (any depth, all deployed versions), grouped by called BPMN × activity ×
+        incident type × tenant, with counts, first/last occurrence and a sample
+        message. The engine copies each incident into every ancestor instance; those
+        copies are filtered out here, so a failure counts once regardless of call
+        depth — unlike `/engine-rest/process-definition/{id}/statistics`, which counts
+        per tree level and sees only one definition version. Covered by the
+        `/engine-rest/**` GET rule: `reader`/`writer`/`admin`. Namespaced under
+        `/extensions`, so no upstream route is shadowed or ever can be.
+      parameters:
+        - name: rootProcessDefinitionKey
+          in: query
+          required: true
+          schema: { type: string }
+          description: Definition key of the ROOT processes whose call trees to report.
+        - name: incidentType
+          in: query
+          schema: { type: string, enum: [failedJob, failedExternalTask] }
+        - name: tenantId
+          in: query
+          schema: { type: string }
+        - name: incidentTimestampAfter
+          in: query
+          schema: { type: string }
+          description: >
+            INCLUSIVE lower bound on the originating incident's raise time. ISO-8601
+            offset date-time, or the engine format `yyyy-MM-dd'T'HH:mm:ss.SSSZ` (the
+            report's own oldestIncident/newestIncident values are accepted verbatim).
+        - name: incidentTimestampBefore
+          in: query
+          schema: { type: string }
+          description: >
+            EXCLUSIVE upper bound - the range is half-open [after, before), so
+            consecutive windows chain without gaps or double counts.
+        - name: minIncidents
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: Drop groups with fewer incidents.
+      responses:
+        '200':
+          description: Groups sorted by incidentCount descending.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IncidentGroup' }
+        '400': { description: rootProcessDefinitionKey missing }
+        '401': { description: unauthenticated }
+        '403': { description: insufficient role }
+
+  /engine-rest/extensions/incident/retry:
+    post:
+      tags: ["Extensions: Incidents"]
+      summary: Retry every incident of one report group
+      description: >
+        Re-resolves the selector against the live incident table (ids never travel
+        through the client), then hands the matched job / external-task ids to the
+        engine's set-retries batch API in chunks
+        (`cadenzaflow.incidents.retry.chunk-size`, one engine batch per chunk).
+        Setting retries also resolves the incidents and their ancestor copies. An
+        empty group answers `incidentCount: 0` with no batches — someone else retried
+        first, which is an outcome, not an error. The selector's optional half-open
+        time window scopes the retry to the slice a filtered report displayed — post
+        a windowed report's selector back verbatim and only that window is retried.
+        Poll progress via
+        `GET /engine-rest/batch/{id}` and `GET /engine-rest/history/batch/{id}`;
+        batches execute on pods whose job executor is enabled. Ships with a
+        dedicated ACL rule for exactly this path (same roles as the
+        `/engine-rest/**` POST wildcard: `writer`/`admin`), listed before the
+        wildcards so a deployment can tighten bulk retry alone, e.g. to `admin`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentGroupRetryRequest' }
+      responses:
+        '200':
+          description: The matched incident count and the created engine batches.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentGroupRetryResult' }
+        '400': { description: invalid selector or retries below 1 }
+        '401': { description: unauthenticated }
+        '403': { description: insufficient role }
+
+  /engine-rest/extensions/incident:
+    get:
+      tags: ["Extensions: Incidents"]
+      summary: Pageable incident list with the TMF-630 paging contract
+      description: >
+        Individual active incidents over the engine's stock incident query, paged the
+        way the rest of the estate pages: `offset`/`limit` (defaults 50, max 500),
+        `X-Total-Count`/`X-Result-Count`/`Content-Range` headers, a pagination `Link`
+        header (first/prev/next/last), 200/206/416 statuses, `sort` with the TMF
+        `-field,other` grammar against a configured allowlist, and `fields=` body
+        selection. Rows are enriched with definition key/name/version and activity
+        name, plus an `originating` flag — `false` marks a copy the engine propagated
+        into an ancestor instance. Group drill-down from the report:
+        `processDefinitionKeyIn=<key>&activityId=<id>&incidentType=<type>`. Covered by
+        the `/engine-rest/**` GET rule: `reader`/`writer`/`admin`. Namespaced under
+        `/extensions`, clear of every upstream route.
+      parameters:
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, default: 50, maximum: 500 }
+        - name: sort
+          in: query
+          schema: { type: string }
+          description: >
+            Comma-separated, `-` prefix for descending, e.g. `-incidentTimestamp,activityId`.
+            Allowlisted fields: id, incidentTimestamp, incidentType, incidentMessage,
+            activityId, processInstanceId, processDefinitionId, executionId,
+            causeIncidentId, rootCauseIncidentId, configuration, tenantId.
+            Default `-incidentTimestamp`.
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: Comma-separated field selection for the response bodies.
+        - name: incidentType
+          in: query
+          schema: { type: string, enum: [failedJob, failedExternalTask] }
+        - name: processDefinitionKeyIn
+          in: query
+          schema: { type: string }
+          description: Comma-separated definition keys.
+        - name: processDefinitionId
+          in: query
+          schema: { type: string }
+        - name: processInstanceId
+          in: query
+          schema: { type: string }
+        - name: executionId
+          in: query
+          schema: { type: string }
+        - name: activityId
+          in: query
+          schema: { type: string }
+        - name: failedActivityId
+          in: query
+          schema: { type: string }
+        - name: incidentMessageLike
+          in: query
+          schema: { type: string }
+          description: >
+            SQL LIKE pattern (`%` wildcards). A leading-wildcard pattern cannot use an
+            index and sequentially scans the incident table — expensive at high
+            incident volume; prefer anchored patterns or the other filters.
+        - name: incidentTimestampAfter
+          in: query
+          schema: { type: string }
+          description: >
+            INCLUSIVE lower bound (half-open range [after, before) - deliberately
+            unlike the stock `/incident` endpoint's exclusive after). ISO-8601 offset
+            date-time, or the engine format `yyyy-MM-dd'T'HH:mm:ss.SSSZ`.
+        - name: incidentTimestampBefore
+          in: query
+          schema: { type: string }
+          description: EXCLUSIVE upper bound.
+        - name: tenantIdIn
+          in: query
+          schema: { type: string }
+          description: Comma-separated tenant ids.
+        - name: jobDefinitionIdIn
+          in: query
+          schema: { type: string }
+        - name: rootCauseIncidentId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: The whole result fits the page (headers as on 206).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IncidentRow' }
+        '206':
+          description: A partial page; `Content-Range` and `Link` describe the rest.
+          headers:
+            X-Total-Count: { schema: { type: integer } }
+            X-Result-Count: { schema: { type: integer } }
+            Content-Range: { schema: { type: string, example: items 1-50/1842 } }
+            Link: { schema: { type: string } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IncidentRow' }
+        '400': { description: invalid offset/limit, unknown sort field, or unparseable timestamp }
+        '401': { description: unauthenticated }
+        '403': { description: insufficient role }
+        '416': { description: offset at or beyond the total (Content-Range `items */total`) }
+
+  /actuator/health:
+    get:
+      tags: [actuator]
+      summary: Liveness/readiness (whitelisted, no token)
+      security: []
+      responses:
+        '200': { description: "health with probes (`/liveness`, `/readiness` subpaths)" }
+
+  /actuator/prometheus:
+    get:
+      tags: [actuator]
+      summary: Prometheus scrape endpoint (whitelisted on the internal management port)
+      security: []
+      description: >
+        JVM/HTTP/Hikari families plus the service's own meters -
+        `opentmf.graaljs.contexts.*` (script-engine context lifecycle),
+        `cadenzaflow.engine.*` (engine BPM metrics bridged from ACT_RU_METER_LOG and
+        live process-instance/incident gauges), and - when the Entra identity plugin
+        is active - `cadenzaflow.identity.*` (Graph request timings, throttling,
+        token, truncation and cache meters).
+      responses:
+        '200':
+          description: Prometheus exposition format
+          content:
+            text/plain: { schema: { type: string } }
+
+  /actuator/env:
+    get:
+      tags: [actuator]
+      summary: Environment (admin only)
+      description: Requires the `admin` role (opentmf.security.management.secure-endpoints).
+      responses:
+        '200': { description: environment properties (values masked unless authorized) }
+        '401': { description: unauthenticated }
+        '403': { description: not admin }
+
+components:
+  schemas:
+    IncidentGroupSelector:
+      type: object
+      description: >
+        Identifies one group, tree scope included — exactly the retry request body
+        minus `retries`, so a client never assembles it by hand. When the report was
+        queried with a time window, the selector ECHOES that window verbatim — so a
+        retry posted from a filtered view touches exactly the slice that was
+        displayed, never the whole group.
+      required: [rootProcessDefinitionKey, processDefinitionKey, activityId, incidentType]
+      properties:
+        rootProcessDefinitionKey: { type: string }
+        processDefinitionKey: { type: string }
+        activityId: { type: string }
+        incidentType: { type: string, enum: [failedJob, failedExternalTask] }
+        tenantId: { type: [string, 'null'] }
+        incidentTimestampAfter:
+          type: [string, 'null']
+          description: >
+            Optional INCLUSIVE lower bound on the originating incident's raise time
+            (half-open window, same contract and formats as the report query).
+        incidentTimestampBefore:
+          type: [string, 'null']
+          description: Optional EXCLUSIVE upper bound.
+
+    IncidentGroup:
+      type: object
+      properties:
+        rootProcessDefinitionKey: { type: string }
+        processDefinitionKey:
+          type: string
+          description: The BPMN the incidents actually sit in (root or called).
+        processDefinitionName: { type: [string, 'null'] }
+        processDefinitionVersions:
+          type: array
+          items: { type: integer }
+          description: Every deployed version contributing incidents, ascending.
+        activityId: { type: string }
+        activityName:
+          type: [string, 'null']
+          description: From the newest contributing version's model; null if the element is gone.
+        activityType: { type: [string, 'null'], description: 'BPMN element type, e.g. serviceTask' }
+        incidentType: { type: string }
+        tenantId: { type: [string, 'null'] }
+        calledFrom:
+          type: [object, 'null']
+          description: Null when the incidents are in the root BPMN itself.
+          properties:
+            processDefinitionKey: { type: string }
+            callActivityId: { type: string }
+        incidentCount: { type: integer, format: int64 }
+        processInstanceCount: { type: integer, format: int64 }
+        oldestIncident: { type: string, format: date-time }
+        newestIncident: { type: string, format: date-time }
+        sampleMessage:
+          type: [string, 'null']
+          description: First 300 characters of one incident message from the newest version.
+        selector: { $ref: '#/components/schemas/IncidentGroupSelector' }
+
+    IncidentGroupRetryRequest:
+      allOf:
+        - $ref: '#/components/schemas/IncidentGroupSelector'
+        - type: object
+          required: [retries]
+          properties:
+            processDefinitionVersion:
+              type: [integer, 'null']
+              description: Restrict the retry to one definition version.
+            retries:
+              type: integer
+              minimum: 1
+              description: >
+                Remaining attempts to SET on every matched job / external task — an
+                absolute value, not an increment (deliberate: set is idempotent under
+                duplicated requests, and the engine batch API has no atomic
+                increment). For incident-matched tasks retries are 0 by definition,
+                so the distinction only shows on races, where set converges.
+
+    IncidentRow:
+      type: object
+      properties:
+        id: { type: string }
+        href: { type: string, description: Path of the stock single-incident GET }
+        incidentType: { type: string }
+        incidentTimestamp: { type: string, format: date-time }
+        incidentMessage: { type: [string, 'null'] }
+        activityId: { type: [string, 'null'] }
+        activityName: { type: [string, 'null'] }
+        failedActivityId: { type: [string, 'null'] }
+        processDefinitionId: { type: string }
+        processDefinitionKey: { type: [string, 'null'] }
+        processDefinitionName: { type: [string, 'null'] }
+        processDefinitionVersion: { type: [integer, 'null'] }
+        processInstanceId: { type: string }
+        executionId: { type: string }
+        causeIncidentId: { type: string }
+        rootCauseIncidentId: { type: string }
+        originating:
+          type: boolean
+          description: False on a copy the engine propagated into an ancestor instance.
+        configuration: { type: [string, 'null'] }
+        jobDefinitionId: { type: [string, 'null'] }
+        tenantId: { type: [string, 'null'] }
+        annotation: { type: [string, 'null'] }
+
+    IncidentGroupRetryResult:
+      type: object
+      properties:
+        incidentCount:
+          type: integer
+          format: int64
+          description: Originating incidents matched by the selector at retry time.
+        batches:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { type: string, enum: [set-job-retries, set-external-task-retries] }
+              size: { type: integer, description: Ids handed to this batch }
+
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        OIDC JWT from a trusted issuer (Keycloak and/or Microsoft Entra ID; single- or
+        multi-issuer per `opentmf.security` configuration). Principal claim: `email`;
+        roles claim configurable (`roles`). Browser SSO for the Cockpit/Tasklist
+        webapps uses the OAuth2 authorization-code flow, not bearer tokens.

@@ -86,6 +86,35 @@ cadenzaflow.bpm:
                                         frame-ancestors 'none';object-src 'none';
                                         sandbox allow-forms allow-scripts allow-same-origin allow-popups allow-downloads"
 
+# The service's own incident-operations endpoints, mounted inside the engine REST
+# application (/engine-rest/extensions/incident/groups, .../groups/retry, /engine-rest/extensions/incident).
+cadenzaflow.incidents:
+  retry:
+    # Ids per engine batch for a group retry. One batch per chunk, so a failing
+    # chunk does not stall the others. Batch THROUGHPUT is governed separately by
+    # the engine's invocations-per-batch-job / batch-jobs-per-seed tuning.
+    chunk-size: 20000
+
+# TMF-630 paging for /engine-rest/extensions/incident — the toolkit's estate-standard keys
+# (default-limit 50, max-limit 500, strict-mode true are the shipped defaults and are
+# not restated). The allowlist names every sort field the list accepts; an unknown
+# name is a 400. It must stay in step with IncidentSortMapping.
+opentmf.tmf630:
+  paging:
+    sort-allowlist:
+      - id
+      - incidentTimestamp
+      - incidentType
+      - incidentMessage
+      - activityId
+      - processInstanceId
+      - processDefinitionId
+      - executionId
+      - causeIncidentId
+      - rootCauseIncidentId
+      - configuration
+      - tenantId
+
 # Identity provider selection: 'keycloak' (default) or 'entra'. The engine mounts
 # exactly one identity provider; the switch makes them mutually exclusive.
 plugin.identity.provider: keycloak
