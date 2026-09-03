@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,7 +90,7 @@ class IncidentListResourceTests {
 
     resource.list(uriInfo, null, "a,, b,", null, null, null, null, null, null,
         null, null, null, null, null, null, null, List.of(), null);
-    verify(service, org.mockito.Mockito.times(2)).page(filter.capture(), any(), any(), anyString());
+    verify(service, times(2)).page(filter.capture(), any(), any(), anyString());
     assertThat(filter.getValue().processDefinitionKeyIn())
         .as("empty comma segments are dropped, not forwarded")
         .containsExactly("a", "b");
