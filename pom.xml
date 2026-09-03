@@ -74,6 +74,17 @@
          are gone: the Spring Boot 4.1.1 BOM manages 42.7.13 / 4.2.17.Final / 5.4.3
          itself - exactly the fixed versions the overrides pinned. -->
 
+    <!-- Overrides the Spring Boot 4.1.1 BOM's 11.0.24: CVE-2026-65182 (CRITICAL,
+         security-constraint bypass) plus two more CRITICALs in tomcat-embed-core,
+         first fixed in 11.0.25. In EVERY flavour - Tomcat is the embedded servlet
+         container. 4.1.1 is the latest Boot GA and pins 11.0.24; 4.2.0-M1 is a
+         milestone we do not adopt. Applied as explicit dependencyManagement entries
+         (not as a property override), because with a BOM-only IMPORT the BOM resolves
+         its own `tomcat.version` internally and a property here is silently ignored -
+         the httpcore5 lesson of 1.1.2, verified again by reading BOOT-INF/lib.
+         Remove when a Boot GA pins >= 11.0.25. -->
+    <tomcat.version>11.0.25</tomcat.version>
+
     <!-- TMF-630 paging/sorting semantics for the incident list. The -core module
          only: its logic (status resolution, range/link headers, sort grammar with
          allowlist) is plain public API, called programmatically from the Jersey
@@ -121,6 +132,24 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Before spring-boot-dependencies: among managed entries the first declaration
+           wins. Explicit entries rather than a property, see tomcat.version above. All
+           three embed artifacts move together so one Tomcat version ships. -->
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-core</artifactId>
+        <version>${tomcat.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-websocket</artifactId>
+        <version>${tomcat.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.tomcat.embed</groupId>
+        <artifactId>tomcat-embed-el</artifactId>
+        <version>${tomcat.version}</version>
+      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>

@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] - 2026-09-03
+
+### Security
+
+- **The images no longer carry CVE-2026-65182.** Embedded Tomcat moves from 11.0.24
+  (what the Spring Boot 4.1.1 BOM pins, and what 1.2.0 and 1.1.5 ship) to 11.0.25,
+  which closes three CRITICAL findings in `tomcat-embed-core` — CVE-2026-65182 among
+  them, a security-constraint bypass. No Boot GA pins the fixed line yet, so the pom
+  overrides the BOM with explicit `dependencyManagement` entries for the three
+  `tomcat-embed-*` artifacts, declared before the BOM import; a `tomcat.version`
+  property alone would be silently ignored under a BOM import. The override is
+  marked for removal once a Boot GA manages 11.0.25 or later. A deployment on 1.2.0
+  or 1.1.5 should move to this release; nothing else changes.
+
 ## [1.2.0] - 2026-09-02
 
 ### Added
