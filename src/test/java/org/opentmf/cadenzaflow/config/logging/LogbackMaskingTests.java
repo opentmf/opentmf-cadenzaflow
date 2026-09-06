@@ -356,6 +356,18 @@ class LogbackMaskingTests {
     }
 
     @Test
+    void maskAShortGermanNumberWhateverSitsBeforeThePlus() {
+      // The phone rule's alternation can start with `+`, a NON-word character, so its own `\b`
+      // fires when the PRECEDING character is a word character - the inverse of every other
+      // rule. A uniform (?<![A-Za-z0-9]) guard silently narrowed it: these numbers are 9 digits,
+      // below the 12-digit-run rule's floor, so nothing else catches them. Measured, then pinned.
+      assertThat(encode("log tel+491701234 end", Map.of())).doesNotContain("491701234");
+      assertThat(encode("log 7+491701234 end", Map.of())).doesNotContain("491701234");
+      assertThat(encode("log +491701234 end", Map.of())).doesNotContain("491701234");
+      assertThat(encode("log %2B491701234 end", Map.of())).doesNotContain("491701234");
+    }
+
+    @Test
     void leaveDigitRunsInsideIdentifiersAlone() {
       // NOT a leak: the leading boundary is deliberate. Masking digit runs glued to a word
       // would take process-definition keys and epoch-milli timestamps with it.

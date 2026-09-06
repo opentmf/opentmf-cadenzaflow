@@ -188,7 +188,18 @@
 
         <!-- German phone numbers in the +49… / 0049… / 0… shapes, with the `+`
              also accepted encoded (`%2B`, `%252B`, either case) - the platform
-             fragment's alternation. A subject's MSISDN arrives in process-variable
+             fragment's alternation.
+
+             THE ONE RULE THAT KEEPS `\b` IN ITS GUARD, and it is not decoration.
+             This rule's alternation can begin with `+`, a NON-word character, and
+             `\b` before a non-word character fires when the preceding character IS
+             a word character - the inverse of every other rule here. Dropping it
+             for the uniform guard NARROWED the rule: `x+491701234` masked before
+             and stopped masking, because a 9-digit number is below the 12-digit-run
+             rule's floor and nothing else caught it. So the guard is the UNION of
+             the rule's own boundary and the shared one, which is strictly wider
+             than either. Measured against the 1.2.2 file across every rule x
+             prefix: 0 narrowings, many widenings. A subject's MSISDN arrives in process-variable
              dumps in clear, so the e-mail attribution argument below does NOT
              cover this: there is no actor to preserve in a customer's number.
 
@@ -199,7 +210,7 @@
              behind an encoded prefix too - so taking it would import known false
              positives for coverage this service already has. Revisit only if the
              digit-run rule is ever loosened. -->
-        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:(?:\+|%(?:25)?2[Bb]|00)49|0)[1-9]\d{6,13}\b</value>
+        <value>(?:\b|(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:(?:\+|%(?:25)?2[Bb]|00)49|0)[1-9]\d{6,13}\b</value>
 
         <!-- Runs of 12+ digits (card numbers, long account refs).
              DIVERGENCE (stricter): the template deliberately leaves the
