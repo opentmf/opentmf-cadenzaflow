@@ -94,18 +94,18 @@
 
     <archunit.version>1.5.0</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <pitest-maven.version>1.25.9</pitest-maven.version>
+    <pitest-maven.version>1.30.0</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
     <sonar-plugin.version>5.7.0.6970</sonar-plugin.version>
-    <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
-    <maven-surefire-plugin.version>3.5.6</maven-surefire-plugin.version>
-    <maven-failsafe-plugin.version>3.5.6</maven-failsafe-plugin.version>
+    <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
     <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
@@ -676,8 +676,8 @@
     <profile>
       <id>aws</id>
       <properties>
-        <aws-msk-iam-auth.version>2.3.7</aws-msk-iam-auth.version>
-        <awssdk.version>2.54.10</awssdk.version>
+        <aws-msk-iam-auth.version>2.3.8</aws-msk-iam-auth.version>
+        <awssdk.version>2.54.13</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
