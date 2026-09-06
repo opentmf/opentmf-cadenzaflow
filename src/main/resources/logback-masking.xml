@@ -88,22 +88,64 @@
         </valueMask>
 
         <!-- HTTP auth schemes ("Bearer eyJ…", "Basic dXNlcj…"). Must stay ahead of
-             the bare-JWT rule below so the scheme survives for triage. -->
+             the bare-JWT rule below so the scheme survives for triage.
+
+             The separator alternation is not decoration. A credential that reaches
+             the log inside a REQUEST LINE rather than a header is URL-encoded, so
+             the space is `%20` (or `%2520` when something double-encodes, or `+` in
+             a query string). Requiring a literal \s meant none of those matched, and
+             what escaped then depended on the credential: an opaque bearer token or
+             a Basic pair was written WHOLE, while a JWT lost only its header segment
+             because the bare-JWT rule below happened to catch its payload. Measured,
+             not theorised. Keep this rule and the guard below in step.
+
+             This alternation is the platform floor's, byte-for-byte with
+             dnms-service-template 1.0.7. -->
         <valueMask>
-          <value>(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}</value>
+          <value>(?i)\b(bearer|basic)(?:\s|%(?:25)?20|\+)+[A-Za-z0-9._~+/=-]{8,}</value>
           <mask>$1 ****</mask>
         </valueMask>
 
-        <!-- Bare JWTs anywhere (every JWT starts with base64url of '{"' = eyJ). -->
+        <!-- Bare JWTs anywhere (every JWT starts with base64url of '{"' = eyJ).
+
+             The three lookbehinds replace a plain `\b`, which failed whenever the
+             preceding character was a word character not part of the token: `%20`
+             ends in `0`, so no boundary existed.
+
+             KNOWN DIVERGENCE FROM THE PLATFORM FLOOR, and the one case where the
+             "never diverge on a credential rule" note above is knowingly broken.
+             dnms-service-template 1.0.7 took the auth alternation above but left
+             THIS rule on the original `\b`. Its residue is narrower than ours was,
+             because its auth rule already catches `Bearer%20…`; what still slips
+             there is a scheme-less token after an encoded separator, `?token=%20eyJ…`.
+             Tracked as template 1.0.8, owned by the template; copy the corrected
+             rule back and delete this note once it lands.
+
+             A bare `(?&lt;![A-Za-z0-9])` guard was considered and REJECTED - record
+             this so it is not proposed again. It excludes `0`, which is the very
+             character `%20` ends in, so it fails to fix the encoded-separator case
+             it would be written for; `maskABareJwtThatFollowsAnEncodedSeparator`
+             fails against it. Hence the explicit alternatives.
+
+             Why this rule still mattered when the header was all that escaped: a
+             JWT's PAYLOAD segment also begins with `eyJ` and is preceded by a dot,
+             so the old rule matched there and masked payload plus signature,
+             leaving only the header. That accident made the defect look harmless on
+             JWTs while opaque bearer tokens - no dots, no `eyJ` - leaked whole. Do
+             not let it lull a future edit: the guard here is what covers a token
+             that has no second `eyJ` to fall back on. -->
         <valueMask>
-          <value>\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}</value>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%20)|(?&lt;=%2520))eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}</value>
           <mask>****</mask>
         </valueMask>
 
         <!-- Card PANs written in separated groups (4-4-4-2..4). The unseparated
-             form is covered by the stricter digit-run rule below. -->
+             form is covered by the stricter digit-run rule below.
+             The separator class carries the same `%20` alternation as the auth rule,
+             for the same reason: a PAN arriving in a request line is encoded, and
+             neither this rule nor the digit-run rule could see it otherwise. -->
         <valueMask>
-          <value>\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{2,4}\b</value>
+          <value>\b\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{2,4}\b</value>
           <mask>****</mask>
         </valueMask>
 

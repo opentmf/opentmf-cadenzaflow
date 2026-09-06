@@ -19,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 
 /**
@@ -35,6 +37,26 @@ import org.slf4j.Logger;
 class LogbackMaskingTests {
 
   private static final String MASK = "****";
+
+  /**
+   * A realistic HS256 JWT - full-length signature, not a short placeholder. The length matters:
+   * with a signature under 8 characters the bare-JWT rule stops matching and a test built on such
+   * a token measures the canary rather than the rules.
+   */
+  private static final String JWT_HEADER = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
+
+  private static final String JWT =
+      JWT_HEADER
+          + ".eyJzdWIiOiJnb2toYW5AZXhhbXBsZS5jb20iLCJleHAiOjE3NTUwMDAwMDB9"
+          + ".dBjftJeZ4CVPmB92K27uhbUJU1p1r3wa9WFn5EPjLZw";
+
+  /**
+   * An OPAQUE bearer token: no dots, no {@code eyJ}, so the bare-JWT rule cannot rescue it if the
+   * auth rule misses. This is the vector that leaked a whole credential, not a JWT.
+   */
+  private static final String OPAQUE_TOKEN = "AT-9f3c1d7b04e6a258cc190fbe77d3a4e2c518d0";
+
+  private static final String BASIC_CREDENTIALS = "dXNlcjpodW50ZXIyU0VDUkVU";
 
   private static final String CONFIGURATION =
       """
@@ -188,6 +210,64 @@ class LogbackMaskingTests {
       String json = encode("card 4111 1111 1111 1111 declined", Map.of());
 
       assertThat(json).doesNotContain("4111 1111 1111 1111").contains("card " + MASK);
+    }
+
+    /**
+     * A credential that arrives in a REQUEST LINE rather than a header is URL-encoded, so the
+     * separator after the scheme is not whitespace. Before 1.2.2 the auth rule required a literal
+     * {@code \s}, so every percent-encoded vector below fell through to the bare-JWT rule - which
+     * covers only JWTs, and could not fire anyway because {@code %20} ends in a word character
+     * and killed its {@code \b}. An opaque token has neither escape, so it was logged in full.
+     */
+    @ParameterizedTest(name = "separator [{0}]")
+    @ValueSource(strings = {" ", "%20", "%2520", "+", "\t"})
+    void maskOpaqueBearerTokensWhateverSeparatesTheSchemeFromTheToken(String separator) {
+      String json =
+          encode(
+              "GET /engine-rest/task?probe=Bearer" + separator + OPAQUE_TOKEN + " rejected",
+              Map.of());
+
+      assertThat(json).doesNotContain(OPAQUE_TOKEN).contains(MASK);
+    }
+
+    @ParameterizedTest(name = "separator [{0}]")
+    @ValueSource(strings = {" ", "%20", "%2520", "+"})
+    void maskBasicCredentialsWhateverSeparatesTheSchemeFromTheToken(String separator) {
+      String json =
+          encode("upstream sent Basic" + separator + BASIC_CREDENTIALS, Map.of());
+
+      assertThat(json).doesNotContain(BASIC_CREDENTIALS).contains(MASK);
+    }
+
+    /**
+     * The JWT case is asserted on the WHOLE token, header segment included. Asserting only that
+     * the signature disappeared would have passed on the broken rules: a JWT's payload segment
+     * also starts with {@code eyJ} and is preceded by a dot, so the old bare-JWT rule fired there
+     * and masked everything except the header. That accident is why the defect looked harmless
+     * for JWTs and was measured as harmless-looking output.
+     */
+    @ParameterizedTest(name = "separator [{0}]")
+    @ValueSource(strings = {" ", "%20", "%2520", "+", "\t"})
+    void maskEveryJwtSegmentIncludingTheHeader(String separator) {
+      String json =
+          encode("GET /engine-rest/task?probe=Bearer" + separator + JWT, Map.of());
+
+      assertThat(json).doesNotContain(JWT).doesNotContain(JWT_HEADER).contains(MASK);
+    }
+
+    @Test
+    void maskABareJwtThatFollowsAnEncodedSeparator() {
+      // The lookbehind guard on its own: no scheme, just an encoded separator ahead of the token.
+      String json = encode("GET /engine-rest/task?probe=%20" + JWT, Map.of());
+
+      assertThat(json).doesNotContain(JWT).doesNotContain(JWT_HEADER).contains(MASK);
+    }
+
+    @Test
+    void maskCardNumbersSeparatedByEncodedSpaces() {
+      String json = encode("pan=4111%204111%204111%201111 declined", Map.of());
+
+      assertThat(json).doesNotContain("4111%204111").contains(MASK);
     }
   }
 

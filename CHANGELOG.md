@@ -4,6 +4,79 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.2] - 2026-09-06
+
+### Fixed
+
+- **The service logs again.** Every release from 1.0.0 through 1.2.1 shipped a
+  `logback-spring.xml` that selected its root appender with
+  `<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>`. Logback 1.5's `IfModelHandler`
+  ignores the `condition` **attribute** — it branches only when a `<condition class="…"/>`
+  **element** has pushed a branch state — so neither the `<then>` nor the `<else>` ever
+  ran and the root logger was left with an **empty appender list**. The result is the
+  worst shape a logging defect can take: the application starts, serves traffic and
+  reports healthy, while writing nothing at all. The only trace is two status lines on
+  stderr (`The 'condition' attribute in <if> element is deprecated`, then `Appender named
+  [JSON] not referenced. Skipping further processing.`) among the JVM's own startup noise.
+  It is **not** the familiar missing-janino case: janino and commons-compiler are on the
+  runtime classpath, and the configuration failed anyway.
+
+  If you run any earlier version and have not mounted your own logback file via
+  `LOGGING_CONFIG`, **you have no application logs** — not sparse logs, none — and the
+  gap covers the whole life of that deployment. There is nothing to recover; the events
+  were never written. Operators who did mount a file were unaffected, and that mount
+  stays valid after this release.
+
+  The appender is now chosen by plain variable substitution
+  (`<appender-ref ref="${LOGGING_APPENDER:-CONSOLE}"/>`), with both images setting
+  `LOGGING_APPENDER=JSON` and an unset variable falling back to the console. No
+  conditional machinery is involved, so there is no branch left that can decline to
+  execute. `LogbackAppenderSelectionTests` asserts that the shipped file attaches an
+  appender to the root logger in every selector state; it fails against the 1.2.1 file.
+
+### Security
+
+- **Credentials in a request line are masked again, whatever separates them from the
+  scheme.** The auth-scheme rule in `logback-masking.xml` required literal whitespace
+  after `Bearer`/`Basic`. A credential that reaches the log inside a **request line**
+  rather than a header is URL-encoded, so the separator is `%20` — or `%2520` when
+  something double-encodes, or `+` in a query string — and the rule simply did not match.
+  The bare-JWT rule could not cover the gap either: it was anchored with `\b`, and `%20`
+  ends in the word character `0`, so no boundary existed where the token began.
+
+  What actually escaped depends on the credential, and the distinction matters when
+  judging exposure:
+
+  - **`Basic` credentials and opaque (non-JWT) bearer tokens leaked in full.** Neither
+    has a second `eyJ` for the JWT rule to catch, so the entire secret was written
+    verbatim.
+  - **JWTs leaked only their header segment** (`{"alg":…,"typ":…}` — no secret). Their
+    payload and signature were masked by accident: a JWT's payload segment also starts
+    with `eyJ` and is preceded by a dot, so the bare-JWT rule matched *there*. This is
+    why the defect looked mild in JWT-shaped samples while opaque credentials were
+    leaking whole.
+  - **Card numbers separated by `%20`** were matched by neither the grouped-PAN rule
+    (which expected a space or hyphen) nor the digit-run rule (which the encoding broke
+    up), so they leaked too.
+
+  Both the auth rule and the grouped-PAN rule now accept `%20`, `%2520` and `+` as
+  separators, and the bare-JWT rule's `\b` is replaced by an explicit set of lookbehinds.
+  A plain `(?<![A-Za-z0-9])` guard is deliberately *not* what shipped: it excludes `0`,
+  the very character `%20` ends in, and so fails to fix the case it is aimed at — the
+  encoded separators are spelled out as their own alternatives instead. One test per
+  separator per credential shape; all of them fail against the 1.2.1 file.
+
+  The bare-JWT rule is consequently ahead of the shared platform fragment
+  (`dnms-service-template` 1.0.7), which still anchors that rule with `\b`; the
+  divergence is recorded in `logback-masking.xml` and is to be resolved in the template
+  rather than kept here.
+
+  Scope, so this is not over-read: only the value-regex net was affected. The field-name
+  path masks (`password`, `authorization`, `access_token`, …) always worked, so
+  structured and MDC credentials were never exposed by this. The deliberate divergences
+  from the platform fragment are untouched — no e-mail value regex (the address is the
+  Camunda actor id on every audit line), whole-value IBAN, and the 12-digit run.
+
 ## [1.2.1] - 2026-09-03
 
 ### Security

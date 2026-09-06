@@ -37,6 +37,13 @@ EXPOSE ${DEBUG_PORT}
 # ENV: an env var of that name would bind to the property and restate its own default.
 EXPOSE 16000
 
+# The log shape. logback-spring.xml selects the root appender by plain variable
+# substitution (`${LOGGING_APPENDER:-CONSOLE}`), so an image logs masked JSON while a
+# developer running the jar gets the console. Unlike the port variables above this is a
+# pure Logback variable - there is no `logging.appender` Spring property for it to bind
+# to - so it is real configuration, not a restated default.
+ENV LOGGING_APPENDER=JSON
+
 ENV JVM_OPTS="-Duser.timezone=UTC -Dserver.port=${SERVER_PORT}"
 ENV DEBUG_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${DEBUG_PORT}"
 

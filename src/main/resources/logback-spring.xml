@@ -11,20 +11,26 @@
 	     stream, so it is masked JSON; on a developer machine it is a human-read
 	     console. JSON-vs-console is a DEPLOYMENT concern - an operator who wants
 	     the other shape points LOGGING_CONFIG at their own file rather than
-	     flipping an application property. -->
-	<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>
-		<then>
-			<root level="INFO">
-				<appender-ref ref="JSON" />
-			</root>
-		</then>
-		<else>
-			<include resource="org/springframework/boot/logging/logback/console-appender.xml" />
-			<root level="INFO">
-				<appender-ref ref="CONSOLE" />
-			</root>
-		</else>
-	</if>
+	     flipping an application property. Both images set LOGGING_APPENDER=JSON;
+	     an unset variable falls back to CONSOLE, which is what a developer running
+	     the jar or `spring-boot:run` gets.
+
+	     Selected by plain variable substitution, and deliberately NOT by <if>.
+	     Logback 1.5's IfModelHandler ignores the `condition` ATTRIBUTE - it branches
+	     only when a <condition class="..."/> ELEMENT has pushed a BranchState - so
+	     the previous `<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>` took
+	     NEITHER branch and left the root logger with no appender at all. It is not
+	     the missing-janino case: janino is on the runtime classpath and the config
+	     still failed. The failure is silent apart from two status lines ("The
+	     'condition' attribute in <if> element is deprecated" and "Appender named
+	     [JSON] not referenced"), so every release from 1.0.0 through 1.2.1 shipped a
+	     service that logged nothing unless an operator mounted their own file.
+	     Do not reintroduce <if> here - LogbackAppenderSelectionTests fails when the
+	     root logger ends up with no appender. -->
+	<include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+	<root level="INFO">
+		<appender-ref ref="${LOGGING_APPENDER:-CONSOLE}" />
+	</root>
 
 	<!-- Spring Framework -->
 	<logger name="org.springframework" level="INFO" />

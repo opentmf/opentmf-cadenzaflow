@@ -1579,11 +1579,36 @@ which empties the nine counters at source.
 
 ### 9.2 Logs
 
-The console is human-readable during development. In a cluster
-(`KUBERNETES_SERVICE_HOST` present) the service logs **masked JSON**: fields named
-like credentials or personal data (`password`, `client_secret`, `*token*`,
-`authorization`, `email`, `iban`, `msisdn`, …) are replaced with `****`, as are
-IBANs, German phone numbers and long digit runs found anywhere in a message.
+**Which appender is used** is chosen by `LOGGING_APPENDER`. Both published images set
+it to `JSON`; if the variable is unset — a developer running the jar or
+`spring-boot:run` — it falls back to `CONSOLE`, which is human-readable.
+
+| `LOGGING_APPENDER` | Output |
+|---|---|
+| `JSON` (both images) | masked JSON, one object per line |
+| `CONSOLE` | Spring Boot's human-readable console layout |
+| unset | `CONSOLE` |
+
+> **Upgrading from 1.2.1 or earlier: those versions logged nothing.** The appender used
+> to be selected by `<if condition='isDefined("KUBERNETES_SERVICE_HOST")'>`, and Logback
+> 1.5 ignores the `condition` *attribute*, so neither branch ran and the root logger had
+> no appender at all. The service started and served traffic normally while writing no
+> application log lines. If a deployment on an earlier version appears to have healthy
+> pods and empty logs, this is why, and the only fix is this release or a mounted
+> `LOGGING_CONFIG` file. See the 1.2.2 CHANGELOG entry.
+
+In JSON mode the service logs **masked** JSON: fields named like credentials or personal
+data (`password`, `client_secret`, `*token*`, `authorization`, `email`, `iban`,
+`msisdn`, …) are replaced with `****`, as are IBANs, German phone numbers, long digit
+runs, card numbers, and `Bearer`/`Basic` credentials and JWTs found anywhere in a
+message.
+
+Credentials are masked whether the scheme is followed by a space or by an encoded
+separator (`%20`, `%2520`, `+`) — which is what a credential looks like when it arrives
+inside a **request line** rather than a header, for example a token accidentally passed
+as a query parameter. Before 1.2.2 only the literal-space form was matched, so
+`Basic%20…` and opaque `Bearer%20…` tokens were written verbatim; see the 1.2.2
+CHANGELOG entry for the exact exposure.
 
 E-mail addresses inside message text are deliberately *not* masked: the engine user
 id **is** the mail address, so masking it would erase the actor from every
@@ -1591,6 +1616,8 @@ authorization and task line. Structured `email` fields are masked.
 
 To use your own layout, point `LOGGING_CONFIG` at your file; including
 `logback-masking.xml` (shipped in the jar) gives it the same masking with one line.
+Such a file must attach an appender to the root logger itself — and should not use
+`<if condition=…>` to decide which, for the reason in the upgrade note above.
 
 To see engine request/response bodies, raise
 `org.glassfish.jersey.logging.LoggingFeature` to `DEBUG`.
