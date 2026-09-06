@@ -80,10 +80,33 @@
              bare separator, so JSON-inside-a-message (`"password":"x"`) is not
              matched by it. Structured occurrences are the path masks' job. -->
 
+        <!-- ===== THE SHARED LEADING GUARD ==============================
+             Every value rule below starts with the same three-way lookbehind:
+
+               (?:(?<![A-Za-z0-9])|(?<=%[0-9A-Fa-f]{2})|(?<=%25[0-9A-Fa-f]{2}))
+
+             It replaces a plain `\b`, which cannot fire when the character
+             before the value is a word character. Percent-escapes end in word
+             characters - `%20` in `0`, `%2B` in `B` - so any value reached
+             through a URL-encoded request line sat behind a boundary that never
+             existed. 1.2.2 fixed the encoded SEPARATOR inside the auth, JWT and
+             grouped-PAN rules but left every rule's leading anchor alone, so an
+             encoded `+` still defeated the phone rule AND the 12-digit-run rule
+             that is this service's PAN net: `?pan=%2B4111111111111111` was
+             logged in clear. 1.2.3 re-anchors all seven.
+
+             What it deliberately does NOT do is relax the identifier case. The
+             first alternative still refuses a value glued to a word, so
+             `abc491701234567` stays unmasked - that is the behaviour keeping
+             process-definition keys and epoch-milli timestamps out of the mask,
+             and `leaveDigitRunsInsideIdentifiersAlone` fails if it is widened.
+             The guard only adds "or preceded by a COMPLETE percent-escape". -->
+
         <!-- key=value / key: value secrets inside message text
-             ("password=hunter2", "client_secret: abc"). -->
+             ("password=hunter2", "client_secret: abc"). The separator accepts an
+             encoded `=` (`%3D`/`%253D`) for the same request-line reason. -->
         <valueMask>
-          <value>(?i)\b(password|passwd|pwd|secret|token|pin|otp|apikey|api[-_]key|client[-_]secret)\s*[=:]\s*"?[^\s",;]+</value>
+          <value>(?i)(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(password|passwd|pwd|secret|token|pin|otp|apikey|api[-_]key|client[-_]secret)\s*(?:[=:]|%(?:25)?3[Dd])\s*"?[^\s",;]+</value>
           <mask>$1=****</mask>
         </valueMask>
 
@@ -102,7 +125,7 @@
              This alternation is the platform floor's, byte-for-byte with
              dnms-service-template 1.0.7. -->
         <valueMask>
-          <value>(?i)\b(bearer|basic)(?:\s|%(?:25)?20|\+)+[A-Za-z0-9._~+/=-]{8,}</value>
+          <value>(?i)(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(bearer|basic)(?:\s|%(?:25)?20|\+)+[A-Za-z0-9._~+/=-]{8,}</value>
           <mask>$1 ****</mask>
         </valueMask>
 
@@ -135,7 +158,7 @@
              not let it lull a future edit: the guard here is what covers a token
              that has no second `eyJ` to fall back on. -->
         <valueMask>
-          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%20)|(?&lt;=%2520))eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}</value>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}</value>
           <mask>****</mask>
         </valueMask>
 
@@ -145,7 +168,7 @@
              for the same reason: a PAN arriving in a request line is encoded, and
              neither this rule nor the digit-run rule could see it otherwise. -->
         <valueMask>
-          <value>\b\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{2,4}\b</value>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{2,4}\b</value>
           <mask>****</mask>
         </valueMask>
 
@@ -161,10 +184,22 @@
              DIVERGENCE (stricter): the template keeps country + check digits
              ("DE44****") for payment triage. This service never reconciles
              payments, so the whole value goes. -->
-        <value>\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b</value>
+        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b</value>
 
-        <!-- German phone numbers in the +49… / 0049… / 0… shapes. -->
-        <value>\b(?:\+49|0049|0)[1-9]\d{6,13}\b</value>
+        <!-- German phone numbers in the +49… / 0049… / 0… shapes, with the `+`
+             also accepted encoded (`%2B`, `%252B`, either case) - the platform
+             fragment's alternation. A subject's MSISDN arrives in process-variable
+             dumps in clear, so the e-mail attribution argument below does NOT
+             cover this: there is no actor to preserve in a customer's number.
+
+             DECLINED, with reason: template 1.0.8 also carries a `+`-stripped
+             MSISDN rule anchored on DE 491[5-7] / TR 905, with a stated
+             false-positive rate. It buys nothing here - the 12-digit-run rule
+             below already masks a bare `491…`/`905…` number, and now does so
+             behind an encoded prefix too - so taking it would import known false
+             positives for coverage this service already has. Revisit only if the
+             digit-run rule is ever loosened. -->
+        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:(?:\+|%(?:25)?2[Bb]|00)49|0)[1-9]\d{6,13}\b</value>
 
         <!-- Runs of 12+ digits (card numbers, long account refs).
              DIVERGENCE (stricter): the template deliberately leaves the
@@ -175,7 +210,7 @@
              Deliberately not shorter than 12: process-definition keys, job
              retries and incident counts are numeric too, and masking those
              would gut the operational logs. -->
-        <value>\b\d{12,}\b</value>
+        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{12,}\b</value>
 
         <!-- DELIBERATELY ABSENT: an e-mail value regex.
              DIVERGENCE (looser): the template masks the local part and keeps the

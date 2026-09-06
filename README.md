@@ -1603,12 +1603,16 @@ data (`password`, `client_secret`, `*token*`, `authorization`, `email`, `iban`,
 runs, card numbers, and `Bearer`/`Basic` credentials and JWTs found anywhere in a
 message.
 
-Credentials are masked whether the scheme is followed by a space or by an encoded
-separator (`%20`, `%2520`, `+`) — which is what a credential looks like when it arrives
-inside a **request line** rather than a header, for example a token accidentally passed
-as a query parameter. Before 1.2.2 only the literal-space form was matched, so
-`Basic%20…` and opaque `Bearer%20…` tokens were written verbatim; see the 1.2.2
-CHANGELOG entry for the exact exposure.
+Values are masked whether they arrive plainly or **percent-encoded**, which is what they
+look like inside a **request line** rather than a header — a token, MSISDN or card number
+accidentally passed as a query parameter. That covers both the separator after an auth
+scheme (`Bearer%20…`, `%2520`, `+`) and an encoded prefix ahead of a value
+(`?msisdn=%2B49…`, `?pan=%2B4111…`). Before 1.2.2 only the literal-space form matched, so
+`Basic%20…` and opaque `Bearer%20…` leaked; before 1.2.3 an encoded `+` also defeated the
+phone and card-number rules. See those CHANGELOG entries for the exact exposure.
+
+A value glued to a word is deliberately left alone (`abc491701234567` is not masked), so
+process-definition keys and epoch-milli timestamps stay readable in operational logs.
 
 E-mail addresses inside message text are deliberately *not* masked: the engine user
 id **is** the mail address, so masking it would erase the actor from every

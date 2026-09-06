@@ -291,6 +291,88 @@ class LogbackMaskingTests {
   }
 
   /**
+   * Percent-encoded prefixes, the second half of the defect fixed in 1.2.2.
+   *
+   * <p>1.2.2 taught the auth, JWT and grouped-PAN rules to accept an encoded SEPARATOR
+   * ({@code %20}), but left every other value rule anchored on a bare {@code \b} - which cannot
+   * fire when the preceding character is a word character. An encoded {@code +} is {@code %2B}
+   * and ends in {@code B}, so a value carrying one slipped past the phone rule AND past the
+   * 12-digit-run rule that is this service's stricter PAN net. A card number preceded by an
+   * encoded plus was logged in clear.
+   *
+   * <p>The guard deliberately does NOT relax the identifier case: a digit run glued to a word
+   * ({@code abc491701234567}) still goes unmasked, because that {@code \b} is what keeps
+   * process-definition keys and epoch timestamps out of the mask. {@code leaveDigitRunsInsideIdentifiersAlone}
+   * pins that, so a later widening of the guard has to argue with a failing test.
+   */
+  @Nested
+  @DisplayName("encoded prefixes (%2B, %252B, %20) ahead of a value")
+  class EncodedPrefixes {
+
+    @ParameterizedTest(name = "prefix [{0}]")
+    @ValueSource(strings = {"+", "%2B", "%252B", "%2b"})
+    void maskGermanPhoneNumbersBehindAnEncodedPlus(String plus) {
+      String json = encode("GET /engine-rest/task?msisdn=" + plus + "491701234567", Map.of());
+
+      assertThat(json).doesNotContain("491701234567").contains(MASK);
+    }
+
+    @Test
+    void maskGermanPhoneNumbersInTheNationalAndDoubleZeroShapes() {
+      assertThat(encode("notifying 00491701234567 by sms", Map.of()))
+          .doesNotContain("00491701234567");
+      assertThat(encode("notifying 01701234567 by sms", Map.of())).doesNotContain("01701234567");
+    }
+
+    @Test
+    void maskACardNumberBehindAnEncodedPlus() {
+      // The one that matters most here: the digit-run rule is this service's PAN net, and an
+      // encoded plus defeated it outright.
+      String json = encode("GET /engine-rest/task?pan=%2B4111111111111111", Map.of());
+
+      assertThat(json).doesNotContain("4111111111111111").contains(MASK);
+    }
+
+    @Test
+    void maskAnIbanBehindAnEncodedPlus() {
+      String json = encode("payment %2BDE89370400440532013000 accepted", Map.of());
+
+      assertThat(json).doesNotContain("DE89370400440532013000").contains(MASK);
+    }
+
+    @Test
+    void maskKeyValueSecretsBehindAnEncodedSpace() {
+      String json = encode("query%20password=hunter2 rejected", Map.of());
+
+      assertThat(json).doesNotContain("hunter2").contains(MASK);
+    }
+
+    @Test
+    void maskAnOpaqueBearerTokenBehindAnEncodedSpace() {
+      String json =
+          encode("GET /t?q=%20Bearer%20" + OPAQUE_TOKEN + " rejected", Map.of());
+
+      assertThat(json).doesNotContain(OPAQUE_TOKEN).contains(MASK);
+    }
+
+    @Test
+    void leaveDigitRunsInsideIdentifiersAlone() {
+      // NOT a leak: the leading boundary is deliberate. Masking digit runs glued to a word
+      // would take process-definition keys and epoch-milli timestamps with it.
+      String json = encode("definition abc491701234567 deployed", Map.of());
+
+      assertThat(json).contains("abc491701234567");
+    }
+
+    @Test
+    void leaveOrdinaryEngineNumbersAlone() {
+      String json = encode("incident count 42 retries 3 definition v12", Map.of());
+
+      assertThat(json).contains("42").contains("v12");
+    }
+  }
+
+  /**
    * The three places this service's PII rules deliberately differ from the shared platform
    * fragment in {@code pia-team/dnms-service-template}. Each case exists so the difference is
    * provably a decision rather than drift: an edit that "aligns with the template" fails here and

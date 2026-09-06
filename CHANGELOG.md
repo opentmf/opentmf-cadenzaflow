@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] - 2026-09-06
+
+### Security
+
+- **Personal data and card numbers reached by a URL-encoded `+` are masked again.**
+  1.2.2 taught the auth, JWT and grouped-PAN rules to accept an encoded *separator*
+  (`%20`), but every value rule still began with a plain `\b`. A word boundary cannot
+  fire when the preceding character is a word character, and percent-escapes end in
+  word characters — `%20` in `0`, `%2B` in `B` — so any value reached through an
+  encoded request line sat behind a boundary that never existed.
+
+  Two things escaped, and the second matters more than the first:
+
+  - **German phone numbers written with an encoded `+`** (`?msisdn=%2B491701234567`,
+    and the double-encoded `%252B` form) were logged verbatim. This is not covered by
+    the deliberate e-mail divergence, which trades a bounded risk for keeping the
+    *actor* readable: a customer's MSISDN in a process-variable dump has no actor to
+    preserve.
+  - **Card numbers behind an encoded `+`** (`?pan=%2B4111111111111111`) were logged
+    verbatim. The 12-digit-run rule is this service's stricter PAN net, and the encoded
+    prefix defeated it outright — so the gap was not limited to phone numbers, which is
+    how it was first reported.
+
+  All seven value rules now share one leading guard,
+  `(?:(?<![A-Za-z0-9])|(?<=%[0-9A-Fa-f]{2})|(?<=%25[0-9A-Fa-f]{2}))`, so any complete
+  percent-escape is accepted as a boundary. The phone rule additionally takes the
+  platform fragment's `(?:\+|%(?:25)?2[Bb]|00)` prefix alternation, and the key=value
+  rule accepts an encoded `=`.
+
+  **What deliberately did not change:** the guard still refuses a value glued to a word,
+  so `abc491701234567` stays unmasked. That boundary is what keeps process-definition
+  keys and epoch-milli timestamps out of the mask, and a test pins it so a later widening
+  has to argue with a failing build. Template 1.0.8's `+`-stripped MSISDN rule was
+  **declined**: the digit-run rule already covers a bare `491…`/`905…` number, now behind
+  an encoded prefix too, so adopting it would import its stated false-positive rate for
+  coverage this service already has.
+
+  Field-name path masks were never affected. One test per vector per rule; all of them
+  fail against the 1.2.2 file.
+
 ## [1.2.2] - 2026-09-06
 
 ### Fixed
