@@ -48,7 +48,10 @@ env:
   # the report must describe the SAME branch: spelling the name out per call is
   # what once let the report quote `main`'s measures under a `develop` heading.
   SONAR_BRANCH: develop
-  TRIVY_VERSION: 0.72.0
+  # Kept in step with the DNMS ci-v1 gate, so a local pre-cut scan on this version
+  # predicts what the release run will say. A newer scanner can surface findings the
+  # pinned one missed, which is the point: this gate should fail closed.
+  TRIVY_VERSION: 0.74.0
   # The cosign BINARY version, pinned in one place because two jobs now install it:
   # the build legs attest a per-architecture SBOM, the merge job signs the index.
   # A split between them would sign and attest the same release with two majors.
