@@ -1,4 +1,29 @@
 ---
+# EVERYTHING IN THIS FILE IS A STANDALONE DEFAULT, NOT A CONTRACT.
+#
+# `opentmf.security` describes who may call this service, in role names only a
+# deployment can know. So it is published only when nobody else is configuring
+# the application: activate any Spring profile and this document does not load
+# at all, leaving the deployment the sole author of its own ACL.
+#
+# Why gating rather than "our list wins": across property sources Spring binds a
+# list from the highest-precedence source that defines it - lists REPLACE, maps
+# merge per key - so a deployment that writes its own block already overrides
+# this one cleanly. The failure this guards against is the other one: a
+# deployment that writes NO block, inherits the list below, and serves
+# /actuator/metrics and /actuator/loggers unauthenticated while believing its
+# own platform defaults apply. That is not hypothetical; it is what happened,
+# and it is why the guarantee must not depend on a consumer remembering.
+#
+# Fails closed: with this document inactive and no `jwk-set-uri` or `issuers`
+# supplied, openid-rbac-security refuses to start rather than serving
+# unauthenticated - loudly, at BOOT, where no render-time gate can see it.
+# See docs/deployment-owns-security-plan.md.
+spring:
+  config:
+    activate:
+      on-profile: standalone
+
 opentmf:
   security:
     jwk-set-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/certs
@@ -54,13 +79,34 @@ opentmf:
         - /actuator
         - /actuator/health
         - /actuator/health/**
-        - /actuator/info
         - /actuator/metrics
         - /actuator/metrics/**
-        - /actuator/loggers
-        - /actuator/loggers/**
         - /actuator/prometheus
+        # `/actuator/info` is deliberately absent: this image does not expose it
+        # (see management.endpoints.web.exposure.include in application.yml), so
+        # whitelisting it only widened the unauthenticated surface description
+        # without enabling anything.
+        #
+        # `/actuator/loggers` and `/actuator/loggers/**` are deliberately absent
+        # too, and this IS a change from 1.2.3. They were whitelisted while
+        # `management.endpoint.loggers.access` is `unrestricted`, and that pair
+        # permitted an ANONYMOUS WRITE: a scratch reproduction answered 204 to a
+        # tokenless POST /actuator/loggers/org.cadenzaflow and the level moved
+        # INFO -> TRACE. Raising a logger is not a read-only act here - README
+        # §9.2 documents DEBUG on jersey's LoggingFeature as the way to log
+        # request and response bodies. Unlisted paths fall back to
+        # `management.other-endpoints`, which defaults to AUTHENTICATED, so a
+        # valid token is now required to read logger levels and the rule below
+        # governs changing them.
       secure-endpoints:
+        # Changing a log level is an admin act. `loggers.access` stays
+        # `unrestricted` on purpose - dropping it to `read_only` would disable
+        # the endpoint's write side outright and leave this rule with nothing to
+        # authorise, which is the wrong fix for the same defect.
+        - method: POST
+          path: /actuator/loggers/**
+          roles:
+            - admin
         - method: GET
           path: /actuator/env
           roles:

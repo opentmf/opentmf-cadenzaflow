@@ -1,0 +1,20 @@
+# Stands in for a platform-mounted config file (dnms-deploy's `profilePlatform`).
+# Deliberately SHORTER than the image's standalone whitelist: under the
+# index-merge theory this plan originally carried, the image's tail entries would
+# survive past index 3. They must not.
+opentmf:
+  security:
+    issuers:
+      - issuer-uri: https://idp.example.test/realms/platform
+        authorities-claim: platform_roles
+    user-claim: sub
+    management:
+      whitelist:
+        - /actuator/health
+        - /actuator/health/**
+        - /actuator/prometheus
+      secure-endpoints:
+        - method: GET
+          path: /actuator/metrics/**
+          roles:
+            - dnms-admin

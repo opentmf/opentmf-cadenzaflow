@@ -4,7 +4,15 @@
 (formerly Azure AD), including scenarios where both providers are active at the
 same time.
 
-**Status:** analysis for decision — no implementation started.
+**Status:** ⚠ **SUPERSEDED IN PART — this was pre-implementation analysis, and the decision
+it was written for has since been taken and shipped.** `cadenzaflow-entra-identity-4` is in
+the pom and in the published image (`cadenzaflow-entra-identity.version`, 1.2.0 as of
+1.3.0), so the Entra identity provider this document treats as hypothetical now exists.
+Multi-issuer support ships too — see `DualIssuerIT` and README §8.3/§8.4.
+
+Kept because the scenario comparison and the risk list are still the clearest write-up of
+the trade-offs. Read the layer tables as "what was true before the plugin existed", not as
+the current state; corrected inline where the difference would mislead.
 
 ---
 
@@ -24,12 +32,14 @@ Two structural facts that shape every scenario:
 - **Layers 1 and 2 are provider-agnostic by design.** They speak standard OIDC
   (JWKS validation, authorization-code flow). Pointing them at another OIDC
   provider is configuration.
-- **Layer 3 is the only Keycloak-specific component.** It implements the
-  engine's read-only identity SPI against Keycloak's Admin API. No equivalent
-  exists for Entra ID in the ecosystem. Without a working layer 3, webapp
-  logins authenticate (layer 2) but the engine cannot resolve the user, and
-  Cockpit falls back to its built-in login form — a failure mode we have
-  observed and diagnosed in practice.
+- **Layer 3 was, when this was written, the only Keycloak-specific component.** It
+  implements the engine's read-only identity SPI against Keycloak's Admin API.
+  ⚠ **No longer true:** `cadenzaflow-entra-identity-4` implements the same SPI against
+  Microsoft Graph and ships in the image, so an Entra ID equivalent of layer 3 does exist
+  — see `docs/entra-identity-plugin-plan.md` and README §8.3. The consequence described
+  next still holds for any provider with *no* layer 3: webapp logins authenticate
+  (layer 2) but the engine cannot resolve the user, and Cockpit falls back to its built-in
+  login form — a failure mode we have observed and diagnosed in practice.
 
 Also relevant: **layer 1 already authorizes purely on validated token claims.**
 `engine-rest` API calls never consult the identity plugin. This is the trust

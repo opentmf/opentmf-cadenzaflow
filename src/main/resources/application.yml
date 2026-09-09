@@ -1,5 +1,19 @@
 ---
 spring:
+  # Activated ONLY when nothing else is. Everything this image ships that a
+  # DEPLOYMENT ought to own - the whole `opentmf.security` block in
+  # config-security.yml, and the role-bearing actuator settings below - is gated
+  # on this profile, so a platform that sets SPRING_PROFILES_ACTIVE becomes the
+  # sole author of its own security rather than inheriting ours.
+  #
+  # Deliberately NOT a Dockerfile ENV: an ENV expresses "the image's opinion",
+  # which a deployment must know about to replace. `spring.profiles.default`
+  # expresses "the default when nobody has an opinion", and switches itself off
+  # the moment a deployment activates any profile at all - without the
+  # deployment having to know this file exists. See
+  # docs/deployment-owns-security-plan.md §3.1.
+  profiles:
+    default: standalone
   autoconfigure:
     exclude:
     - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
@@ -65,10 +79,15 @@ management:
           - env
           - prometheus
   endpoint:
-    env:
-      show-values: when_authorized
-      roles:
-        - admin
+    # `management.endpoint.env.*` is deliberately absent here and set only under
+    # the standalone profile at the foot of this file. Its `roles` name THIS
+    # project's vocabulary (reader/writer/admin), which is meaningless to a
+    # consumer, and Spring Boot reads an EMPTY roles list as "every
+    # authenticated user is authorized" - so shipping the roles ungated would
+    # hand a deployment unsanitized env values (datasource credentials among
+    # them) for any authenticated caller that reaches the endpoint. Left unset,
+    # Boot's own default `show-values: never` applies and values stay masked
+    # until the deployment opts in.
     loggers:
       access: unrestricted
     health:
@@ -78,3 +97,19 @@ management:
   server:
     base-path: /
     port: 16000
+
+---
+# Standalone only - see `spring.profiles.default` at the head of this file.
+# A deployment that activates any profile gets Boot's defaults here and decides
+# for itself who may read unsanitized environment values.
+spring:
+  config:
+    activate:
+      on-profile: standalone
+
+management:
+  endpoint:
+    env:
+      show-values: when_authorized
+      roles:
+        - admin

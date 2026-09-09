@@ -245,6 +245,78 @@ engine's own checks.
 map them onto whatever their provider issues — see
 [§8.5](#85-overriding-endpoint-roles).
 
+### 3.5 A deployment that sets any profile owns `opentmf.security`
+
+**Since 1.3.0.** Everything in §3.3 is a *standalone default*, not a contract. The
+whole `opentmf.security` block — the issuer, `user-claim`, and both the main-port and
+management ACLs — plus the role-bearing actuator settings, are published only under a
+`standalone` profile, activated by `spring.profiles.default: standalone` in
+`application.yml`.
+
+| How you run it | What this image contributes to `opentmf.security` |
+|---|---|
+| `docker run` with no profile set | the standalone defaults of §3.3 |
+| any `SPRING_PROFILES_ACTIVE` value at all | **nothing** |
+
+`spring.profiles.default` applies *only* when no profile is active, so the switch
+needs no cooperation: a deployment that activates a profile — as every platform
+deployment does — stops activating `standalone` automatically, without having to know
+this file exists.
+
+**If you activate a profile you must supply your own security block.** With neither
+`opentmf.security.jwk-set-uri` nor `opentmf.security.issuers` set, openid-rbac-security
+**refuses to start**. That is deliberate: the alternative to failing closed is serving
+unauthenticated.
+
+> ⚠ **It fails at boot, not at render time.** A pipeline that lints and templates your
+> manifests cannot see a missing property that only the application validates. Bring up
+> one instance and watch it become ready before believing a green pipeline.
+
+#### Why this exists, and the trap it removes
+
+Before 1.3.0 this file was imported unconditionally, so a deployment that mounted **no**
+security block inherited this image's — in role names meaningless to it, and with no
+signal that it had happened. On the DNMS platform chart that meant `/actuator`,
+`/actuator/metrics` and `/actuator/loggers` answering **200 anonymously** on the
+management port, while the deployment believed its own platform defaults applied.
+
+It is worth being precise about the mechanism, because the first analysis of it was
+wrong. Across property sources Spring binds a list from the **highest-precedence source
+that defines it**: maps merge per key, **lists replace**. So a deployment that wrote its
+own whitelist always did override this one, entry for entry — there was never a hybrid
+list stitched together by index. The danger was the quieter one: writing nothing and
+being governed by an ACL you did not author. Removing the image as an author fixes that
+without asking every consumer to remember.
+
+#### What to set when you take ownership
+
+At minimum, an issuer and the ACLs you want. A deployment mounting an
+`application-<profile>.yaml` typically supplies:
+
+```yaml
+opentmf:
+  security:
+    issuers:
+      - issuer-uri: https://idp.example/realms/yours
+        authorities-claim: your_roles
+    user-claim: sub
+    secure-endpoints: [ ... ]          # main port, see §8.5
+    management:
+      whitelist:                       # unauthenticated management paths
+        - /actuator/health
+        - /actuator/health/**
+        - /actuator/prometheus
+      secure-endpoints:
+        - method: POST
+          path: /actuator/loggers/**
+          roles: [ your-admin-role ]
+```
+
+Anything you leave out of `management.whitelist` falls back to
+`opentmf.security.management.other-endpoints`, which defaults to `AUTHENTICATED` — so
+omission is safe, not open. Keep `/actuator/health/**` and `/actuator/prometheus` there
+or you will break probes and scraping.
+
 ---
 
 ## 4. Use cases

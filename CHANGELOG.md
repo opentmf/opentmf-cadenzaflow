@@ -4,6 +4,75 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-09-09
+
+### BREAKING CHANGES
+
+- **A deployment that activates any Spring profile now owns `opentmf.security` entirely.**
+  Everything this image ships that a *deployment* ought to decide — the whole
+  `opentmf.security` block (issuer, `user-claim`, both ACLs) and the role-bearing actuator
+  settings — is now published only under a `standalone` profile, activated by
+  `spring.profiles.default: standalone`. Set `SPRING_PROFILES_ACTIVE` to anything and this
+  image contributes **nothing** to those properties.
+
+  **If you set profiles and relied on the image's defaults, you must now supply your own.**
+  With neither `opentmf.security.jwk-set-uri` nor `opentmf.security.issuers` present,
+  openid-rbac-security refuses to start — so this fails in the safe direction rather than
+  serving unauthenticated. ⚠ But it fails at **boot**, where no render-time gate can see it:
+  bring up one instance before trusting a green pipeline.
+
+  **A bare `docker run` is unaffected.** With no profile active, `standalone` activates
+  itself and behaviour is what 1.2.3 served, except for the logger change below.
+
+### Security
+
+- **The image no longer decides who may call a deployment.** `config-security.yml` was
+  imported unconditionally, so a deployment that mounted no security block of its own was
+  silently governed by this image's ACL, written in role names (`reader`/`writer`/`admin`)
+  that mean nothing to it — with no signal that it had happened. Measured on the DNMS
+  platform chart: `/actuator`, `/actuator/metrics` and `/actuator/loggers` all answered
+  **200 anonymously** on the management port because of it.
+
+  Worth stating precisely, because a first analysis got it wrong: Spring binds a list from
+  the highest-precedence source that defines it — **lists replace, maps merge per key**.
+  A deployment that writes its own block therefore always overrode this one cleanly. The
+  defect was never a hybrid list; it was that *not writing one* silently inherited ours.
+  The fix removes the image as an author instead of relying on consumers to remember.
+
+- **Anonymous log-level writes are closed.** `/actuator/loggers` and `/actuator/loggers/**`
+  were whitelisted while `management.endpoint.loggers.access` is `unrestricted`, and that
+  pair permitted an **unauthenticated write**: a tokenless
+  `POST /actuator/loggers/org.cadenzaflow` returned `204` and moved the level from INFO to
+  TRACE. That is not a read-only act here — README §9.2 documents DEBUG on jersey's
+  `LoggingFeature` as the way to log request and response bodies.
+
+  Both paths are dropped from the standalone whitelist and a
+  `POST /actuator/loggers/** → admin` rule takes their place. Reading a level now needs a
+  valid token (unlisted paths fall back to `management.other-endpoints`, `AUTHENTICATED`);
+  changing one needs `admin`. `loggers.access` deliberately stays `unrestricted` —
+  `read_only` would disable the endpoint's write side outright and leave the rule nothing to
+  authorise, which is the wrong fix for the same defect. **This part changes standalone
+  behaviour too**, and is the one way a bare `docker run` differs from 1.2.3.
+
+- **`/actuator/env` values stay masked for a deployment.** The role list naming this
+  project's vocabulary is now standalone-only. Gating only the roles would have been
+  *looser* than 1.2.3, not safer: Spring Boot reads an empty `roles` list as "every
+  authenticated user is authorized", so `show-values: when_authorized` would have exposed
+  unsanitized values — datasource credentials among them — to any authenticated caller that
+  reached the endpoint. The whole `management.endpoint.env` block is gated instead, leaving
+  Boot's own default of `show-values: never` in force until a deployment opts in.
+
+### Changed
+
+- `/actuator/info` is no longer in the standalone management whitelist. This image does not
+  expose that endpoint, so listing it only widened the description of the unauthenticated
+  surface without enabling anything.
+
+- `docs/identity-provider-analysis.md` carried a claim that no Entra ID identity provider
+  "exists in the ecosystem", which stopped being true when `cadenzaflow-entra-identity-4`
+  shipped in the pom and in the image. It misled a reader this week; it now says what
+  actually shipped.
+
 ## [1.2.3] - 2026-09-06
 
 ### Security
