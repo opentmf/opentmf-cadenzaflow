@@ -11,14 +11,35 @@
 ## 1. The problem, in one sentence
 
 **The engine ships deployment-owned security configuration on the always-active classpath, so a
-platform that mounts its own becomes the *second* author of the same lists - and Spring binds lists
-per index, not per list.**
+deployment that does not think to override it is silently governed by this image's ACL instead of
+its own.**
 
 `src/main/resources/application.yml` imports `config-security.yml` unconditionally
-(`spring.config.import`), and that file sets `opentmf.security.*` in full. When a deployment mounts
-`application-<profile>.yaml` with a *shorter* list, its entries overwrite indices `0..n-1` and
-**the image's entries from `n` onward survive**. The result is a hybrid ACL nobody wrote, and it
-reads as if it were the deployment's.
+(`spring.config.import`), and that file sets `opentmf.security.*` in full. A deployment that mounts
+its own block wins cleanly - but a deployment that mounts NOTHING inherits this one, in a
+vocabulary that is not its own, with no signal that it happened.
+
+⚠ **CORRECTED 2026-09-09, by measurement.** An earlier version of this plan - and the analysis that
+prompted it - said these lists MERGE BY INDEX, so that a shorter platform list would leave this
+image's tail entries alive. **That is wrong.** Spring binds a list from the highest-precedence
+source that defines it and does not merge across sources: maps merge per key, **lists replace**.
+Measured on a scratch pod carrying the platform's four-entry management whitelist and no service
+override - the exact shape the index theory called dangerous:
+
+```
+GET /actuator          -> 401
+GET /actuator/metrics  -> 401
+GET /actuator/loggers  -> 401
+```
+
+Under index-merging those three would have been 200. The original before/after measurement in §1.1
+could not discriminate between the two theories, because the old deployment supplied **no**
+management block at all; this one can, and it settles it.
+
+**The correction makes the case for the fix stronger, not weaker.** "Our list happens to win
+because we remembered to write one" is a weaker guarantee than "the image is not an author at all".
+The failure this plan prevents is the one that actually occurred: a deployment that wrote no
+management block and was silently governed by this image's - open - one.
 
 ### 1.1 What this cost, measured
 
@@ -35,7 +56,10 @@ requests to the engine's management port, before and after dnms-deploy #232:
 /actuator/prometheus                  -> 200   (scrape still works)
 ```
 
-⚠ **And it was not only a read surface.** `application.yml` sets
+⚠ **And it was not only a read surface - MEASURED, not reasoned.** On a scratch reproduction of
+the true pre-move shape (no platform profile at all, this image's whitelist in sole force), with no
+token: `GET /actuator/loggers` -> 200, `POST /actuator/loggers/org.cadenzaflow` -> **204**, and the
+level had changed from INFO to TRACE. The write landed. `application.yml` sets
 `management.endpoint.loggers.access: unrestricted`, overriding the global
 `management.endpoints.access.default: read_only`. With `/actuator/loggers/**` also in the
 unauthenticated whitelist, the configuration **permitted an unauthenticated WRITE** - a runtime
@@ -52,7 +76,7 @@ fix; the endpoint's access level stays as it is.
 
 | # | What the image ships | Where | Effect on a platform deployment |
 |---|---|---|---|
-| 1 | `opentmf.security.management.whitelist`, **9 entries** (`/actuator`, health ×2, info, metrics ×2, loggers ×2, prometheus) | `config-security.yml` | A 4-entry platform whitelist overwrites 0-3; **metrics and loggers survive at 4-8**. Whitelist is evaluated before secure-endpoints, so the platform's role rules for those paths are dead. |
+| 1 | `opentmf.security.management.whitelist`, **9 entries** (`/actuator`, health ×2, info, metrics ×2, loggers ×2, prometheus) | `config-security.yml` | A deployment that supplies its own list replaces this one cleanly. A deployment that supplies NONE is governed by this - and serves metrics and loggers unauthenticated while believing its platform defaults apply. **That is what happened** (§1.1). |
 | 2 | `user-claim: email` | `config-security.yml` | The platform's `sub` wins only because it arrives as an env var; a mounted-file platform would collide. Accepted downstream 2026-09-09. |
 | 3 | `jwk-set-uri`, derived from `${plugin.identity.keycloak.keycloak-issuer-url}` | `config-security.yml` | A deployment using **multi-issuer** (`opentmf.security.issuers[]`) then has BOTH set, which openid-rbac-security refuses at startup by design. Bites the moment the engine joins a multi-issuer environment. |
 | 4 | `management.endpoint.env.roles: [admin]` | `application.yml` | `/actuator/env` is *reachable* for a platform `admin`-class caller but its **values stay masked**, because the role names do not match the platform's. Correct in this project's own vocabulary; wrong in every consumer's. |
@@ -146,11 +170,13 @@ Gökhan's call, not this plan's. Whichever is chosen, per the SNAPSHOT rule the 
 
 Not this repository's work; recorded so the plan's success condition is unambiguous.
 
-dnms-deploy replaces its interim camunda-specific management block - a padded 9-entry whitelist
-that neutralises the image's indices 4-8 by repeating already-listed paths - with **the standard
-`profilePlatform` every other DNMS service gets**, and blanks nothing. It then re-measures the six
-paths of §1.1 anonymously and expects `401` on `/actuator`, `/actuator/metrics`,
-`/actuator/metrics/**` and `/actuator/loggers`, with `/actuator/health` and `/actuator/prometheus`
-still `200`.
+dnms-deploy gives camunda **the standard `profilePlatform` every other DNMS service gets** - which,
+per the correction in §1, is already sufficient on its own; the padding written in dnms-deploy #232
+was dead weight from the first commit and is being removed in #234.
 
-**That re-measurement is the acceptance test for this plan.** Until it passes, the padding stays.
+So the consumer is NOT waiting on this release to be safe. What it waits for is the *guarantee*:
+today the platform is safe because its list wins, and after this release it is safe because there is
+no competing list to win against. The acceptance measurement stays the same - `401` on `/actuator`,
+`/actuator/metrics`, `/actuator/metrics/**` and `/actuator/loggers`, with `/actuator/health` and
+`/actuator/prometheus` still `200` - and the new thing it proves is that those hold with the image
+contributing nothing.
