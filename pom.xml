@@ -100,7 +100,7 @@
     <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
-    <sonar-plugin.version>5.7.0.6970</sonar-plugin.version>
+    <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
@@ -677,7 +677,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.8</aws-msk-iam-auth.version>
-        <awssdk.version>2.54.13</awssdk.version>
+        <awssdk.version>2.54.14</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>

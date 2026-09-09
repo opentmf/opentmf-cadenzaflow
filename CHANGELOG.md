@@ -21,8 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   serving unauthenticated. ⚠ But it fails at **boot**, where no render-time gate can see it:
   bring up one instance before trusting a green pipeline.
 
-  **A bare `docker run` is unaffected.** With no profile active, `standalone` activates
-  itself and behaviour is what 1.2.3 served, except for the logger change below.
+  **A bare `docker run` keeps its security defaults.** With no profile active, `standalone`
+  activates itself and `opentmf.security` is what 1.2.3 served.
+
+- **The bare image changes in one respect: anonymous log-level writes are closed.**
+  Stated here, and not only under Security below, because it is the one change that reaches
+  a reader who concludes "we activate profiles, so the rest of this does not affect us".
+  Until 1.2.3 a tokenless `POST /actuator/loggers/<logger>` on the management port returned
+  `204` and changed the level — measured, not inferred. Reading a level now requires a valid
+  token and changing one requires `admin`, in standalone exactly as in a deployment. If you
+  script log-level changes against port 16000 without credentials, that stops working.
 
 ### Security
 
