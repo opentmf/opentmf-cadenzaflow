@@ -19,6 +19,42 @@ management:
 
 opentmf:
   security:
+    # Since 1.3.0 the `it` profile is a DEPLOYMENT like any other: activating any profile
+    # switches off `standalone`, so the image contributes nothing here and this file is the
+    # sole author of the ACL. Everything below used to arrive from config-security.yml on the
+    # classpath - which is precisely the coupling that release removed, and these ITs were
+    # themselves relying on it.
+    #
+    # Kept deliberately in this project's TEST role vocabulary (`ebu-federation-*`) rather than
+    # the standalone `reader`/`writer`/`admin`, so the suite exercises the same shape a real
+    # consumer has: its own names, authored by itself.
+    jwk-set-uri: ${plugin.identity.keycloak.keycloak-issuer-url}/protocol/openid-connect/certs
+    user-claim: email
+    authorities-claim: groups
+    whitelist:
+      - /error
+      - /engine-rest/external-task/**
+    management:
+      whitelist:
+        - /actuator
+        - /actuator/health
+        - /actuator/health/**
+        - /actuator/metrics
+        - /actuator/metrics/**
+        - /actuator/prometheus
+      secure-endpoints:
+        - method: POST
+          path: /actuator/loggers/**
+          roles:
+            - ebu-federation-admin
+        - method: GET
+          path: /actuator/env
+          roles:
+            - ebu-federation-admin
+        - method: GET
+          path: /actuator/env/**
+          roles:
+            - ebu-federation-admin
     secure-endpoints:
       # First match wins - the specific retry rule must precede the wildcards,
       # mirroring config-security.yml.
