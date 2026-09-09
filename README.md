@@ -317,6 +317,15 @@ Anything you leave out of `management.whitelist` falls back to
 omission is safe, not open. Keep `/actuator/health/**` and `/actuator/prometheus` there
 or you will break probes and scraping.
 
+> ⚠ **Keep the whole block in ONE profile.** Replacement is not a
+> classpath-versus-file rule — it holds between your own profiles too. If a `common`
+> profile and a `platform` profile both define `management.whitelist`, the
+> higher-precedence one replaces the other **entirely**; the two do not blend. Splitting
+> a security block across two profiles therefore deletes most of it rather than merging
+> it, and the usual first symptom is a pod that never goes Ready because
+> `/actuator/health/readiness` started answering `401`. Measured on the DNMS chart,
+> 2026-09-09.
+
 ---
 
 ## 4. Use cases

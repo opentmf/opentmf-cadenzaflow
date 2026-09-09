@@ -1,0 +1,9 @@
+# A SECOND deployment profile that also defines the management whitelist. Stands in for a
+# `common` profile layered over `platform`: replacement means this one entry discards the
+# platform profile's whole list rather than adding to it - which is how a real chart lost
+# /actuator/health/** and stopped going Ready.
+opentmf:
+  security:
+    management:
+      whitelist:
+        - /actuator/health

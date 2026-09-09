@@ -221,6 +221,21 @@ class SecurityConfigOwnershipTests {
     }
 
     @Test
+    @DisplayName("a second profile REPLACES the first's list, it does not blend with it")
+    void replaceBetweenProfilesToo() {
+      // Replacement is not a classpath-versus-file rule; it holds profile-to-profile. A
+      // deployment that splits its security block across two profiles loses most of it, and the
+      // first symptom is a pod that never goes Ready because /actuator/health/readiness answers
+      // 401. Documented here because README §3.5 warns consumers about exactly this.
+      List<String> whitelist =
+          stringList(
+              configurationWithPlatformMount("platform", "narrow"), MANAGEMENT_WHITELIST);
+
+      assertThat(whitelist).containsExactly("/actuator/health");
+      assertThat(whitelist).doesNotContain("/actuator/health/**", "/actuator/prometheus");
+    }
+
+    @Test
     @DisplayName("the mounted identity and roles are the ones in force")
     void letTheMountedFileOwnIdentity() {
       ConfigurableEnvironment mounted = configurationWithPlatformMount("platform");

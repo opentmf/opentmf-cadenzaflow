@@ -162,7 +162,42 @@ Gökhan's call, not this plan's. Whichever is chosen, per the SNAPSHOT rule the 
 **new section** with the bare numeric version - never a `-SNAPSHOT` heading, never an edit to
 `[1.2.3]`.
 
+## 4a. Deviations decided during implementation
+
+Two changes to this plan were taken by Gökhan on 2026-09-09, both after measurement, and both
+are in the shipped 1.3.0. Recorded here so the plan matches what was actually built.
+
+**1. Gate the whole `management.endpoint.env` block, not only its `roles`.**
+§3.1 said to gate `management.endpoint.env.roles`. Doing only that would have made platform
+deployments **looser** than 1.2.3, not safer. Spring Boot's own configuration metadata for
+`management.endpoint.env.roles` reads *"When empty, all authenticated users are authorized"* -
+so with `roles` gated away and `show-values: when_authorized` still shipping ungated,
+unsanitized environment values (datasource credentials among them) would be served to **any**
+authenticated caller that reached the endpoint. Today they stay masked precisely because the
+role names do not match. Gating the whole block leaves Boot's own default `show-values: never`
+in force, so values are masked until a deployment opts in.
+
+**2. Close the anonymous logger write in `standalone` too.**
+§1.1 correctly says the fix is to remove the whitelist authorship rather than to touch
+`loggers.access` - but as originally scoped that removal applied only to deployments. The
+`standalone` profile would have kept `/actuator/loggers/**` whitelisted *and*
+`access: unrestricted`, so the measured 204-with-no-token stayed open for anyone running the
+image bare. Raising a logger is not a read-only act here - README §9.2 documents DEBUG on
+jersey's `LoggingFeature` as the way to log request and response bodies - so both loggers paths
+are dropped from the standalone whitelist and a `POST /actuator/loggers/** -> admin` rule takes
+their place. `loggers.access` stays `unrestricted`, exactly as §1.1 requires. **This makes
+`standalone` differ from 1.2.3** - the single respect in which it does - so step 3 below reads
+"today's behaviour except the logger change", not "byte-identical".
+
+**Implemented, and where.** `spring.profiles.default: standalone` in `application.yml`; the
+whole `opentmf.security` document in `config-security.yml` gated `on-profile: standalone`;
+`management.endpoint.env` gated the same way; `SecurityConfigOwnershipTests` covers steps 3 and
+4 - 12 tests, of which **6 fail against the 1.2.3 configuration**. The three that pass against
+1.2.3 are the mounted-deployment cases, which independently reproduces the §1 correction: a
+mounted list already won cleanly before this release.
+
 ## 5. Work breakdown
+
 
 | # | Step | Done when |
 |---|---|---|
