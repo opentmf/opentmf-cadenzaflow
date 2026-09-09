@@ -36,10 +36,17 @@ Under index-merging those three would have been 200. The original before/after m
 could not discriminate between the two theories, because the old deployment supplied **no**
 management block at all; this one can, and it settles it.
 
+**Replacement holds between profiles too** (second experiment, same day): a `common` profile whose
+management whitelist held one entry discarded a `platform` profile's whole four-entry list, and
+`/actuator/health/readiness` answered 401 - the pod never went Ready. So "one author" is not a
+classpath-versus-file rule; it is the rule everywhere, and the consequence of a second author is
+deletion rather than blending.
+
 **The correction makes the case for the fix stronger, not weaker.** "Our list happens to win
 because we remembered to write one" is a weaker guarantee than "the image is not an author at all".
-The failure this plan prevents is the one that actually occurred: a deployment that wrote no
-management block and was silently governed by this image's - open - one.
+And under replace-semantics the forgetful case is not a partly-wrong ACL - it is **this image's ACL
+in full force with nothing of the deployment's in it**, which is exactly the unauthenticated logger
+write of §1.1. The failure this plan prevents is therefore the general case, not an example.
 
 ### 1.1 What this cost, measured
 
