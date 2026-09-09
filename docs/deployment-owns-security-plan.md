@@ -1,0 +1,156 @@
+# The deployment owns `opentmf.security` - implementation plan
+
+> **Owner: this repository's session.** Written 2026-09-09 by the dnotify-analysis session at
+> Gökhan's request, from four collisions measured while moving the engine onto the DNMS platform
+> chart (dnms-deploy #232). **Nothing here is speculative**: every claim below was read out of this
+> repository's own sources or measured on a running engine, and the measurements are named.
+>
+> **Scope: fix the cause at source.** The consuming deployment has an interim workaround merged
+> already; this plan is what lets that workaround be deleted.
+
+## 1. The problem, in one sentence
+
+**The engine ships deployment-owned security configuration on the always-active classpath, so a
+platform that mounts its own becomes the *second* author of the same lists - and Spring binds lists
+per index, not per list.**
+
+`src/main/resources/application.yml` imports `config-security.yml` unconditionally
+(`spring.config.import`), and that file sets `opentmf.security.*` in full. When a deployment mounts
+`application-<profile>.yaml` with a *shorter* list, its entries overwrite indices `0..n-1` and
+**the image's entries from `n` onward survive**. The result is a hybrid ACL nobody wrote, and it
+reads as if it were the deployment's.
+
+### 1.1 What this cost, measured
+
+`base/infra/camunda/application-k8s.yaml` in dnms-deploy carried **no `management:` block at all**
+(verified at `cf513ee^`), so the image's 9-entry management whitelist was in sole force. Anonymous
+requests to the engine's management port, before and after dnms-deploy #232:
+
+```
+/actuator                          200 -> 401
+/actuator/metrics                  200 -> 401
+/actuator/metrics/jvm.memory.used  200 -> 401
+/actuator/loggers                  200 -> 401
+/actuator/health                   200 -> 200   (probes still work)
+/actuator/prometheus                  -> 200   (scrape still works)
+```
+
+⚠ **And it was not only a read surface.** `application.yml` sets
+`management.endpoint.loggers.access: unrestricted`, overriding the global
+`management.endpoints.access.default: read_only`. With `/actuator/loggers/**` also in the
+unauthenticated whitelist, the configuration **permitted an unauthenticated WRITE** - a runtime
+log-level change with no token. Bounded: management port 16000, in-cluster only, no ingress, and a
+local k3d stack is the only place the engine has ever run. Closed by the consumer on 2026-09-09.
+
+⚠ **Do not "fix" this by setting `loggers.access: read_only`.** That would break the legitimate
+platform rule `POST /actuator/loggers/** -> admin-class role`: the endpoint must remain writable
+for the ACL to have anything to authorise. **The defect was never `unrestricted` alone - it was
+`unrestricted` on a path the image also whitelisted.** Removing the whitelist authorship is the
+fix; the endpoint's access level stays as it is.
+
+## 2. The four collisions, all from the same cause
+
+| # | What the image ships | Where | Effect on a platform deployment |
+|---|---|---|---|
+| 1 | `opentmf.security.management.whitelist`, **9 entries** (`/actuator`, health ×2, info, metrics ×2, loggers ×2, prometheus) | `config-security.yml` | A 4-entry platform whitelist overwrites 0-3; **metrics and loggers survive at 4-8**. Whitelist is evaluated before secure-endpoints, so the platform's role rules for those paths are dead. |
+| 2 | `user-claim: email` | `config-security.yml` | The platform's `sub` wins only because it arrives as an env var; a mounted-file platform would collide. Accepted downstream 2026-09-09. |
+| 3 | `jwk-set-uri`, derived from `${plugin.identity.keycloak.keycloak-issuer-url}` | `config-security.yml` | A deployment using **multi-issuer** (`opentmf.security.issuers[]`) then has BOTH set, which openid-rbac-security refuses at startup by design. Bites the moment the engine joins a multi-issuer environment. |
+| 4 | `management.endpoint.env.roles: [admin]` | `application.yml` | `/actuator/env` is *reachable* for a platform `admin`-class caller but its **values stay masked**, because the role names do not match the platform's. Correct in this project's own vocabulary; wrong in every consumer's. |
+
+Also present and harmless, worth tidying while nearby: the whitelist lists `/actuator/info`, which
+this image does not expose (`management.endpoints.web.exposure.include` has no `info`).
+
+## 3. The fix
+
+**Stop being the second author. Ship these defaults only when nobody else is configuring the
+application.**
+
+### 3.1 Mechanism: `spring.profiles.default`, not a Dockerfile ENV
+
+Move the whole `opentmf.security` block, and the role-bearing actuator settings, into
+profile-gated documents activated by a **default** profile:
+
+```yaml
+# application.yml
+spring:
+  profiles:
+    default: standalone      # applies ONLY when no profile is active
+```
+
+```yaml
+# config-security.yml  (multi-document)
+spring:
+  config:
+    activate:
+      on-profile: standalone
+opentmf:
+  security:
+    ...   # exactly today's content, unchanged
+```
+
+`spring.profiles.default` is the right instrument and a `Dockerfile` `ENV` is not:
+
+- A bare `docker run` with no profile set activates `standalone` and behaves **exactly as today**.
+  No consumer of the image who is not already setting profiles sees any change.
+- A platform deployment that sets `SPRING_PROFILES_ACTIVE=platform,common,<env>` - which every
+  DNMS deployment does - **automatically** stops activating `standalone`, without having to know
+  this file exists. Its mounted profile becomes the sole author of `opentmf.security`, the merge
+  cannot occur, and collisions 1-4 vanish together rather than being patched one at a time.
+- An `ENV` in the Dockerfile would be replaced wholesale by a deployment's own value, which happens
+  to work, but expresses "the image's opinion" rather than "the default when nobody has an opinion".
+  The second is what this actually is.
+
+Apply the same gating to `management.endpoint.env.roles` (collision 4). Leave
+`management.endpoint.loggers.access: unrestricted` **alone** - see §1.1.
+
+### 3.2 What is NOT proposed
+
+- **No change to openid-rbac-security's list semantics.** Making a higher-precedence source replace
+  rather than merge would change binding behaviour for every service in the estate to fix one
+  image's habit. The trap is not that Spring merges lists; it is that two parties authored the same
+  list. Remove the second author.
+- **No change to the role vocabulary in the standalone defaults.** `reader`/`writer`/`admin` are
+  correct for a standalone run and are nobody's problem once profile-gated.
+
+## 4. Consequence to state loudly: this is a config-contract break
+
+A deployment that already sets `SPRING_PROFILES_ACTIVE` **and relies on the image's security
+defaults** loses them at this release. That is the entire point, and it fails in the safe direction:
+with neither `jwk-set-uri` nor `issuers` set, openid-rbac-security **refuses to start** rather than
+serving unauthenticated. Loud, at boot, naming the missing property.
+
+⚠ It fails at BOOT, where no render-time gate can see it. dnms-deploy proved this class of failure
+the hard way on 2026-09-09: a transcribed config that dropped `plugin.identity.keycloak` passed
+every gate green and then crash-looped on the stack. Any consumer adopting this release must bring
+up one instance before believing a green pipeline.
+
+**Version: recommend `1.3.0`** (pom is `1.2.4-SNAPSHOT`, latest tag `1.2.3`), with an explicit
+**BREAKING CHANGES** heading in the CHANGELOG naming the profile requirement and the fail-closed
+behaviour. A case exists for `2.0.0` on the grounds that a configuration contract changed; that is
+Gökhan's call, not this plan's. Whichever is chosen, per the SNAPSHOT rule the CHANGELOG gets a
+**new section** with the bare numeric version - never a `-SNAPSHOT` heading, never an edit to
+`[1.2.3]`.
+
+## 5. Work breakdown
+
+| # | Step | Done when |
+|---|---|---|
+| 1 | `spring.profiles.default: standalone` in `application.yml`; `opentmf.security` in `config-security.yml` gated `on-profile: standalone`; `management.endpoint.env.roles` gated the same way | the file diff is the whole change - no property values edited, only their activation |
+| 2 | Drop `/actuator/info` from the standalone whitelist (not exposed by this image) | - |
+| 3 | **Test: no profile set → today's behaviour.** Assert the effective `opentmf.security` matches the standalone block, and that the management ACL is what 1.2.3 served | green, and it is the regression test for every consumer who does not set profiles |
+| 4 | **Test: a profile set + a mounted file → the mounted file is the SOLE author.** Assert the effective management whitelist length equals the mounted one - the assertion that would have caught all four collisions | green. ⚠ Assert the LENGTH, not just membership: a leftover at index 4 is invisible to a contains-check |
+| 5 | README: a section stating that a deployment activating any profile owns `opentmf.security` entirely, with the by-index trap explained and the fail-closed consequence named | a first-time integrator can read it and not repeat this |
+| 6 | CHANGELOG per §4; release-readiness per the house rules - both `versions:display-*-updates` goals with **every profile activated** and the pre-release ignore regex, tests green, working tree clean, and a **fresh** Trivy scan of every image flavour in the release matrix | all reported explicitly, per flavour |
+
+## 6. What the consumer does after the release
+
+Not this repository's work; recorded so the plan's success condition is unambiguous.
+
+dnms-deploy replaces its interim camunda-specific management block - a padded 9-entry whitelist
+that neutralises the image's indices 4-8 by repeating already-listed paths - with **the standard
+`profilePlatform` every other DNMS service gets**, and blanks nothing. It then re-measures the six
+paths of §1.1 anonymously and expects `401` on `/actuator`, `/actuator/metrics`,
+`/actuator/metrics/**` and `/actuator/loggers`, with `/actuator/health` and `/actuator/prometheus`
+still `200`.
+
+**That re-measurement is the acceptance test for this plan.** Until it passes, the padding stays.
