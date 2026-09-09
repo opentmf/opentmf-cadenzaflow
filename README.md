@@ -300,6 +300,9 @@ opentmf:
       - issuer-uri: https://idp.example/realms/yours
         authorities-claim: your_roles
     user-claim: sub
+    whitelist:                         # main port - unlisted paths are DENIED
+      - /error
+      - /engine-rest/external-task/**  # external-task workers dial this anonymously
     secure-endpoints: [ ... ]          # main port, see §8.5
     management:
       whitelist:                       # unauthenticated management paths
@@ -316,6 +319,17 @@ Anything you leave out of `management.whitelist` falls back to
 `opentmf.security.management.other-endpoints`, which defaults to `AUTHENTICATED` — so
 omission is safe, not open. Keep `/actuator/health/**` and `/actuator/prometheus` there
 or you will break probes and scraping.
+
+> ⚠ **If you never authored `opentmf.security.whitelist`, you must now.** The gated block
+> carries the MAIN-PORT whitelist as well — `/error` and `/engine-rest/external-task/**` —
+> and it is the entry a deployment is least likely to have written down, because the image
+> supplied it invisibly. Losing it does **not** fail closed at boot: the library starts
+> normally (your `secure-endpoints` is present; only the whitelist is missing), the probes
+> live on the management port so **every pod reports Ready**, and the sole symptom is that
+> external-task workers get `401` on `fetchAndLock` and the whole worker pipeline stalls
+> silently. Unlisted main-port paths fall back to `opentmf.security.other-endpoints`, which
+> defaults to **`deny`** — unlike the management port's `AUTHENTICATED`. Measured on a
+> 1.3.0 pod, 2026-09-09.
 
 > ⚠ **Keep the whole block in ONE profile.** Replacement is not a
 > classpath-versus-file rule — it holds between your own profiles too. If a `common`

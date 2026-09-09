@@ -153,6 +153,24 @@ class SecurityConfigOwnershipTests {
     }
 
     @Test
+    @DisplayName("the MAIN-PORT whitelist goes too - the one that does NOT fail closed")
+    void contributeNoMainPortWhitelistEither() {
+      // The neighbouring hazard to the issuer case below, and the more dangerous of the two
+      // because it does NOT stop the application. A deployment that authored `secure-endpoints`
+      // but relied on the image for `whitelist` starts normally, reports Ready (probes are on the
+      // management port), and simply refuses every external-task worker: unlisted main-port paths
+      // fall back to opentmf.security.other-endpoints, which defaults to DENY - unlike the
+      // management port's AUTHENTICATED. Measured downstream on a 1.3.0 pod: anonymous
+      // POST /engine-rest/external-task/fetchAndLock -> 401 with readiness still 200.
+      ConfigurableEnvironment environment = configurationWith("platform");
+
+      assertThat(stringList(environment, "opentmf.security.whitelist")).isEmpty();
+      // Named explicitly so the reason this matters survives in the test, not just the README.
+      assertThat(stringList(configurationWith(), "opentmf.security.whitelist"))
+          .containsExactly("/error", "/engine-rest/external-task/**");
+    }
+
+    @Test
     @DisplayName("with no issuer of its own it fails closed, rather than serving unauthenticated")
     void leaveNoIssuerBehindForADeploymentToInheritSilently() {
       ConfigurableEnvironment environment = configurationWith("platform");
