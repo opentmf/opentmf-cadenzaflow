@@ -203,8 +203,8 @@ class SecurityConfigOwnershipTests {
 
       assertThat(whitelist)
           .hasSize(3)
-          .containsExactly("/actuator/health", "/actuator/health/**", "/actuator/prometheus");
-      assertThat(whitelist).doesNotContain("/actuator", "/actuator/metrics", "/actuator/loggers");
+          .containsExactly("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
+          .doesNotContain("/actuator", "/actuator/metrics", "/actuator/loggers");
     }
 
     @Test
@@ -231,8 +231,9 @@ class SecurityConfigOwnershipTests {
           stringList(
               configurationWithPlatformMount("platform", "narrow"), MANAGEMENT_WHITELIST);
 
-      assertThat(whitelist).containsExactly("/actuator/health");
-      assertThat(whitelist).doesNotContain("/actuator/health/**", "/actuator/prometheus");
+      assertThat(whitelist)
+          .containsExactly("/actuator/health")
+          .doesNotContain("/actuator/health/**", "/actuator/prometheus");
     }
 
     @Test
