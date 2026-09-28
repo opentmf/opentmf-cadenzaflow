@@ -1,7 +1,8 @@
 # GENERATOR INPUT, not a published contract. This fragment describes only the
 # service's OWN surface (incident operations, security model, management
 # endpoints); ci/merge-openapi.py merges it with the engine's generated spec
-# artifact into docs/openapi.yaml - the single published API document.
+# artifact into src/main/resources/openapi/openapi.yaml - the single published API
+# document, served by the running service at /engine-rest/extensions/openapi.yaml.
 # Edit THIS file for service-surface changes, then regenerate.
 openapi: 3.2.0
 info:
@@ -14,7 +15,7 @@ info:
     duplicate it. Documented here: the security model applied in front of it, the
     whitelisted paths, the service's own incident operations, and the management-port
     endpoints. For the WHOLE picture in one spec — every engine endpoint plus these
-    additions — see `docs/openapi.yaml`, generated (never hand-edited) by
+    additions — see `src/main/resources/openapi/openapi.yaml`, generated (never hand-edited) by
     `ci/merge-openapi.py` from the engine's own spec artifact at the exact embedded
     version; regenerate it on engine version bumps.
   contact:
@@ -297,20 +298,20 @@ paths:
   /engine-rest/extensions/openapi.yaml:
     get:
       tags: ["Extensions: Incidents"]
-      summary: This API document
+      summary: This API document (whitelisted, no token)
+      security: []
       description: >
-        The service's complete API document (this file, `docs/openapi.yaml`, packaged
-        into the jar at build time), so a client can fetch the contract of exactly the
-        version it is talking to. Covered by the `/engine-rest/**` GET rule:
-        `reader`/`writer`/`admin`. Namespaced under `/extensions`, clear of every
-        upstream route.
+        The service's complete API document (this file, packaged into the jar from
+        `src/main/resources/openapi/openapi.yaml`), so a client can fetch the contract of
+        exactly the version it is talking to. Anonymous: whitelisted in the standalone
+        security defaults. A deployment that authors its own `opentmf.security.whitelist`
+        must list this path there too, or it falls under the `/engine-rest/**` GET rule.
+        Namespaced under `/extensions`, clear of every upstream route.
       responses:
         '200':
           description: OpenAPI document, YAML.
           content:
             application/yaml: { schema: { type: string } }
-        '401': { description: unauthenticated }
-        '403': { description: insufficient role }
 
   /actuator/health:
     get:

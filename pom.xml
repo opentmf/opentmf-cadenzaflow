@@ -353,19 +353,6 @@
           <exclude>banner.txt</exclude>
         </excludes>
       </resource>
-      <!--
-        The published API document, served at /engine-rest/extensions/openapi.yaml.
-        Packaged straight from docs/ so the served spec and the repository's one cannot
-        drift apart: there is no second copy to forget.
-      -->
-      <resource>
-        <directory>docs</directory>
-        <filtering>false</filtering>
-        <targetPath>openapi</targetPath>
-        <includes>
-          <include>openapi.yaml</include>
-        </includes>
-      </resource>
     </resources>
     <pluginManagement>
       <plugins>

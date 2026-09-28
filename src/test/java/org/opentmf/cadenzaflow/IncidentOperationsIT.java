@@ -553,8 +553,8 @@ class IncidentOperationsIT {
 
   @Test
   @Order(11)
-  void apiDocumentIsServedBehindTheEngineRestGetRule() throws Exception {
-    HttpResponse<String> response = get("/engine-rest/extensions/openapi.yaml", READER_TOKEN);
+  void apiDocumentIsServedWithoutAToken() throws Exception {
+    HttpResponse<String> response = get("/engine-rest/extensions/openapi.yaml", null);
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
         type -> assertThat(type).startsWith("application/yaml"));
@@ -562,9 +562,8 @@ class IncidentOperationsIT {
         .startsWith("openapi: 3.2.0")
         .contains("/engine-rest/extensions/incident/groups:");
 
-    assertThat(get("/engine-rest/extensions/openapi.yaml", null).statusCode()).isEqualTo(401);
-    assertThat(get("/engine-rest/extensions/openapi.yaml", ROLELESS_TOKEN).statusCode())
-        .isEqualTo(403);
+    // The whitelist entry is exact: its neighbours stay behind the /engine-rest/** rule.
+    assertThat(get("/engine-rest/extensions/incident", null).statusCode()).isEqualTo(401);
   }
 
   private static String retryBody(int retries) {
