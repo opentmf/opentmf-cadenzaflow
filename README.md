@@ -227,7 +227,7 @@ caller needs **any one** of them.
 | any | the web UIs (`/app/**`, `/api/**`, static assets) | **none at this layer** | not whitelisted — the OIDC login chain redirects an unauthenticated browser to the provider |
 | `GET` | `/actuator/health`, `/prometheus`, `/metrics/**`, `/loggers/**` | **none — open** | management port, internal only |
 | `GET` | `/actuator/env` | `admin` | shows effective configuration |
-| any | anything else on the application port | **denied** | unmatched paths are refused, not allowed |
+| any | anything else on the application port | **denied** | unmatched paths are refused, not allowed: `401`/`403` under `/engine-rest/**`; elsewhere a path nothing serves answers `404` for every caller, before authentication (openid-rbac-security's status matrix) |
 
 > **Rule order is load-bearing.** The list is applied to Spring Security in the
 > order written and the **first matching rule wins** — a specific rule placed after
