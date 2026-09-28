@@ -36193,12 +36193,23 @@ paths:
       - 'Extensions: Incidents'
       summary: Grouped incident report for one root BPMN's call tree
       description: 'Active ORIGINATING incidents for the root definition key and everything it called
-        (any depth, all deployed versions), grouped by called BPMN × activity × incident type × tenant,
-        with counts, first/last occurrence and a sample message. The engine copies each incident into
-        every ancestor instance; those copies are filtered out here, so a failure counts once regardless
-        of call depth — unlike `/engine-rest/process-definition/{id}/statistics`, which counts per tree
-        level and sees only one definition version. Covered by the `/engine-rest/**` GET rule: `reader`/`writer`/`admin`.
-        Namespaced under `/extensions`, so no upstream route is shadowed or ever can be.
+        (any depth, all deployed versions), with counts, first/last occurrence and a sample message per
+        group.
+
+
+        **Grouping columns** — one result entry per distinct combination of: `processDefinitionKey`, `processDefinitionVersion`,
+        `activityId`, `incidentType`, `tenantId`, `calledFrom` (`processDefinitionKey` + `callActivityId`;
+        null for the root BPMN itself). Every count, timestamp and the sample message is scoped to exactly
+        that combination; versions of one definition are never merged, so each version''s counts are reported
+        on their own. The same columns are listed machine-readably in the `IncidentGroup` schema''s `x-group-by`,
+        and every group''s `selector` carries them all.
+
+
+        The engine copies each incident into every ancestor instance; those copies are filtered out here,
+        so a failure counts once regardless of call depth — unlike `/engine-rest/process-definition/{id}/statistics`,
+        which counts per tree level and sees only one definition version. Covered by the `/engine-rest/**`
+        GET rule: `reader`/`writer`/`admin`. Namespaced under `/extensions`, so no upstream route is shadowed
+        or ever can be.
 
         '
       parameters:
@@ -36241,10 +36252,16 @@ paths:
         schema:
           type: integer
           minimum: 1
-        description: Drop groups with fewer incidents.
+        description: 'Drop groups with fewer incidents. Applied per group as defined by the grouping columns
+          - i.e. per definition version.
+
+          '
       responses:
         '200':
-          description: Groups sorted by incidentCount descending.
+          description: 'Groups sorted by incidentCount descending; ties by processDefinitionKey, then
+            processDefinitionVersion descending, then activityId.
+
+            '
           content:
             application/json:
               schema:
@@ -36448,6 +36465,28 @@ paths:
           description: insufficient role
         '416':
           description: offset at or beyond the total (Content-Range `items */total`)
+  /engine-rest/extensions/openapi.yaml:
+    get:
+      tags:
+      - 'Extensions: Incidents'
+      summary: This API document
+      description: 'The service''s complete API document (this file, `docs/openapi.yaml`, packaged into
+        the jar at build time), so a client can fetch the contract of exactly the version it is talking
+        to. Covered by the `/engine-rest/**` GET rule: `reader`/`writer`/`admin`. Namespaced under `/extensions`,
+        clear of every upstream route.
+
+        '
+      responses:
+        '200':
+          description: OpenAPI document, YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '401':
+          description: unauthenticated
+        '403':
+          description: insufficient role
   /actuator/health:
     get:
       tags:
@@ -48167,8 +48206,15 @@ components:
           type: string
         processDefinitionKey:
           type: string
-        activityId:
-          type: string
+        processDefinitionVersion:
+          type:
+          - integer
+          - 'null'
+          description: 'Part of the group key: the report always echoes the group''s own version, so a
+            selector posted back verbatim retries that version only. Omit it in a hand-written request
+            to retry every version.
+
+            '
         incidentType:
           type: string
           enum:
@@ -48211,28 +48257,47 @@ components:
           description: Optional EXCLUSIVE upper bound.
     IncidentGroup:
       type: object
+      description: 'One group of the report. Grouping columns (the group''s identity): processDefinitionKey,
+        processDefinitionVersion, activityId, incidentType, tenantId, calledFrom. All other properties
+        are aggregates or display values of that one combination. The root definition key is not repeated
+        per group - it is the report''s required query parameter - but it is in the `selector`.
+
+        '
+      x-group-by:
+      - processDefinitionKey
+      - processDefinitionVersion
+      - activityId
+      - incidentType
+      - tenantId
+      - calledFrom
+      required:
+      - processDefinitionKey
+      - processDefinitionVersion
+      - activityId
+      - incidentType
+      - incidentCount
+      - processInstanceCount
+      - selector
       properties:
-        rootProcessDefinitionKey:
-          type: string
         processDefinitionKey:
           type: string
-          description: The BPMN the incidents actually sit in (root or called).
+          description: Grouping column. The BPMN the incidents actually sit in (root or called).
+        processDefinitionVersion:
+          type: integer
+          description: Grouping column. The deployed version of that BPMN the incidents sit in.
         processDefinitionName:
           type:
           - string
           - 'null'
-        processDefinitionVersions:
-          type: array
-          items:
-            type: integer
-          description: Every deployed version contributing incidents, ascending.
+          description: From this version's model.
         activityId:
           type: string
+          description: Grouping column.
         activityName:
           type:
           - string
           - 'null'
-          description: From the newest contributing version's model; null if the element is gone.
+          description: From this version's model; null if the element is gone.
         activityType:
           type:
           - string
@@ -48240,15 +48305,20 @@ components:
           description: BPMN element type, e.g. serviceTask
         incidentType:
           type: string
+          enum:
+          - failedJob
+          - failedExternalTask
+          description: Grouping column.
         tenantId:
           type:
           - string
           - 'null'
+          description: Grouping column.
         calledFrom:
           type:
           - object
           - 'null'
-          description: Null when the incidents are in the root BPMN itself.
+          description: Grouping column. Null when the incidents are in the root BPMN itself.
           properties:
             processDefinitionKey:
               type: string
@@ -48270,7 +48340,7 @@ components:
           type:
           - string
           - 'null'
-          description: First 300 characters of one incident message from the newest version.
+          description: First 300 characters of one incident message of this group.
         selector:
           $ref: '#/components/schemas/IncidentGroupSelector'
     IncidentGroupRetryRequest:
@@ -48280,11 +48350,6 @@ components:
         required:
         - retries
         properties:
-          processDefinitionVersion:
-            type:
-            - integer
-            - 'null'
-            description: Restrict the retry to one definition version.
           retries:
             type: integer
             minimum: 1

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.opentmf.cadenzaflow.extensions.model.incident.group.IncidentGroup;
 import org.opentmf.cadenzaflow.extensions.repository.IncidentGroupRepository;
 import org.opentmf.cadenzaflow.extensions.repository.IncidentGroupRow;
-import org.opentmf.cadenzaflow.extensions.service.IncidentGroupRollup;
+import org.opentmf.cadenzaflow.extensions.service.IncidentGroupAssembler;
 
 /**
  * Direct calls with mocked collaborators; the HTTP semantics around them (status
@@ -27,26 +27,26 @@ import org.opentmf.cadenzaflow.extensions.service.IncidentGroupRollup;
 class IncidentGroupResourceTests {
 
   private IncidentGroupRepository repository;
-  private IncidentGroupRollup rollup;
+  private IncidentGroupAssembler assembler;
   private IncidentGroupResource resource;
 
   @BeforeEach
   void setUp() {
     repository = mock(IncidentGroupRepository.class);
-    rollup = mock(IncidentGroupRollup.class);
-    resource = new IncidentGroupResource(repository, rollup);
+    assembler = mock(IncidentGroupAssembler.class);
+    resource = new IncidentGroupResource(repository, assembler);
   }
 
   @Test
-  void reportPipesTheRowsThroughTheRollup() {
+  void reportPipesTheRowsThroughTheAssembler() {
     List<IncidentGroupRow> rows = List.of();
     List<IncidentGroup> groups = List.of();
     Date after = Date.from(Instant.parse("2026-09-01T14:00:00Z"));
     when(repository.groups("orderFulfilment", "failedJob", "tenant-1", after, null, 4))
         .thenReturn(rows);
-    // The raw query-window strings must reach the rollup verbatim - that is what
+    // The raw query-window strings must reach the assembler verbatim - that is what
     // the selector echo is built from.
-    when(rollup.rollUp(rows, "2026-09-01T14:00:00Z", null)).thenReturn(groups);
+    when(assembler.assemble(rows, "2026-09-01T14:00:00Z", null)).thenReturn(groups);
 
     assertThat(resource.groups("orderFulfilment", "failedJob", "tenant-1",
         "2026-09-01T14:00:00Z", null, "4")).isSameAs(groups);

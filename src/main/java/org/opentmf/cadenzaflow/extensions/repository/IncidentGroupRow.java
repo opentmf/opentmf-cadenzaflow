@@ -1,12 +1,12 @@
 package org.opentmf.cadenzaflow.extensions.repository;
 
 import java.util.Date;
-import org.opentmf.cadenzaflow.extensions.service.IncidentGroupRollup;
+import org.opentmf.cadenzaflow.extensions.service.IncidentGroupAssembler;
 
 /**
  * One row of the grouped-incident select: one (definition version, activity, incident
- * type, tenant, caller) combination with its counts. Rolled up to definition-key level
- * by {@link IncidentGroupRollup}.
+ * type, tenant, caller) combination with its counts — exactly one report group, turned
+ * into one by {@link IncidentGroupAssembler}.
  *
  * @author Cezmi Aslan
  */

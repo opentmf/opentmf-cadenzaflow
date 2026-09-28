@@ -137,7 +137,7 @@ class IncidentGroupQueryPlanProbeIT {
   /**
    * Pure set-based SQL (generate_series), so the load runs in seconds. Root instances
    * beyond the incident count stay healthy — realistic selectivity for the planner.
-   * The child alternates between two definition versions to exercise the roll-up path.
+   * The child alternates between two definition versions, so the select groups per version.
    */
   private static void loadSyntheticData(Connection connection) throws Exception {
     try (Statement statement = connection.createStatement()) {

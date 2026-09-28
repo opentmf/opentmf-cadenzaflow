@@ -19,18 +19,18 @@ import org.opentmf.cadenzaflow.extensions.repository.IncidentGroupRow;
 /**
  * @author Cezmi Aslan
  */
-class IncidentGroupRollupTests {
+class IncidentGroupAssemblerTests {
 
   private static final Date EARLY = Date.from(Instant.parse("2026-08-31T22:10:04Z"));
   private static final Date LATE = Date.from(Instant.parse("2026-09-01T07:58:41Z"));
 
   private ActivityNameLookup activityNameLookup;
-  private IncidentGroupRollup rollup;
+  private IncidentGroupAssembler assembler;
 
   @BeforeEach
   void setUp() {
     activityNameLookup = mock(ActivityNameLookup.class);
-    rollup = new IncidentGroupRollup(activityNameLookup);
+    assembler = new IncidentGroupAssembler(activityNameLookup);
   }
 
   private static IncidentGroupRow row(int version, String defName, long incidents,
@@ -41,41 +41,49 @@ class IncidentGroupRollupTests {
   }
 
   @Test
-  void mergeTheVersionsOfOneDefinitionKeyIntoOneGroup() {
-    when(activityNameLookup.activity("reserveStock:8:id", "callWms"))
-        .thenReturn(Optional.of(new ActivityNameLookup.ActivityInfo("Call WMS", "serviceTask")));
-    // Version order in the input is deliberately newest-first: the rollup must sort,
-    // not trust the arrival order.
-    List<IncidentGroup> groups = rollup.rollUp(List.of(
+  void keepEveryVersionAsItsOwnGroupWithItsOwnCounts() {
+    when(activityNameLookup.activity("reserveStock:8:id", "callWms")).thenReturn(
+        Optional.of(new ActivityNameLookup.ActivityInfo("Call WMS v8", "serviceTask")));
+    when(activityNameLookup.activity("reserveStock:7:id", "callWms")).thenReturn(
+        Optional.of(new ActivityNameLookup.ActivityInfo("Call WMS", "serviceTask")));
+    List<IncidentGroup> groups = assembler.assemble(List.of(
         row(8, "Reserve stock v8", 1000, LATE, LATE, "newest message"),
         row(7, "Reserve stock", 842, EARLY, EARLY, "older message")), null, null);
 
-    assertThat(groups).hasSize(1);
-    IncidentGroup group = groups.get(0);
-    assertThat(group.rootProcessDefinitionKey()).isEqualTo("orderFulfilment");
-    assertThat(group.processDefinitionKey()).isEqualTo("reserveStock");
-    assertThat(group.processDefinitionVersions()).containsExactly(7, 8);
-    assertThat(group.processDefinitionName()).isEqualTo("Reserve stock v8");
-    assertThat(group.activityName()).isEqualTo("Call WMS");
-    assertThat(group.activityType()).isEqualTo("serviceTask");
-    assertThat(group.incidentCount()).isEqualTo(1842);
-    assertThat(group.processInstanceCount()).isEqualTo(1842);
-    assertThat(group.oldestIncident()).isEqualTo(EARLY);
-    assertThat(group.newestIncident()).isEqualTo(LATE);
-    assertThat(group.sampleMessage()).isEqualTo("newest message");
-    assertThat(group.calledFrom()).isEqualTo(new CalledFrom("orderFulfilment", "reserve"));
-    // calledFrom is part of the group key, so the selector must carry it: without it a
-    // retry would also hit the same child called from another call activity.
-    assertThat(group.selector()).isEqualTo(new IncidentGroupSelector(
-        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null,
+    assertThat(groups).hasSize(2);
+    IncidentGroup v8 = groups.get(0);
+    assertThat(v8.processDefinitionKey()).isEqualTo("reserveStock");
+    assertThat(v8.processDefinitionVersion()).isEqualTo(8);
+    assertThat(v8.processDefinitionName()).isEqualTo("Reserve stock v8");
+    assertThat(v8.activityName()).isEqualTo("Call WMS v8");
+    assertThat(v8.activityType()).isEqualTo("serviceTask");
+    assertThat(v8.incidentCount()).isEqualTo(1000);
+    assertThat(v8.processInstanceCount()).isEqualTo(1000);
+    assertThat(v8.oldestIncident()).isEqualTo(LATE);
+    assertThat(v8.newestIncident()).isEqualTo(LATE);
+    assertThat(v8.sampleMessage()).isEqualTo("newest message");
+    assertThat(v8.calledFrom()).isEqualTo(new CalledFrom("orderFulfilment", "reserve"));
+    // calledFrom and the version are part of the group key, so the selector must carry
+    // both: without them a retry would also hit the sibling groups.
+    assertThat(v8.selector()).isEqualTo(new IncidentGroupSelector(
+        "orderFulfilment", "reserveStock", 8, "callWms", "failedExternalTask", null,
         new CalledFrom("orderFulfilment", "reserve"), null, null));
+
+    IncidentGroup v7 = groups.get(1);
+    assertThat(v7.processDefinitionVersion()).isEqualTo(7);
+    assertThat(v7.processDefinitionName()).isEqualTo("Reserve stock");
+    assertThat(v7.activityName()).as("names come from the row's own version")
+        .isEqualTo("Call WMS");
+    assertThat(v7.incidentCount()).isEqualTo(842);
+    assertThat(v7.sampleMessage()).isEqualTo("older message");
+    assertThat(v7.selector().processDefinitionVersion()).isEqualTo(7);
   }
 
   @Test
   void selectorEchoesTheQueryWindowVerbatim() {
     when(activityNameLookup.activity("reserveStock:8:id", "callWms"))
         .thenReturn(Optional.empty());
-    List<IncidentGroup> groups = rollup.rollUp(
+    List<IncidentGroup> groups = assembler.assemble(
         List.of(row(8, null, 3, EARLY, LATE, "boom")),
         "2026-09-01T14:00:00.000+0000", "2026-09-02T14:00:00.000+0000");
 
@@ -89,7 +97,7 @@ class IncidentGroupRollupTests {
     when(activityNameLookup.activity("reserveStock:8:id", "callWms"))
         .thenReturn(Optional.empty());
     List<IncidentGroup> groups =
-        rollup.rollUp(List.of(row(8, null, 3, EARLY, LATE, "boom")), null, null);
+        assembler.assemble(List.of(row(8, null, 3, EARLY, LATE, "boom")), null, null);
 
     assertThat(groups).hasSize(1);
     assertThat(groups.get(0).activityName()).isNull();
@@ -101,7 +109,7 @@ class IncidentGroupRollupTests {
   void leaveCalledFromNullForAnIncidentInTheRootBpmnItself() {
     when(activityNameLookup.activity("orderFulfilment:1:id", "chargeCard"))
         .thenReturn(Optional.empty());
-    List<IncidentGroup> groups = rollup.rollUp(List.of(new IncidentGroupRow(
+    List<IncidentGroup> groups = assembler.assemble(List.of(new IncidentGroupRow(
         "orderFulfilment", "orderFulfilment:1:id", "orderFulfilment", "Order fulfilment", 1,
         "chargeCard", "failedJob", null, null, null, 5, 5, EARLY, LATE, "declined")),
         null, null);
@@ -111,26 +119,21 @@ class IncidentGroupRollupTests {
   }
 
   @Test
-  void orderGroupsByIncidentCountDescending() {
+  void keepTheOrderOfTheSelect() {
+    when(activityNameLookup.activity("reserveStock:7:id", "callWms"))
+        .thenReturn(Optional.empty());
     when(activityNameLookup.activity("reserveStock:8:id", "callWms"))
         .thenReturn(Optional.empty());
-    when(activityNameLookup.activity("orderFulfilment:1:id", "chargeCard"))
-        .thenReturn(Optional.empty());
-    IncidentGroupRow small = new IncidentGroupRow(
-        "orderFulfilment", "orderFulfilment:1:id", "orderFulfilment", null, 1,
-        "chargeCard", "failedJob", null, null, null, 2, 2, EARLY, LATE, "declined");
-    // Two versions of the big group arrive with per-version counts BELOW the small
-    // group's count: the ordering must apply after the merge, not per row.
-    List<IncidentGroup> groups = rollup.rollUp(List.of(
-        small,
-        row(7, null, 1, EARLY, EARLY, "older"),
+    List<IncidentGroup> groups = assembler.assemble(List.of(
+        row(7, null, 5, EARLY, EARLY, "older"),
         row(8, null, 2, LATE, LATE, "newer")), null, null);
 
-    assertThat(groups).extracting(IncidentGroup::incidentCount).containsExactly(3L, 2L);
+    assertThat(groups).extracting(IncidentGroup::processDefinitionVersion)
+        .containsExactly(7, 8);
   }
 
   @Test
   void answerAnEmptyListForNoRows() {
-    assertThat(rollup.rollUp(List.of(), null, null)).isEmpty();
+    assertThat(assembler.assemble(List.of(), null, null)).isEmpty();
   }
 }

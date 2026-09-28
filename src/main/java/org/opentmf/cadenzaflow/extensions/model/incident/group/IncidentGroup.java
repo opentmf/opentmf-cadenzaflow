@@ -1,20 +1,20 @@
 package org.opentmf.cadenzaflow.extensions.model.incident.group;
 
 import java.util.Date;
-import java.util.List;
 
 /**
- * One line of the grouped incident report: all originating incidents of one activity ×
- * incident type × tenant in one called (or root) BPMN, across every deployed version,
- * scoped to one root definition's call tree.
+ * One line of the grouped incident report: all originating incidents of one called (or
+ * root) BPMN VERSION × activity × incident type × tenant × caller, scoped to one root
+ * definition's call tree. The root key is not repeated here — it is the report's own
+ * required query parameter — but it stays in the {@link #selector()}, which a retry
+ * needs to resolve the tree.
  *
  * @author Cezmi Aslan
  */
 public record IncidentGroup(
-    String rootProcessDefinitionKey,
     String processDefinitionKey,
+    int processDefinitionVersion,
     String processDefinitionName,
-    List<Integer> processDefinitionVersions,
     String activityId,
     String activityName,
     String activityType,

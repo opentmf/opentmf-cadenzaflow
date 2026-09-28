@@ -7,12 +7,13 @@ import org.glassfish.jersey.logging.LoggingFeature;
 import org.opentmf.cadenzaflow.extensions.resource.IncidentGroupResource;
 import org.opentmf.cadenzaflow.extensions.resource.IncidentListResource;
 import org.opentmf.cadenzaflow.extensions.resource.IncidentRetryResource;
+import org.opentmf.cadenzaflow.extensions.resource.OpenApiResource;
 import org.springframework.context.annotation.Configuration;
 
 /**
  * Configures request/response logging for Camunda, and mounts this service's own
- * incident operations resource into the engine's REST application (registered as an
- * instance, so it keeps its Spring-injected collaborators).
+ * incident operations resources and its API document into the engine's REST application
+ * (registered as instances, so they keep their Spring-injected collaborators).
  * <p>To enable request / response logging, add this to your logging configuration:
  * <pre>
  * {@code
@@ -29,14 +30,17 @@ public class JerseyConfig extends CamundaJerseyResourceConfig {
   private final IncidentGroupResource incidentGroupResource;
   private final IncidentRetryResource incidentRetryResource;
   private final IncidentListResource incidentListResource;
+  private final OpenApiResource openApiResource;
 
   public JerseyConfig(
       IncidentGroupResource incidentGroupResource,
       IncidentRetryResource incidentRetryResource,
-      IncidentListResource incidentListResource) {
+      IncidentListResource incidentListResource,
+      OpenApiResource openApiResource) {
     this.incidentGroupResource = incidentGroupResource;
     this.incidentRetryResource = incidentRetryResource;
     this.incidentListResource = incidentListResource;
+    this.openApiResource = openApiResource;
   }
 
   @Override
@@ -46,6 +50,7 @@ public class JerseyConfig extends CamundaJerseyResourceConfig {
     register(incidentGroupResource);
     register(incidentRetryResource);
     register(incidentListResource);
+    register(openApiResource);
 
     register(LoggingFeature.class)
         .property(LoggingFeature.DEFAULT_LOGGER_LEVEL, Level.INFO.getName())

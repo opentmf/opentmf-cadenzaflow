@@ -154,7 +154,10 @@ The complete API is described in [docs/openapi.yaml](docs/openapi.yaml) — ever
 engine REST endpoint plus this service's additions under
 `/engine-rest/extensions/**`, with the security model as deployed. Open it in
 Swagger UI or Redoc: the additions are grouped under the **`Extensions: Incidents`**
-tag at the top. The document tracks the exact embedded engine version.
+tag at the top. The document tracks the exact embedded engine version. A running
+instance serves the same document, packaged into its jar, at
+`GET /cadenzaflow/v1/engine-rest/extensions/openapi.yaml` (the `/engine-rest/**` GET
+rule applies: `reader`/`writer`/`admin`).
 
 ---
 
@@ -1745,10 +1748,25 @@ badly", ask the grouped report:
 GET /cadenzaflow/v1/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=orderFulfilment
 ```
 
-One JSON array, sorted worst-first: each entry is one activity × incident type in one
-BPMN of that root's call tree — the root's own tasks and everything reached through
-call activities, all deployed versions — with `incidentCount`, `processInstanceCount`,
-first/last occurrence, a `sampleMessage`, and `calledFrom` naming the call path.
+One JSON array, sorted worst-first, over one root's call tree — the root's own tasks
+and everything reached through call activities, all deployed versions. Each entry is
+one group, identified by these **grouping columns**:
+
+| Column | Meaning |
+|---|---|
+| `processDefinitionKey` | the BPMN the incidents sit in (root or called) |
+| `processDefinitionVersion` | its deployed version — versions are **never merged** |
+| `activityId` | the failing task |
+| `incidentType` | `failedJob` or `failedExternalTask` |
+| `tenantId` | the tenant (null without multi-tenancy) |
+| `calledFrom` | `{processDefinitionKey, callActivityId}` of the caller; null in the root BPMN |
+
+…and carries that combination's `incidentCount`, `processInstanceCount`, first/last
+occurrence and a `sampleMessage`, plus the display names from that version's model.
+Two versions of one task failing side by side come back as two entries, each with its
+own counts — so "is v9 still failing, or only the v8 instances?" reads straight off
+the report. The root key is not repeated per entry (it is the query parameter); it is
+in each entry's `selector`.
 Counts are **originating incidents only**: the engine copies each incident into every
 ancestor instance, and the report filters the copies, so the numbers do not multiply
 with call depth (the stock `/process-definition/{id}/statistics?incidents=true` does
@@ -1763,7 +1781,7 @@ Query parameters of the report:
 | `tenantId` | no | one tenant only |
 | `incidentTimestampAfter` | no | **inclusive** lower bound on the originating incident's raise time |
 | `incidentTimestampBefore` | no | **exclusive** upper bound |
-| `minIncidents` | no | drop groups with fewer incidents |
+| `minIncidents` | no | drop groups with fewer incidents (per group as above, i.e. per version) |
 
 Time ranges are **half-open** — `[after, before)` — on this report, on the incident
 list, and on the retry alike: "what broke since the 14:00 deploy" includes
@@ -1818,6 +1836,7 @@ POST /cadenzaflow/v1/engine-rest/extensions/incident/retry
 {
   "rootProcessDefinitionKey": "orderFulfilment",
   "processDefinitionKey": "reserveStock",
+  "processDefinitionVersion": 8,
   "activityId": "callWms",
   "incidentType": "failedExternalTask",
   "calledFrom": { "processDefinitionKey": "orderFulfilment", "callActivityId": "reserve" },
@@ -1825,8 +1844,9 @@ POST /cadenzaflow/v1/engine-rest/extensions/incident/retry
 }
 ```
 
-Body fields — the first four are the mandatory group key; together with
-`tenantId` and `calledFrom` they are exactly a group's `selector`. The rest narrow
+Body fields — the first four are mandatory; together with `tenantId`, `calledFrom`
+and `processDefinitionVersion` they are exactly a group's `selector`, so a selector
+posted back verbatim retries that one group — one version — only. The rest narrow
 the retried set:
 
 | Field | Required | Meaning |
@@ -1838,7 +1858,7 @@ the retried set:
 | `retries` | **yes** | remaining attempts to **set** (absolute, ≥ 1 — not an increment) |
 | `tenantId` | no | one tenant only |
 | `calledFrom` | no | `{processDefinitionKey, callActivityId}` — the caller of the failing instance. Part of the group key, so the report always echoes it; omit it only to retry the activity across every caller under the root |
-| `processDefinitionVersion` | no | one definition version only |
+| `processDefinitionVersion` | no | one definition version only. Part of the group key, so the report always echoes it; omit it only to retry every version |
 | `incidentTimestampAfter` / `incidentTimestampBefore` | no | half-open time window, as above |
 
 The service re-resolves the selector against the live incident table, hands the

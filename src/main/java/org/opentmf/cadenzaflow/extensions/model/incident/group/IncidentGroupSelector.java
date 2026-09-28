@@ -6,15 +6,17 @@ package org.opentmf.cadenzaflow.extensions.model.incident.group;
  * client never assembles it by hand. When the report was queried with a time window,
  * the selector ECHOES that window verbatim (the exact strings the client sent), so a
  * retry posted from a filtered view touches exactly the slice that was displayed —
- * never the whole group. {@code calledFrom} is echoed for the same reason: it is part
- * of the group key, and without it a retry would also hit the sibling group of the same
- * child BPMN called from another call activity under the same root.
+ * never the whole group. {@code calledFrom} and {@code processDefinitionVersion} are
+ * echoed for the same reason: both are part of the group key, and without them a retry
+ * would also hit the sibling groups of the same activity — called from another call
+ * activity, or running another version of the definition.
  *
  * @author Cezmi Aslan
  */
 public record IncidentGroupSelector(
     String rootProcessDefinitionKey,
     String processDefinitionKey,
+    Integer processDefinitionVersion,
     String activityId,
     String incidentType,
     String tenantId,
