@@ -184,6 +184,21 @@ class OpenTmfCadenzaFlowApplicationIT {
   }
 
   @Test
+  void unexposedManagementPathStillRequiresAToken() throws Exception {
+    // openid-rbac-security 3.1.0 documents a 404 for an unexposed actuator path, before
+    // authentication. MEASURED here with 3.3.0 it stays 401 for an anonymous caller, as
+    // before 3.1.0 - pinned so that a library change to it shows up as a failing test
+    // rather than as a surprise on a dashboard keyed on this port's statuses.
+    var managementPort = applicationContext.getEnvironment().getProperty("local.management.port");
+    var request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + managementPort + "/actuator/no-such-endpoint"))
+        .GET()
+        .build();
+    Assertions.assertEquals(
+        401, httpClient.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+  }
+
+  @Test
   void webUiIsHandledBySsoRatherThanTheWhitelist() throws Exception {
     // The UI paths are NOT whitelisted in config-security.yml - an unauthenticated
     // browser is redirected by the OAuth2 login chain instead. Proven rather than
@@ -196,10 +211,15 @@ class OpenTmfCadenzaFlowApplicationIT {
 
   @Test
   void unmatchedApplicationPortPathIsDenied() throws Exception {
-    // SEC-02: unmatched paths are denied, not allowed. Guards the whitelist against
-    // regaining a blanket entry that would turn this into a 404 (i.e. "reached the
-    // app") for anything under the context path.
-    Assertions.assertEquals(401, get("/cadenzaflow/anything", null).statusCode());
+    // SEC-02: unmatched paths are denied, not allowed. Since openid-rbac-security 3.1.0
+    // the library answers a fixed status matrix BEFORE authentication: a path that no
+    // Spring MVC handler serves is a 404 for every caller - the library's answer, the
+    // request never reaches the application.
+    Assertions.assertEquals(404, get("/cadenzaflow/anything", null).statusCode());
+    // Paths the container dispatches to another servlet bypass that matrix: Jersey owns
+    // /engine-rest/*, so an unknown engine path still meets the access rules first and
+    // an anonymous caller learns nothing about which engine paths exist.
+    Assertions.assertEquals(401, get("/engine-rest/no-such-resource", null).statusCode());
   }
 
   @Test

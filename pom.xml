@@ -61,12 +61,12 @@
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
-    <!-- 3.0.0: denied requests on an MVC-served path answer 405 for an unserved
-         method (opentmf.security.unmatched-method-response). Inert here - this
-         service serves no Spring MVC endpoints of its own; Jersey-served paths are
-         invisible to the resolver and keep answering 401/403 exactly as before. -->
-    <openid-rbac-security.version>3.0.0</openid-rbac-security.version>
-    <graalvm.version>25.3.4.1</graalvm.version>
+    <!-- 3.1.0+: a fixed status matrix runs before authentication - a path no Spring
+         MVC handler serves is 404 for every caller, an unimplemented method 405.
+         Jersey-served paths (/engine-rest/*) bypass it and keep answering 401/403
+         exactly as before; see OpenTmfCadenzaFlowApplicationIT for what is measured. -->
+    <openid-rbac-security.version>3.3.0</openid-rbac-security.version>
+    <graalvm.version>25.4.4.1.1</graalvm.version>
     <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
     <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 
@@ -83,16 +83,16 @@
          its own `tomcat.version` internally and a property here is silently ignored -
          the httpcore5 lesson of 1.1.2, verified again by reading BOOT-INF/lib.
          Remove when a Boot GA pins >= 11.0.25. -->
-    <tomcat.version>11.0.25</tomcat.version>
+    <tomcat.version>11.0.26</tomcat.version>
 
     <!-- TMF-630 paging/sorting semantics for the incident list. The -core module
          only: its logic (status resolution, range/link headers, sort grammar with
          allowlist) is plain public API, called programmatically from the Jersey
          resource - the -autoconfigure sibling is Spring-MVC-only and would never
          see a request under /engine-rest. -->
-    <tmf630-toolkit.version>3.1.1</tmf630-toolkit.version>
+    <tmf630-toolkit.version>3.4.0</tmf630-toolkit.version>
 
-    <archunit.version>1.5.0</archunit.version>
+    <archunit.version>1.5.1</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
     <pitest-maven.version>1.30.0</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
@@ -110,7 +110,7 @@
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
     <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
-    <exec-maven-plugin.version>3.6.3</exec-maven-plugin.version>
+    <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
     <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
 
@@ -676,8 +676,8 @@
     <profile>
       <id>aws</id>
       <properties>
-        <aws-msk-iam-auth.version>2.3.8</aws-msk-iam-auth.version>
-        <awssdk.version>2.54.14</awssdk.version>
+        <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
+        <awssdk.version>2.55.6</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
@@ -762,7 +762,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
-        <trivy-image.version>0.72.0</trivy-image.version>
+        <trivy-image.version>0.74.0</trivy-image.version>
       </properties>
       <build>
         <plugins>

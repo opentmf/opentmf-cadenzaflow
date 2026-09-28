@@ -40,6 +40,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `opentmf.security.whitelist` must add `/engine-rest/extensions/openapi.yaml` to it** to
   serve the document anonymously — otherwise the `/engine-rest/**` GET rule applies.
 
+### Changed
+
+- **A path nothing serves now answers `404` for every caller, before authentication —
+  except under `/engine-rest/**`, which is unchanged.** openid-rbac-security 3.0.0 → 3.3.0
+  brings the library's fixed status matrix (3.1.0): on paths Spring MVC dispatches, an
+  unknown path is `404` and an unimplemented method `405` (no `Allow`), and only an
+  existing path and method reach `401`/`403`. Before, `GET /cadenzaflow/v1/anything`
+  answered `401`; now `404`. Measured on this service: the engine REST API and this
+  service's extensions are served by Jersey, which the matrix does not see, so an
+  unknown `/engine-rest/…` path still answers `401` to an anonymous caller; and an
+  unexposed actuator path on the management port also still answers `401` there.
+  If you alert on `401` for application-port paths outside `/engine-rest`, add `404`.
+- **A signing-key outage no longer turns every request into a `500`.** Same bump
+  (3.2.0): each trusted issuer's keys are loaded at startup and refreshed in the
+  background, served from cache through an identity-provider outage (up to 24h by
+  default), and an issuer whose keys were never obtained answers a typed `503` with
+  `Retry-After` instead of a `500`; a bad or expired token still answers `401`. The fetch
+  now honours `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` from the environment, which Java
+  ignored before: a deployment that exports `HTTPS_PROXY` but reaches its identity
+  provider directly must list that host in `NO_PROXY`. From 3.3.0 the Prometheus scrape
+  carries `opentmf_security_jwks_*` meters per issuer (keys loaded, key age, fetch
+  failures), and the opt-in `opentmf.security.jwks.readiness: true` takes the pod out of
+  readiness while its keys are unavailable instead of serving `503`s.
+- Tomcat 11.0.25 → 11.0.26, GraalJS 25.3.4.1 → 25.4.4.1.1 (JavaScript script tasks), AWS
+  SDK 2.54.14 → 2.55.6 with every `software.amazon.awssdk` module on that one version and
+  aws-msk-iam-auth 2.3.8 → 2.3.9 (`-aws` flavour), tmf630-toolkit 3.1.1 → 3.4.0 (its
+  changes are to attribute filtering, which this service does not use; paging and
+  sorting behave as before).
+
 ### Fixed
 
 - **`minIncidents` no longer hides groups whose incidents are spread across versions.**
