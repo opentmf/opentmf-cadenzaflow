@@ -10,7 +10,7 @@ import java.util.List;
 import org.cadenzaflow.bpm.engine.rest.exception.InvalidRequestException;
 import org.opentmf.cadenzaflow.extensions.model.incident.group.IncidentGroup;
 import org.opentmf.cadenzaflow.extensions.repository.IncidentGroupRepository;
-import org.opentmf.cadenzaflow.extensions.service.IncidentGroupRollup;
+import org.opentmf.cadenzaflow.extensions.service.IncidentGroupAssembler;
 import org.opentmf.cadenzaflow.extensions.util.EngineRestDateUtil;
 import org.springframework.stereotype.Component;
 
@@ -37,11 +37,12 @@ import org.springframework.stereotype.Component;
 public class IncidentGroupResource {
 
   private final IncidentGroupRepository repository;
-  private final IncidentGroupRollup rollup;
+  private final IncidentGroupAssembler assembler;
 
-  public IncidentGroupResource(IncidentGroupRepository repository, IncidentGroupRollup rollup) {
+  public IncidentGroupResource(
+      IncidentGroupRepository repository, IncidentGroupAssembler assembler) {
     this.repository = repository;
-    this.rollup = rollup;
+    this.assembler = assembler;
   }
 
   /**
@@ -62,7 +63,7 @@ public class IncidentGroupResource {
       throw new InvalidRequestException(Status.BAD_REQUEST,
           "Query parameter 'rootProcessDefinitionKey' is required");
     }
-    return rollup.rollUp(
+    return assembler.assemble(
         repository.groups(
             rootProcessDefinitionKey, incidentType, tenantId,
             EngineRestDateUtil.parse("incidentTimestampAfter", incidentTimestampAfter),

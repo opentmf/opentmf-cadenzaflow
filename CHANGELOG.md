@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] - 2026-09-28
+
+### BREAKING CHANGES
+
+- **The grouped incident report no longer merges definition versions: each version is
+  its own group, with its own counts.** `GET /engine-rest/extensions/incident/groups`
+  used to fold every deployed version of a BPMN into one entry, keeping only the list
+  `processDefinitionVersions` — how many incidents each version carried was lost, so
+  "is the fix in v9 working, or is v8 still failing?" could not be answered from the
+  report. The grouping columns are now `processDefinitionKey`,
+  `processDefinitionVersion`, `activityId`, `incidentType`, `tenantId` and `calledFrom`,
+  stated explicitly in the OpenAPI document. For a client this means:
+  - `processDefinitionVersions` (array) is replaced by `processDefinitionVersion`
+    (integer). A task failing in two versions now comes back as **two** entries; a
+    client that summed or displayed one entry per task must group them itself.
+  - `rootProcessDefinitionKey` is removed from each entry — it only repeated the
+    report's required query parameter. It stays in each entry's `selector`, which the
+    retry needs.
+  - Each `selector` now carries `processDefinitionVersion`, so a selector posted back to
+    `POST /engine-rest/extensions/incident/retry` verbatim retries **that version only**.
+    A retry of every version is still possible by omitting the field from a
+    hand-written request.
+  - `processDefinitionName`, `activityName`, `activityType` and `sampleMessage` now come
+    from the entry's own version, no longer from the newest version present.
+
+### Added
+
+- **The API document is served by the running service**, at
+  `GET /engine-rest/extensions/openapi.yaml` (`application/yaml`). It is
+  `docs/openapi.yaml` packaged into the jar, so a client fetches the contract of exactly
+  the version it is talking to instead of looking it up in the repository. The
+  `/engine-rest/**` GET rule applies: `reader`/`writer`/`admin`.
+
+### Fixed
+
+- **`minIncidents` no longer hides groups whose incidents are spread across versions.**
+  The filter was applied to each version separately *before* the versions were merged,
+  so a group of 2 incidents on v7 and 1 on v8 disappeared under `minIncidents=3`
+  although the report would have shown it with 3. With per-version groups the filter
+  applies to exactly the entries the report returns.
+
 ## [1.3.0] - 2026-09-09
 
 ### BREAKING CHANGES

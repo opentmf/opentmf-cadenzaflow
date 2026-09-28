@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
@@ -228,10 +229,12 @@ class IncidentOperationsIT {
     JsonNode groups = objectMapper.readTree(response.body());
     assertThat(groups).hasSize(1);
     JsonNode group = groups.get(0);
-    assertThat(group.get("rootProcessDefinitionKey").asText()).isEqualTo("parentFlow");
+    assertThat(group.has("rootProcessDefinitionKey"))
+        .as("the root key is the query parameter, not repeated per group")
+        .isFalse();
     assertThat(group.get("processDefinitionKey").asText()).isEqualTo("childFlow");
     assertThat(group.get("processDefinitionName").asText()).isEqualTo("Child flow");
-    assertThat(group.get("processDefinitionVersions").get(0).asInt()).isEqualTo(1);
+    assertThat(group.get("processDefinitionVersion").asInt()).isEqualTo(1);
     assertThat(group.get("activityId").asText()).isEqualTo("callWms");
     assertThat(group.get("activityName").asText()).isEqualTo("Call WMS");
     assertThat(group.get("activityType").asText()).isEqualTo("serviceTask");
@@ -246,6 +249,7 @@ class IncidentOperationsIT {
     JsonNode selector = group.get("selector");
     assertThat(selector.get("rootProcessDefinitionKey").asText()).isEqualTo("parentFlow");
     assertThat(selector.get("processDefinitionKey").asText()).isEqualTo("childFlow");
+    assertThat(selector.get("processDefinitionVersion").asInt()).isEqualTo(1);
     assertThat(selector.get("activityId").asText()).isEqualTo("callWms");
     assertThat(selector.get("incidentType").asText()).isEqualTo("failedExternalTask");
     assertThat(selector.get("calledFrom").get("processDefinitionKey").asText())
@@ -497,6 +501,70 @@ class IncidentOperationsIT {
         .statusCode()).as("reader may look but not retry").isEqualTo(403);
     assertThat(post("/engine-rest/extensions/incident/retry", retryBody(1), null)
         .statusCode()).isEqualTo(401);
+  }
+
+  @Test
+  @Order(10)
+  void everyDefinitionVersionIsItsOwnGroupWithItsOwnCounts() throws Exception {
+    // v2 of the child renames the task, so the per-version name lookup is observable.
+    processEngine.getRepositoryService().createDeployment()
+        .name("incident-operations-fixtures-v2")
+        .addString("childFlow.bpmn20.xml", CHILD_FLOW.replace("Call WMS", "Call WMS v2"))
+        .deploy();
+    for (int i = 0; i < 2; i++) {
+      processEngine.getRuntimeService().startProcessInstanceByKey("parentFlow");
+    }
+    // 3 v1 tasks (retried to 1 by the group retry above) + 2 new v2 tasks: fail them all.
+    ExternalTaskService externalTaskService = processEngine.getExternalTaskService();
+    List<LockedExternalTask> tasks = externalTaskService.fetchAndLock(10, WORKER)
+        .topic("wms", 60_000L).execute();
+    assertThat(tasks).hasSize(5);
+    for (LockedExternalTask task : tasks) {
+      externalTaskService.handleFailure(task.getId(), WORKER, "WMS returned 503", 0, 0);
+    }
+
+    JsonNode groups = objectMapper.readTree(
+        get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow",
+            READER_TOKEN).body());
+    assertThat(groups).hasSize(2);
+    assertThat(groups.get(0).get("processDefinitionVersion").asInt()).isEqualTo(1);
+    assertThat(groups.get(0).get("incidentCount").asLong()).isEqualTo(3);
+    assertThat(groups.get(0).get("activityName").asText()).isEqualTo("Call WMS");
+    assertThat(groups.get(1).get("processDefinitionVersion").asInt()).isEqualTo(2);
+    assertThat(groups.get(1).get("incidentCount").asLong()).isEqualTo(2);
+    assertThat(groups.get(1).get("activityName").asText()).isEqualTo("Call WMS v2");
+
+    // minIncidents applies to exactly the groups the report returns - per version.
+    JsonNode atLeastThree = objectMapper.readTree(get(
+        "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
+            + "&minIncidents=3", READER_TOKEN).body());
+    assertThat(atLeastThree).hasSize(1);
+    assertThat(atLeastThree.get(0).get("processDefinitionVersion").asInt()).isEqualTo(1);
+
+    // A v2 selector posted back verbatim retries v2 only; v1's 3 incidents (+ 3 parent
+    // copies) stay.
+    ObjectNode retry = ((ObjectNode) groups.get(1).get("selector")).put("retries", 1);
+    JsonNode result = objectMapper.readTree(post("/engine-rest/extensions/incident/retry",
+        objectMapper.writeValueAsString(retry), WRITER_TOKEN).body());
+    assertThat(result.get("incidentCount").asLong()).isEqualTo(2);
+    Awaitility.await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500))
+        .until(() -> processEngine.getRuntimeService().createIncidentQuery().count() == 6);
+  }
+
+  @Test
+  @Order(11)
+  void apiDocumentIsServedBehindTheEngineRestGetRule() throws Exception {
+    HttpResponse<String> response = get("/engine-rest/extensions/openapi.yaml", READER_TOKEN);
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(response.headers().firstValue("Content-Type")).hasValueSatisfying(
+        type -> assertThat(type).startsWith("application/yaml"));
+    assertThat(response.body())
+        .startsWith("openapi: 3.2.0")
+        .contains("/engine-rest/extensions/incident/groups:");
+
+    assertThat(get("/engine-rest/extensions/openapi.yaml", null).statusCode()).isEqualTo(401);
+    assertThat(get("/engine-rest/extensions/openapi.yaml", ROLELESS_TOKEN).statusCode())
+        .isEqualTo(403);
   }
 
   private static String retryBody(int retries) {

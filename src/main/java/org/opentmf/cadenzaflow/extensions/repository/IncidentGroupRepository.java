@@ -47,9 +47,12 @@ public class IncidentGroupRepository {
   /**
    * Per-definition-VERSION groups of the active originating incidents in the call tree
    * of {@code rootProcessDefinitionKey}, ordered by incident count descending. The
-   * group key is {@code ACTIVITY_ID_}, deliberately not {@code FAILED_ACTIVITY_ID_}:
-   * the engine leaves the latter null on external-task incidents, which would collapse
-   * every external-task failure into one empty-activity group.
+   * group key is definition key × VERSION × activity × incident type × tenant × caller;
+   * {@code minIncidents} therefore applies per version, exactly to the groups the report
+   * returns. The activity column is {@code ACTIVITY_ID_}, deliberately not
+   * {@code FAILED_ACTIVITY_ID_}: the engine leaves the latter null on external-task
+   * incidents, which would collapse every external-task failure into one empty-activity
+   * group.
    */
   public List<IncidentGroupRow> groups(
       String rootProcessDefinitionKey, String incidentType, String tenantId,
@@ -97,7 +100,8 @@ public class IncidentGroupRepository {
       select.append("having count(*) >= :minIncidents\n");
       params.put("minIncidents", minIncidents);
     }
-    select.append("order by INCIDENTS_ desc");
+    // Ties broken on the group key, so equal counts come back in a stable order.
+    select.append("order by INCIDENTS_ desc, DEF_KEY_, DEF_VERSION_ desc, i.ACTIVITY_ID_");
 
     return jdbc.query(select.toString(), params, IncidentGroupRepository::mapRow);
   }

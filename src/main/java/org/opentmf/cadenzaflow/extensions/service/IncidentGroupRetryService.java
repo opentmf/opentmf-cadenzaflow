@@ -87,7 +87,8 @@ public class IncidentGroupRetryService {
   private static IncidentGroupSelector selectorOf(IncidentGroupRetryRequest request) {
     return new IncidentGroupSelector(
         request.rootProcessDefinitionKey(), request.processDefinitionKey(),
-        request.activityId(), request.incidentType(), request.tenantId(),
+        request.processDefinitionVersion(), request.activityId(), request.incidentType(),
+        request.tenantId(),
         request.calledFrom(), request.incidentTimestampAfter(), request.incidentTimestampBefore());
   }
 
