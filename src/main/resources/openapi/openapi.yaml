@@ -36469,11 +36469,13 @@ paths:
     get:
       tags:
       - 'Extensions: Incidents'
-      summary: This API document
-      description: 'The service''s complete API document (this file, `docs/openapi.yaml`, packaged into
-        the jar at build time), so a client can fetch the contract of exactly the version it is talking
-        to. Covered by the `/engine-rest/**` GET rule: `reader`/`writer`/`admin`. Namespaced under `/extensions`,
-        clear of every upstream route.
+      summary: This API document (whitelisted, no token)
+      security: []
+      description: 'The service''s complete API document (this file, packaged into the jar from `src/main/resources/openapi/openapi.yaml`),
+        so a client can fetch the contract of exactly the version it is talking to. Anonymous: whitelisted
+        in the standalone security defaults. A deployment that authors its own `opentmf.security.whitelist`
+        must list this path there too, or it falls under the `/engine-rest/**` GET rule. Namespaced under
+        `/extensions`, clear of every upstream route.
 
         '
       responses:
@@ -36483,10 +36485,6 @@ paths:
             application/yaml:
               schema:
                 type: string
-        '401':
-          description: unauthenticated
-        '403':
-          description: insufficient role
   /actuator/health:
     get:
       tags:

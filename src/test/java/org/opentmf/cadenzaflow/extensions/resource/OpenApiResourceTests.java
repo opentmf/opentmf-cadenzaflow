@@ -18,7 +18,7 @@ class OpenApiResourceTests {
     String document = new String(new OpenApiResource().document(), StandardCharsets.UTF_8);
 
     assertThat(document)
-        .as("docs/openapi.yaml, packaged by the pom's resource entry")
+        .as("src/main/resources/openapi/openapi.yaml, on the classpath")
         .startsWith("openapi: 3.2.0")
         .contains("/engine-rest/extensions/incident/groups:");
   }

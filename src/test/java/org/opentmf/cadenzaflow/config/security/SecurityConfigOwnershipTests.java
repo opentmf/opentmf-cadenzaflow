@@ -167,7 +167,8 @@ class SecurityConfigOwnershipTests {
       assertThat(stringList(environment, "opentmf.security.whitelist")).isEmpty();
       // Named explicitly so the reason this matters survives in the test, not just the README.
       assertThat(stringList(configurationWith(), "opentmf.security.whitelist"))
-          .containsExactly("/error", "/engine-rest/external-task/**");
+          .containsExactly("/error", "/engine-rest/external-task/**",
+              "/engine-rest/extensions/openapi.yaml");
     }
 
     @Test

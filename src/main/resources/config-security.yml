@@ -69,6 +69,8 @@ opentmf:
     whitelist:
       - /error
       - /engine-rest/external-task/**
+      # The API document (README §2) - the contract, not data.
+      - /engine-rest/extensions/openapi.yaml
 
     # Actuator runs on the separate management port (16000); since
     # openid-rbac-security 2.x it is governed by this dedicated block, not by the

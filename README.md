@@ -141,6 +141,7 @@ published through an Ingress.
 |---|---|---|
 | `:8080/cadenzaflow/v1/engine-rest/**` | The engine REST API: deployments, process definitions and instances, tasks, variables, history, batches | bearer token with a role (§3) |
 | `:8080/cadenzaflow/v1/engine-rest/external-task/**` | External-task fetch/lock/complete | **no token by default** — see §3 |
+| `:8080/cadenzaflow/v1/engine-rest/extensions/openapi.yaml` | This service's complete API document (OpenAPI 3.2, YAML) | **no token by default** — see §3 |
 | `:8080/cadenzaflow/v1/engine-rest/extensions/incident` (+ `/groups`, `/retry`) | The service's own incident operations, mounted inside the engine REST application — the collection (a TMF-630 pageable incident list), its aggregate view (a grouped report per root BPMN's call tree), and its action (bulk retry as engine batches) — §9.3. Not part of the upstream contract | bearer token with a role (§3) |
 | `:8080/cadenzaflow/v1/app/cockpit` | Cockpit — monitoring and operations UI | browser, SSO login |
 | `:8080/cadenzaflow/v1/app/tasklist` | Tasklist — human task UI | browser, SSO login |
@@ -150,14 +151,16 @@ published through an Ingress.
 | `:16000/actuator/metrics/**`, `/loggers/**` | Metrics; runtime log-level changes | anonymous |
 | `:16000/actuator/env` | Effective configuration | bearer token with `admin` |
 
-The complete API is described in [docs/openapi.yaml](docs/openapi.yaml) — every
+The complete API is described in
+[src/main/resources/openapi/openapi.yaml](src/main/resources/openapi/openapi.yaml) — every
 engine REST endpoint plus this service's additions under
 `/engine-rest/extensions/**`, with the security model as deployed. Open it in
 Swagger UI or Redoc: the additions are grouped under the **`Extensions: Incidents`**
 tag at the top. The document tracks the exact embedded engine version. A running
-instance serves the same document, packaged into its jar, at
-`GET /cadenzaflow/v1/engine-rest/extensions/openapi.yaml` (the `/engine-rest/**` GET
-rule applies: `reader`/`writer`/`admin`).
+instance serves the same document, from its jar, **without a token** at
+`GET /cadenzaflow/v1/engine-rest/extensions/openapi.yaml` — whitelisted in the
+standalone defaults; a deployment that authors its own `opentmf.security.whitelist`
+must list the path there as well (§3.5).
 
 ---
 
@@ -220,6 +223,7 @@ caller needs **any one** of them.
 | `DELETE` | `/engine-rest/**` | `writer`, `admin` | deleting instances, deployments |
 | `POST` | `/engine-rest/extensions/incident/retry` | `writer`, `admin` | bulk incident retry (§9.3). Shipped with the same roles as the POST wildcard, as a **dedicated rule listed before the wildcards** so a deployment can tighten this one operation (e.g. `admin` only) without touching them |
 | any | `/engine-rest/external-task/**` | **none — open** | worker polling; see the warning below |
+| any | `/engine-rest/extensions/openapi.yaml` | **none — open** | the API document; the contract, no engine data |
 | any | the web UIs (`/app/**`, `/api/**`, static assets) | **none at this layer** | not whitelisted — the OIDC login chain redirects an unauthenticated browser to the provider |
 | `GET` | `/actuator/health`, `/prometheus`, `/metrics/**`, `/loggers/**` | **none — open** | management port, internal only |
 | `GET` | `/actuator/env` | `admin` | shows effective configuration |
@@ -306,6 +310,7 @@ opentmf:
     whitelist:                         # main port - unlisted paths are DENIED
       - /error
       - /engine-rest/external-task/**  # external-task workers dial this anonymously
+      - /engine-rest/extensions/openapi.yaml  # the API document, if it should be anonymous
     secure-endpoints: [ ... ]          # main port, see §8.5
     management:
       whitelist:                       # unauthenticated management paths

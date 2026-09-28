@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generates docs/openapi.yaml - the service's SINGLE published API document
+"""Generates src/main/resources/openapi/openapi.yaml - the service's SINGLE published
+API document
 (OpenAPI 3.2.0, YAML): every endpoint of the embedded engine's REST API plus this
 service's own additions (the incident operations and the management-port endpoints).
 
@@ -44,7 +45,7 @@ except ImportError:
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SERVICE_SPEC = ROOT / "ci" / "openapi-service.yaml"
-OUTPUT = ROOT / "docs" / "openapi.yaml"
+OUTPUT = ROOT / "src" / "main" / "resources" / "openapi" / "openapi.yaml"
 ARTIFACT = "org.cadenzaflow.bpm:cadenzaflow-engine-rest-openapi"
 
 
