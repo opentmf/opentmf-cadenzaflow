@@ -93,7 +93,11 @@
          these properties alone: with a BOM-only import the Boot BOM resolves its own
          properties of the same names internally and a bare property here is silently
          ignored - see tomcat.version above. Remove when a Boot GA pins >= 2.21.7 and
-         >= 3.1.7. -->
+         >= 3.1.7.
+         HOLD (1.4.1, CVE-only re-cut, ruled by Gökhan 2026-09-29): the versions goals
+         propose 2.22.x / 3.2.x. Deliberately NOT taken - these pins stay on the minor
+         lines Spring Boot 4.1.1 is built and tested against, moved only as far as the
+         fix; the next minors arrive with the Boot BOM that adopts them. -->
     <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
     <jackson-bom.version>3.1.7</jackson-bom.version>
 
@@ -706,6 +710,9 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
+        <!-- HOLD (1.4.1 only): 2.55.7 was proposed after 1.4.0; the 1.4.1 re-cut is
+             CVE-only by ruling (Gökhan, 2026-09-29), so it is taken in the next regular
+             release - remove this note then. -->
         <awssdk.version>2.55.6</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
       </properties>
