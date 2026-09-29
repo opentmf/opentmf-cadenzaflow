@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.1] - 2026-09-29
+
+### Security
+
+- **The images no longer carry CVE-2026-68497 (HIGH) in jackson-databind.** Spring Boot
+  4.1.1 manages Jackson 2.21.5 and 3.1.5, both affected; 1.4.0's images shipped them in
+  every flavour, because the advisory was published after that release's scans. Jackson
+  is now pinned to 2.21.7 and 3.1.7 ahead of the Boot BOM, and the per-flavour Trivy scan
+  of this release finds no HIGH or CRITICAL. Nothing else changes: same engine, same API,
+  same configuration — a drop-in replacement for 1.4.0.
+
 ## [1.4.0] - 2026-09-28
 
 ### BREAKING CHANGES
