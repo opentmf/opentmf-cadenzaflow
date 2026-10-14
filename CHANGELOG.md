@@ -37,6 +37,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on PostgreSQL. On other databases, and if the lock itself cannot be taken, schema
   operations proceed exactly as before.
 
+- **The images now carry OCI provenance labels** (DNMS template convention). Both
+  Dockerfiles stamp `org.opencontainers.image.revision` and
+  `org.opencontainers.image.source` from the `APP_COMMIT`/`APP_SOURCE` build args —
+  the `docker` profile passes them from the `app.commit`/`app.source` pom properties
+  (`-Dapp.commit=$(git rev-parse HEAD)`; empty when not passed) — so deployment
+  tooling can verify which commit an image was built from.
+
+- **The jar manifest now carries the default implementation entries**
+  (`addDefaultImplementationEntries` on the jar plugin), so `Implementation-Version`
+  names the pom version — provenance of the same kind as the image labels, and what
+  the estate's fat-jar guard compares against to catch a stale jar before it ships.
+
+### Security
+
+- **CVE-2026-84782 (openssl, HIGH) closed at the image.** Both Dockerfiles now pin
+  `eclipse-temurin:25-jre-noble` by digest
+  (`sha256:d9a39a23634650173f1e2bbc176227af9728587ecf0f4b62d53e9355cd7a19ab`), which
+  ships `libssl3t64 3.0.13-0ubuntu3.16` — noble's fixed version per the Ubuntu CVE
+  tracker (the package is `libssl3t64` on noble, so jammy's fixed `libssl3` version
+  numbers do not transfer). No `.trivyignore` entry, no `apt-get upgrade`: the fix
+  rides the base pin and moves with the next base bump.
+
 ## [1.4.1] - 2026-09-29
 
 ### Security

@@ -119,6 +119,8 @@
     <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+    <!-- pins the version the default lifecycle binding already resolves -->
+    <maven-jar-plugin.version>3.4.1</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
@@ -435,6 +437,22 @@
             <delimiter>@</delimiter>
           </delimiters>
           <useDefaultDelimiters>false</useDefaultDelimiters>
+        </configuration>
+      </plugin>
+      <!-- Implementation-Title/Version/Vendor in the jar manifest: the build-tools
+           fat-jar guard compares Implementation-Version against the pom version to
+           catch a STALE jar (one left by an earlier build passes every count/fatness
+           check and ships silently). The Boot repackage preserves these entries. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>${maven-jar-plugin.version}</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
         </configuration>
       </plugin>
       <plugin>
@@ -799,6 +817,12 @@
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
         <trivy-image.version>0.74.0</trivy-image.version>
+        <!-- Stamped into the OCI provenance labels (DNMS template convention); pass
+             -Dapp.commit=$(git rev-parse HEAD) for a provenance-labeled image. Pom
+             properties rather than ${env.*} because Maven passes an UNSET env
+             reference through as the literal string, destroying the empty default. -->
+        <app.commit></app.commit>
+        <app.source>https://github.com/opentmf/opentmf-cadenzaflow</app.source>
       </properties>
       <build>
         <plugins>
@@ -838,6 +862,10 @@
                   <workingDirectory>${project.basedir}</workingDirectory>
                   <arguments>
                     <argument>build</argument>
+                    <argument>--build-arg</argument>
+                    <argument>APP_COMMIT=${app.commit}</argument>
+                    <argument>--build-arg</argument>
+                    <argument>APP_SOURCE=${app.source}</argument>
                     <argument>-t</argument>
                     <argument>local/${project.artifactId}:${project.version}</argument>
                     <argument>.</argument>
