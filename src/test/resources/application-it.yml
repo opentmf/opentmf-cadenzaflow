@@ -1,8 +1,10 @@
 spring:
   datasource:
     url: jdbc:tc:postgresql:18.0-alpine:///db
-    hikari:
-      schema: public
+
+# The tc database lives in Postgres's default schema; state it so the boot guard
+# (current_schema() vs schema-name) agrees with the container's search_path.
+cadenzaflow.schema: public
 
 plugin.identity.keycloak:
   client-id: camunda-identity-service

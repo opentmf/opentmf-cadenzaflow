@@ -17,8 +17,20 @@ cadenzaflow.bpm:
   database:
     type: postgres
     schema-update: true
-    schema-name: ${spring.datasource.hikari.schema}
-    table-prefix: ${spring.datasource.hikari.schema}.
+    # The engine's schema is STATED exactly once, as cadenzaflow.schema (decision
+    # #117; env CADENZAFLOW_SCHEMA - deliberately dash-free, so the env spelling is
+    # unambiguous), and both rows below derive from it. The pair is not optional
+    # shape: the engine refuses a databaseSchema without a table prefix equal to
+    # schema + '.' ("When setting a schema the prefix has to be schema + '.'").
+    # The connection REACHES the schema through the JDBC URL's currentSchema - the
+    # engine's own DDL is unqualified and lands in the connection's current schema,
+    # while runtime SQL is prefix-qualified - and the boot guard refuses to start,
+    # before any DDL, when current_schema() differs from the stated name, which is
+    # exactly what keeps those two paths pointing at the same schema. Deployments
+    # STATE CADENZAFLOW_SCHEMA explicitly beside the URL; the default below is a
+    # safety net, not the contract.
+    schema-name: ${cadenzaflow.schema:cadenzaflow}
+    table-prefix: ${cadenzaflow.schema:cadenzaflow}.
   filter:
     create: All tasks
   # Job executor sizing. These govern the engine's OWN background work - timers,

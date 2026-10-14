@@ -2,6 +2,7 @@ package org.opentmf.cadenzaflow.config.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -237,9 +238,98 @@ class JobPriorityIndexPluginTests {
     verify(delegate).execute(commandContext);
   }
 
+  @Test
+  void wrapperFailsBootWhenCurrentSchemaDiffersFromTheStatedSchema() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getProcessEngineConfiguration().getDatabaseSchema())
+        .thenReturn("cadenzaflow");
+    stubLockStatement(commandContext);
+    stubCurrentSchema(commandContext, "public");
+
+    assertThatThrownBy(
+            () ->
+                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
+                    .execute(commandContext))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Engine schema mismatch")
+        .hasMessageContaining("'cadenzaflow'")
+        .hasMessageContaining("'public'")
+        .hasMessageContaining("currentSchema=cadenzaflow");
+    verify(delegate, never()).execute(commandContext);
+  }
+
+  @Test
+  void wrapperAcceptsAMatchingCurrentSchemaAndDelegates() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getProcessEngineConfiguration().getDatabaseSchema())
+        .thenReturn("cadenzaflow");
+    stubLockStatement(commandContext);
+    stubCurrentSchema(commandContext, "cadenzaflow");
+
+    assertThatCode(
+            () ->
+                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
+                    .execute(commandContext))
+        .doesNotThrowAnyException();
+    verify(delegate).execute(commandContext);
+  }
+
+  @Test
+  void wrapperSkipsTheSchemaCheckWhenNoSchemaIsStated() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getProcessEngineConfiguration().getDatabaseSchema()).thenReturn(" ");
+    stubLockStatement(commandContext);
+
+    new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate).execute(commandContext);
+
+    verify(delegate).execute(commandContext);
+    verify(commandContext.getDbSqlSession().getSqlSession().getConnection(), never())
+        .prepareStatement("select current_schema()");
+  }
+
+  @Test
+  void wrapperProceedsWhenCurrentSchemaCannotBeRead() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getProcessEngineConfiguration().getDatabaseSchema())
+        .thenReturn("cadenzaflow");
+    stubLockStatement(commandContext);
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement("select current_schema()"))
+        .thenThrow(new SQLException("boom"));
+
+    assertThatCode(
+            () ->
+                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
+                    .execute(commandContext))
+        .doesNotThrowAnyException();
+    verify(delegate).execute(commandContext);
+  }
+
   // -------------------------------------------------------------------------
   // Fixtures
   // -------------------------------------------------------------------------
+
+  private static void stubLockStatement(CommandContext commandContext) throws SQLException {
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement(startsWith("select pg_advisory_xact_lock")))
+        .thenReturn(mock(PreparedStatement.class));
+  }
+
+  private static void stubCurrentSchema(CommandContext commandContext, String schema)
+      throws SQLException {
+    PreparedStatement statement = mock(PreparedStatement.class);
+    ResultSet resultSet = mock(ResultSet.class);
+    when(resultSet.next()).thenReturn(true);
+    when(resultSet.getString(1)).thenReturn(schema);
+    when(statement.executeQuery()).thenReturn(resultSet);
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement("select current_schema()"))
+        .thenReturn(statement);
+  }
 
   private static ProcessEngineConfigurationImpl configurationWith(String schema, String prefix) {
     ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);

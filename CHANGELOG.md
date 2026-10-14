@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.4.2] - unreleased
 
+### Changed
+
+- **The engine's schema is now stated once, as `cadenzaflow.schema`, and must be the
+  JDBC URL's `currentSchema` (estate decision #117).** Previously the image defaulted
+  `spring.datasource.hikari.schema: cadenzaflow` and derived the engine's
+  `schema-name` and table prefix from it, so the schema was applied three ways at
+  once (pool `setSchema`, URL `currentSchema`, prefix-qualified SQL) and deleting the
+  property failed boot on unresolved placeholders. Now one dedicated property —
+  `cadenzaflow.schema`, env `CADENZAFLOW_SCHEMA`, default `cadenzaflow` — feeds both
+  `cadenzaflow.bpm.database.schema-name` and the `schema + '.'` table prefix the
+  engine insists on ("When setting a schema the prefix has to be schema + '.'" — a
+  prefix-less stated schema does not boot), the Hikari schema default is gone, and a
+  **boot guard** refuses to start, before any DDL runs, when `current_schema()`
+  differs from the stated name. That guard is what makes the split paths safe: the
+  engine's own DDL is unqualified and lands in the connection's `currentSchema`,
+  runtime SQL is prefix-qualified, and a URL whose `currentSchema` is missing or
+  names another schema now dies loudly at first boot instead of creating tables in
+  the wrong place. **Migration:** deployments that set
+  `SPRING_DATASOURCE_HIKARI_SCHEMA` or `CADENZAFLOW_BPM_DATABASE_TABLE_PREFIX`
+  replace both with `currentSchema=<schema>` on `SPRING_DATASOURCE_URL` plus an
+  explicit `CADENZAFLOW_SCHEMA: <schema>` (the jar default is a safety net, not the
+  contract). Cross-repo consequence: the dnms-deploy chart comment describing the
+  1.4.1 jar-internal derivation (`services/camunda/values.yaml` and
+  `services/camunda-jobs/values.yaml`) is stale once this ships and needs its
+  follow-up rewrite there.
+
 ### Added
 
 - **The job-acquisition priority index is now created by the engine itself, on the very

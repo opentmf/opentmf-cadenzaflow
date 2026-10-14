@@ -31,7 +31,6 @@ spring:
     url: jdbc:postgresql://postgresql:5432/db?useUnicode=yes&characterEncoding=UTF-8&currentSchema=cadenzaflow
     username: cadenzaflow
     hikari:
-      schema: cadenzaflow
       auto-commit: false
       connection-timeout: 30000
       idle-timeout: 1800000

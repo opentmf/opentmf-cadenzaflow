@@ -609,8 +609,8 @@ upstream platform's contract rather than this component's design surface.
 | | |
 |---|---|
 | Database | PostgreSQL |
-| Schema | `cadenzaflow` (from `SPRING_DATASOURCE_HIKARI_SCHEMA`) |
-| Table prefix | the schema qualifier *is* the prefix — table names keep their stock `ACT_` spellings |
+| Schema | `cadenzaflow` — stated once via `CADENZAFLOW_SCHEMA` and reached through the JDBC URL's `currentSchema`; boot refuses a mismatch between the two |
+| Table prefix | derived from the same stated name (`cadenzaflow.` — the engine insists on `schema + '.'`); table names keep their stock `ACT_` spellings |
 | Created by | the engine, when `CADENZAFLOW_BPM_DATABASE_SCHEMA_UPDATE=true` |
 
 **Every column of every table is catalogued in
@@ -1301,10 +1301,10 @@ knowing; the shipped defaults live in
 
 | Variable | Description | Default |
 |---|---|---|
-| `SPRING_DATASOURCE_URL` | JDBC URL | `jdbc:postgresql://postgresql:5432/db?...&currentSchema=cadenzaflow` |
+| `SPRING_DATASOURCE_URL` | JDBC URL. `currentSchema` is load-bearing: it is the schema every engine table lives in | `jdbc:postgresql://postgresql:5432/db?...&currentSchema=cadenzaflow` |
 | `SPRING_DATASOURCE_USERNAME` | Database user | `cadenzaflow` |
 | `SPRING_DATASOURCE_PASSWORD` | Database password | — |
-| `SPRING_DATASOURCE_HIKARI_SCHEMA` | Schema for the engine tables and the pool | `cadenzaflow` |
+| `CADENZAFLOW_SCHEMA` | The engine's stated schema — the one value `cadenzaflow.bpm.database.schema-name` and `table-prefix` both derive from. Must equal the URL's `currentSchema`: the boot guard refuses a mismatch before any DDL runs. State it explicitly in deployments | `cadenzaflow` |
 | `SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE` | Connections per pod. Must stay above `CADENZAFLOW_BPM_JOB_EXECUTION_MAX_POOL_SIZE` + 1 on a pod that runs jobs; multiply by pod count against the database's `max_connections` | `30` |
 
 To adopt an existing `opentmf-camunda7` database, point these at it (e.g. schema
