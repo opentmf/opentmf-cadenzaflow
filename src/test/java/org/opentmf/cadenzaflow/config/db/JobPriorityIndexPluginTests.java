@@ -1,0 +1,217 @@
+package org.opentmf.cadenzaflow.config.db;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+import javax.sql.DataSource;
+import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
+import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfiguration;
+import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+
+/**
+ * Unit coverage for {@link JobPriorityIndexPlugin}: the non-PostgreSQL skip (through a real
+ * H2 engine boot), the JDBC sequences of the Postgres paths against mocked connections, the
+ * WARN-and-continue failure contract, and schema resolution. The real-database behavior
+ * (fresh boot, repair, no-op, racing boots) is {@code JobPriorityIndexPluginIT}'s job.
+ */
+class JobPriorityIndexPluginTests {
+
+  private final JobPriorityIndexPlugin plugin = new JobPriorityIndexPlugin();
+
+  // -------------------------------------------------------------------------
+  // Non-PostgreSQL: skipped, and a real boot stays healthy with the plugin on
+  // -------------------------------------------------------------------------
+
+  @Test
+  void h2EngineBootsWithThePluginAndSkipsTheIndex() {
+    StandaloneInMemProcessEngineConfiguration configuration =
+        new StandaloneInMemProcessEngineConfiguration();
+    configuration.setProcessEnginePlugins(List.of(new JobPriorityIndexPlugin()));
+    configuration.setJobExecutorActivate(false);
+    configuration.setJdbcUrl("jdbc:h2:mem:job-priority-index-test;DB_CLOSE_DELAY=-1");
+
+    ProcessEngine engine = configuration.buildProcessEngine();
+    try {
+      assertThat(engine.getName()).isNotNull();
+    } finally {
+      engine.close();
+    }
+  }
+
+  @Test
+  void nonPostgresSkipsWithoutTouchingTheDataSource() {
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    when(configuration.getDatabaseType()).thenReturn("h2");
+    ProcessEngine engine = mock(ProcessEngine.class);
+    when(engine.getProcessEngineConfiguration()).thenReturn(configuration);
+
+    plugin.postProcessEngineBuild(engine);
+
+    verify(configuration, never()).getDataSource();
+  }
+
+  // -------------------------------------------------------------------------
+  // PostgreSQL JDBC sequences (mocked connection)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void freshDatabaseCreatesTheIndexUnderTheAdvisoryLock() throws SQLException {
+    PostgresFixture fixture = new PostgresFixture("cadenzaflow");
+    fixture.indexValidityReturns(null, Boolean.TRUE); // absent before, valid after
+
+    plugin.postProcessEngineBuild(fixture.engine);
+
+    InOrder order = inOrder(fixture.connection, fixture.lockStatement, fixture.ddlStatement,
+        fixture.unlockStatement);
+    order.verify(fixture.connection).setAutoCommit(true);
+    order.verify(fixture.lockStatement).execute();
+    order.verify(fixture.ddlStatement)
+        .execute(
+            "create index concurrently if not exists act_idx_job_priority"
+                + " on cadenzaflow.act_ru_job (priority_ desc, duedate_)");
+    order.verify(fixture.unlockStatement).execute();
+    verify(fixture.lockStatement).setLong(1, JobPriorityIndexPlugin.SCHEMA_DDL_LOCK_KEY);
+  }
+
+  @Test
+  void invalidLeftoverIsDroppedBeforeTheCreate() throws SQLException {
+    PostgresFixture fixture = new PostgresFixture("cadenzaflow");
+    fixture.indexValidityReturns(Boolean.FALSE, Boolean.TRUE); // invalid before, valid after
+
+    plugin.postProcessEngineBuild(fixture.engine);
+
+    InOrder order = inOrder(fixture.ddlStatement);
+    order.verify(fixture.ddlStatement).execute("drop index cadenzaflow.act_idx_job_priority");
+    order.verify(fixture.ddlStatement)
+        .execute(
+            "create index concurrently if not exists act_idx_job_priority"
+                + " on cadenzaflow.act_ru_job (priority_ desc, duedate_)");
+  }
+
+  @Test
+  void alreadyValidIndexIsLeftAlone() throws SQLException {
+    PostgresFixture fixture = new PostgresFixture("cadenzaflow");
+    fixture.indexValidityReturns(Boolean.TRUE, Boolean.TRUE);
+
+    plugin.postProcessEngineBuild(fixture.engine);
+
+    verify(fixture.connection, never()).createStatement();
+  }
+
+  @Test
+  void aFailingConnectionIsAWarningNotABootFailure() throws SQLException {
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    when(configuration.getDatabaseType()).thenReturn("postgres");
+    when(configuration.getDatabaseSchema()).thenReturn("cadenzaflow");
+    DataSource dataSource = mock(DataSource.class);
+    when(configuration.getDataSource()).thenReturn(dataSource);
+    when(dataSource.getConnection()).thenThrow(new SQLException("boom", "08001"));
+    ProcessEngine engine = mock(ProcessEngine.class);
+    when(engine.getProcessEngineConfiguration()).thenReturn(configuration);
+
+    assertThatCode(() -> plugin.postProcessEngineBuild(engine)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void aFailedUnlockIsSwallowedBecauseTheConnectionCloseReleasesIt() throws SQLException {
+    PostgresFixture fixture = new PostgresFixture("cadenzaflow");
+    fixture.indexValidityReturns(Boolean.TRUE, Boolean.TRUE);
+    when(fixture.unlockStatement.execute()).thenThrow(new SQLException("gone", "57P01"));
+
+    assertThatCode(() -> plugin.postProcessEngineBuild(fixture.engine))
+        .doesNotThrowAnyException();
+  }
+
+  // -------------------------------------------------------------------------
+  // Schema resolution
+  // -------------------------------------------------------------------------
+
+  @Test
+  void schemaComesFromDatabaseSchemaFirstThenThePrefixThenNull() {
+    assertThat(JobPriorityIndexPlugin.resolveSchema(configurationWith("cadenzaflow", null)))
+        .isEqualTo("cadenzaflow");
+    assertThat(JobPriorityIndexPlugin.resolveSchema(configurationWith(null, "cadenzaflow.")))
+        .isEqualTo("cadenzaflow");
+    assertThat(JobPriorityIndexPlugin.resolveSchema(configurationWith(" ", null))).isNull();
+    assertThat(JobPriorityIndexPlugin.resolveSchema(configurationWith(null, null))).isNull();
+  }
+
+  @Test
+  void aSchemaThatIsNotAPlainIdentifierIsNotInterpolatedIntoDdl() {
+    assertThat(
+            JobPriorityIndexPlugin.resolveSchema(
+                configurationWith("bad.name; drop table act_ru_job", null)))
+        .isNull();
+  }
+
+  // -------------------------------------------------------------------------
+  // Fixtures
+  // -------------------------------------------------------------------------
+
+  private static ProcessEngineConfigurationImpl configurationWith(String schema, String prefix) {
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    when(configuration.getDatabaseSchema()).thenReturn(schema);
+    when(configuration.getDatabaseTablePrefix()).thenReturn(prefix);
+    return configuration;
+  }
+
+  /** A mocked Postgres connection wired for the plugin's exact statement sequence. */
+  private static final class PostgresFixture {
+    final ProcessEngine engine = mock(ProcessEngine.class);
+    final Connection connection = mock(Connection.class);
+    final PreparedStatement lockStatement = mock(PreparedStatement.class);
+    final PreparedStatement unlockStatement = mock(PreparedStatement.class);
+    final PreparedStatement validityStatement = mock(PreparedStatement.class);
+    final Statement ddlStatement = mock(Statement.class);
+
+    PostgresFixture(String schema) throws SQLException {
+      ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+      when(configuration.getDatabaseType()).thenReturn("postgres");
+      when(configuration.getDatabaseSchema()).thenReturn(schema);
+      DataSource dataSource = mock(DataSource.class);
+      when(configuration.getDataSource()).thenReturn(dataSource);
+      when(dataSource.getConnection()).thenReturn(connection);
+      when(engine.getProcessEngineConfiguration()).thenReturn(configuration);
+      when(connection.prepareStatement(startsWith("select pg_advisory_lock")))
+          .thenReturn(lockStatement);
+      when(connection.prepareStatement(startsWith("select pg_advisory_unlock")))
+          .thenReturn(unlockStatement);
+      when(connection.prepareStatement(contains("indisvalid"))).thenReturn(validityStatement);
+      when(connection.createStatement()).thenReturn(ddlStatement);
+    }
+
+    /**
+     * Scripts the two validity reads: before (null = the index does not exist) and the
+     * read-back after the DDL.
+     */
+    void indexValidityReturns(Boolean before, Boolean after) throws SQLException {
+      ResultSet first = resultSetOf(before);
+      ResultSet second = resultSetOf(after);
+      when(validityStatement.executeQuery()).thenReturn(first, second);
+    }
+
+    private static ResultSet resultSetOf(Boolean validity) throws SQLException {
+      ResultSet resultSet = mock(ResultSet.class);
+      when(resultSet.next()).thenReturn(validity != null);
+      if (validity != null) {
+        when(resultSet.getBoolean(1)).thenReturn(validity);
+      }
+      return resultSet;
+    }
+  }
+}

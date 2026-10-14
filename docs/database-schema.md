@@ -37,6 +37,12 @@ declares no JPA entities and ships no Flyway/Liquibase migrations of its own.
 >   engine upgrade;
 > - create your own tables inside the `cadenzaflow` schema, or add foreign keys, triggers or
 >   indexes to the engine's tables — the engine's own migration steps do not know about them.
+>   **One exception, owned by this service itself:** `act_idx_job_priority` on
+>   `ACT_RU_JOB (PRIORITY_ DESC, DUEDATE_)`, created at boot by `JobPriorityIndexPlugin` to
+>   support priority-ordered job acquisition (`jobExecutorAcquireByPriority`), which sorts
+>   on a column the stock schema leaves unindexed. The engine's upgrade scripts do not know
+>   this index either; it is re-asserted on every boot, and if a future engine schema
+>   upgrade trips on it, drop it first — the next boot recreates it.
 >
 > **The supported ways in are the engine REST API (`/engine-rest`), the history and metrics
 > endpoints it exposes, and Cockpit.** Everything in this document is stable enough to
@@ -418,7 +424,7 @@ batch seed/monitor/execution jobs and the history-cleanup job.
 | `LAST_FAILURE_LOG_ID_` |  | `varchar(64)` | Y |  |  |  | `ACT_HI_JOB_LOG` entry recording the most recent failure, for direct navigation from an incident |
 | `BATCH_ID_` |  | `varchar(64)` | Y |  |  |  | Batch this job belongs to, for batch operations |
 
-**Indexes:** `ACT_IDX_JOB_EXECUTION_ID` (EXECUTION_ID_), `ACT_IDX_JOB_HANDLER` (HANDLER_TYPE_, HANDLER_CFG_), `ACT_IDX_JOB_PROCINST` (PROCESS_INSTANCE_ID_), `ACT_IDX_JOB_ROOT_PROCINST` (ROOT_PROC_INST_ID_), `ACT_IDX_JOB_TENANT_ID` (TENANT_ID_), `ACT_IDX_JOB_JOB_DEF_ID` (JOB_DEF_ID_), `ACT_IDX_JOB_EXCEPTION` (EXCEPTION_STACK_ID_), `ACT_IDX_JOB_HANDLER_TYPE` (HANDLER_TYPE_)
+**Indexes:** `ACT_IDX_JOB_EXECUTION_ID` (EXECUTION_ID_), `ACT_IDX_JOB_HANDLER` (HANDLER_TYPE_, HANDLER_CFG_), `ACT_IDX_JOB_PROCINST` (PROCESS_INSTANCE_ID_), `ACT_IDX_JOB_ROOT_PROCINST` (ROOT_PROC_INST_ID_), `ACT_IDX_JOB_TENANT_ID` (TENANT_ID_), `ACT_IDX_JOB_JOB_DEF_ID` (JOB_DEF_ID_), `ACT_IDX_JOB_EXCEPTION` (EXCEPTION_STACK_ID_), `ACT_IDX_JOB_HANDLER_TYPE` (HANDLER_TYPE_), `ACT_IDX_JOB_PRIORITY` (PRIORITY_ DESC, DUEDATE_ — **service-owned**, created at boot by `JobPriorityIndexPlugin`, not part of the engine's stock schema)
 
 #### Table-12: `ACT_RU_JOBDEF`
 

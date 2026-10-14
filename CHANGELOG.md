@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.2] - unreleased
+
+### Added
+
+- **The job-acquisition priority index is now created by the engine itself, on the very
+  first boot.** Priority-ordered job acquisition (`jobExecutorAcquireByPriority`) sorts
+  every acquisition on `ACT_RU_JOB.PRIORITY_`, a column the engine's stock schema leaves
+  unindexed — until now the index had to be added by the deployment, which could only
+  land it *after* the engine's first boot had created the table. A new
+  `JobPriorityIndexPlugin` creates `act_idx_job_priority ON act_ru_job (priority_ DESC,
+  duedate_)` in `postProcessEngineBuild`, unconditionally on PostgreSQL: on its own
+  autocommit connection (`CREATE INDEX CONCURRENTLY` refuses a transaction block), under
+  a `pg_advisory_lock` so replicas booting together serialize, dropping an
+  `indisvalid=false` leftover from an interrupted concurrent build first (such an index
+  satisfies `IF NOT EXISTS` and would otherwise be kept silently), and reading
+  `indisvalid` back. Any failure is a WARN naming the index, schema and SQLState — the
+  index is an optimization, never a boot gate. Non-PostgreSQL databases are skipped.
+  Unconditional is safe: the executor's lock/unlock updates leave the indexed column
+  values unchanged, so PostgreSQL keeps them HOT (measured 97.9% with or without the
+  index); only duedate-changing retry-backoff updates — the failure path — pay for it.
+  A deployment that created the index by other means keeps working: the names match and
+  the create is idempotent. From this version on, a deployment can retire its own
+  index-creation step (an init job, or a manual `CREATE INDEX CONCURRENTLY` on a managed
+  database) — the right deploy gate is a read-back that `pg_index.indisvalid` is `t` for
+  exactly one `act_idx_job_priority` in the engine's schema.
+
 ## [1.4.1] - 2026-09-29
 
 ### Security
