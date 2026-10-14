@@ -115,6 +115,13 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
     }
   }
 
+  // S2077 (dynamically formatted SQL): DDL cannot bind parameters, so the statements are
+  // assembled from INDEX_NAME/TABLE_NAME (compile-time constants) and the schema, which
+  // resolveSchema accepts only when it matches PLAIN_IDENTIFIER ([A-Za-z_][A-Za-z0-9_]*)
+  // and otherwise refuses to interpolate - pinned by the
+  // aSchemaThatIsNotAPlainIdentifierIsNotInterpolatedIntoDdl unit test, whose input is
+  // the injection-shaped "bad.name; drop table act_ru_job".
+  @SuppressWarnings("java:S2077")
   private void ensureIndex(Connection connection, String schema) throws SQLException {
     Optional<Boolean> validity = indexValidity(connection, schema);
     if (validity.isPresent() && Boolean.FALSE.equals(validity.get())) {
