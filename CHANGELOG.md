@@ -4,6 +4,61 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.2] - unreleased
+
+### Added
+
+- **The job-acquisition priority index is now created by the engine itself, on the very
+  first boot.** Priority-ordered job acquisition (`jobExecutorAcquireByPriority`) sorts
+  every acquisition on `ACT_RU_JOB.PRIORITY_`, a column the engine's stock schema leaves
+  unindexed — until now the index had to be added by the deployment, which could only
+  land it *after* the engine's first boot had created the table. A new
+  `JobPriorityIndexPlugin` creates `act_idx_job_priority ON act_ru_job (priority_ DESC,
+  duedate_)` in `postProcessEngineBuild`, unconditionally on PostgreSQL: on its own
+  autocommit connection (`CREATE INDEX CONCURRENTLY` refuses a transaction block), under
+  a `pg_advisory_lock` so replicas booting together serialize, dropping an
+  `indisvalid=false` leftover from an interrupted concurrent build first (such an index
+  satisfies `IF NOT EXISTS` and would otherwise be kept silently), and reading
+  `indisvalid` back. Any failure is a WARN naming the index, schema and SQLState — the
+  index is an optimization, never a boot gate. Non-PostgreSQL databases are skipped.
+  Unconditional is safe: the executor's lock/unlock updates leave the indexed column
+  values unchanged, so PostgreSQL keeps them HOT (measured 97.9% with or without the
+  index); only duedate-changing retry-backoff updates — the failure path — pay for it.
+  A deployment that created the index by other means keeps working: the names match and
+  the create is idempotent. From this version on, a deployment can retire its own
+  index-creation step (an init job, or a manual `CREATE INDEX CONCURRENTLY` on a managed
+  database) — the right deploy gate is a read-back that `pg_index.indisvalid` is `t` for
+  exactly one `act_idx_job_priority` in the engine's schema.
+
+- **Two engine replicas can now boot concurrently against an empty database.** The stock
+  engine runs its schema create/update with no lock of any kind, so simultaneous first
+  boots race the DDL. The same plugin wraps the engine's schema-operations command with a
+  `pg_advisory_xact_lock` on the same key, serializing `DbSchemaUpdate` across replicas
+  on PostgreSQL. On other databases, and if the lock itself cannot be taken, schema
+  operations proceed exactly as before.
+
+- **The images now carry OCI provenance labels** (DNMS template convention). Both
+  Dockerfiles stamp `org.opencontainers.image.revision` and
+  `org.opencontainers.image.source` from the `APP_COMMIT`/`APP_SOURCE` build args —
+  the `docker` profile passes them from the `app.commit`/`app.source` pom properties
+  (`-Dapp.commit=$(git rev-parse HEAD)`; empty when not passed) — so deployment
+  tooling can verify which commit an image was built from.
+
+- **The jar manifest now carries the default implementation entries**
+  (`addDefaultImplementationEntries` on the jar plugin), so `Implementation-Version`
+  names the pom version — provenance of the same kind as the image labels, and what
+  the estate's fat-jar guard compares against to catch a stale jar before it ships.
+
+### Security
+
+- **CVE-2026-84782 (openssl, HIGH) closed at the image.** Both Dockerfiles now pin
+  `eclipse-temurin:25-jre-noble` by digest
+  (`sha256:d9a39a23634650173f1e2bbc176227af9728587ecf0f4b62d53e9355cd7a19ab`), which
+  ships `libssl3t64 3.0.13-0ubuntu3.16` — noble's fixed version per the Ubuntu CVE
+  tracker (the package is `libssl3t64` on noble, so jammy's fixed `libssl3` version
+  numbers do not transfer). No `.trivyignore` entry, no `apt-get upgrade`: the fix
+  rides the base pin and moves with the next base bump.
+
 ## [1.4.1] - 2026-09-29
 
 ### Security
