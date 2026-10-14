@@ -2,6 +2,7 @@ package org.opentmf.cadenzaflow.config.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.inOrder;
@@ -17,17 +18,24 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import javax.sql.DataSource;
+import org.apache.ibatis.session.SqlSession;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.SchemaOperationsCommand;
 import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfiguration;
+import org.cadenzaflow.bpm.engine.impl.db.sql.DbSqlSession;
+import org.cadenzaflow.bpm.engine.impl.interceptor.CommandContext;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 /**
  * Unit coverage for {@link JobPriorityIndexPlugin}: the non-PostgreSQL skip (through a real
- * H2 engine boot), the JDBC sequences of the Postgres paths against mocked connections, the
- * WARN-and-continue failure contract, and schema resolution. The real-database behavior
- * (fresh boot, repair, no-op, racing boots) is {@code JobPriorityIndexPluginIT}'s job.
+ * H2 engine boot, which also proves the schema-operations wrapper does not break a boot),
+ * the JDBC sequences of the Postgres paths against mocked connections, the WARN-and-continue
+ * failure contract, schema resolution, and the advisory-locked schema-operations wrapper.
+ * The real-database behavior (fresh boot, repair, no-op, racing boots) is
+ * {@code JobPriorityIndexPluginIT}'s job.
  */
 class JobPriorityIndexPluginTests {
 
@@ -47,7 +55,9 @@ class JobPriorityIndexPluginTests {
 
     ProcessEngine engine = configuration.buildProcessEngine();
     try {
-      assertThat(engine.getName()).isNotNull();
+      // the wrapper was installed by preInit and the whole boot ran through it
+      assertThat(configuration.getSchemaOperationsCommand())
+          .isInstanceOf(JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations.class);
     } finally {
       engine.close();
     }
@@ -160,6 +170,74 @@ class JobPriorityIndexPluginTests {
   }
 
   // -------------------------------------------------------------------------
+  // The advisory-locked schema-operations wrapper
+  // -------------------------------------------------------------------------
+
+  @Test
+  void preInitWrapsTheSchemaOperationsCommand() {
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    SchemaOperationsCommand original = mock(SchemaOperationsCommand.class);
+    when(configuration.getSchemaOperationsCommand()).thenReturn(original);
+
+    plugin.preInit(configuration);
+
+    ArgumentCaptor<SchemaOperationsCommand> captor =
+        ArgumentCaptor.forClass(SchemaOperationsCommand.class);
+    verify(configuration).setSchemaOperationsCommand(captor.capture());
+    assertThat(captor.getValue())
+        .isInstanceOfSatisfying(
+            JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations.class,
+            wrapper -> assertThat(wrapper.delegate()).isSameAs(original));
+  }
+
+  @Test
+  void wrapperTakesTheTransactionLockOnPostgresThenDelegates() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    PreparedStatement lockStatement = mock(PreparedStatement.class);
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement(startsWith("select pg_advisory_xact_lock")))
+        .thenReturn(lockStatement);
+
+    new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate).execute(commandContext);
+
+    InOrder order = inOrder(lockStatement, delegate);
+    order.verify(lockStatement).setLong(1, JobPriorityIndexPlugin.SCHEMA_DDL_LOCK_KEY);
+    order.verify(lockStatement).execute();
+    order.verify(delegate).execute(commandContext);
+  }
+
+  @Test
+  void wrapperDelegatesDirectlyOffPostgres() {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = mock(CommandContext.class);
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    when(commandContext.getProcessEngineConfiguration()).thenReturn(configuration);
+    when(configuration.getDatabaseType()).thenReturn("h2");
+
+    new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate).execute(commandContext);
+
+    verify(delegate).execute(commandContext);
+    verify(commandContext, never()).getDbSqlSession();
+  }
+
+  @Test
+  void wrapperProceedsUnserializedWhenTheLockCannotBeTaken() throws SQLException {
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement(anyString()))
+        .thenThrow(new SQLException("no lock", "55P03"));
+
+    assertThatCode(
+            () ->
+                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
+                    .execute(commandContext))
+        .doesNotThrowAnyException();
+    verify(delegate).execute(commandContext);
+  }
+
+  // -------------------------------------------------------------------------
   // Fixtures
   // -------------------------------------------------------------------------
 
@@ -168,6 +246,20 @@ class JobPriorityIndexPluginTests {
     when(configuration.getDatabaseSchema()).thenReturn(schema);
     when(configuration.getDatabaseTablePrefix()).thenReturn(prefix);
     return configuration;
+  }
+
+  private static CommandContext commandContextOn(String databaseType) {
+    CommandContext commandContext = mock(CommandContext.class);
+    ProcessEngineConfigurationImpl configuration = mock(ProcessEngineConfigurationImpl.class);
+    when(commandContext.getProcessEngineConfiguration()).thenReturn(configuration);
+    when(configuration.getDatabaseType()).thenReturn(databaseType);
+    DbSqlSession dbSqlSession = mock(DbSqlSession.class);
+    SqlSession sqlSession = mock(SqlSession.class);
+    Connection connection = mock(Connection.class);
+    when(commandContext.getDbSqlSession()).thenReturn(dbSqlSession);
+    when(dbSqlSession.getSqlSession()).thenReturn(sqlSession);
+    when(sqlSession.getConnection()).thenReturn(connection);
+    return commandContext;
   }
 
   /** A mocked Postgres connection wired for the plugin's exact statement sequence. */

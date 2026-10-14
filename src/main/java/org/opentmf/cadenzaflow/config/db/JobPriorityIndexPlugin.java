@@ -7,9 +7,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Optional;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.SchemaOperationsCommand;
 import org.cadenzaflow.bpm.engine.impl.cfg.AbstractProcessEnginePlugin;
 import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.cadenzaflow.bpm.engine.impl.db.sql.DbSqlSessionFactory;
+import org.cadenzaflow.bpm.engine.impl.interceptor.CommandContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
@@ -29,12 +31,20 @@ import org.springframework.context.annotation.Configuration;
  * and one schema everywhere removes the drift class where the acquisition flag and the
  * index disagree per environment.</p>
  *
- * <p>{@link #postProcessEngineBuild} runs after {@code DbSchemaUpdate} has created
- * {@code act_ru_job}, on its own autocommit connection ({@code CREATE INDEX CONCURRENTLY}
- * refuses a transaction block), under {@code pg_advisory_lock} on a shared DDL key so
- * replicas booting together serialize. An {@code indisvalid=false} leftover from an
- * interrupted concurrent build is dropped first, because such an index satisfies
- * {@code IF NOT EXISTS} and would otherwise be kept silently.</p>
+ * <p>Two concerns ride the one plugin because they share the same advisory-lock key:</p>
+ *
+ * <ul>
+ *   <li>{@link #preInit}: wraps the engine's schema-operations command so that concurrent
+ *       first boots (the {@code camunda} and {@code camunda-jobs} deployments) serialize
+ *       their {@code DbSchemaUpdate} on a {@code pg_advisory_xact_lock} — the engine takes
+ *       no lock of its own around schema creation.</li>
+ *   <li>{@link #postProcessEngineBuild}: runs after {@code DbSchemaUpdate} has created
+ *       {@code act_ru_job}, on its own autocommit connection ({@code CREATE INDEX
+ *       CONCURRENTLY} refuses a transaction block), under {@code pg_advisory_lock} on the
+ *       same key. An {@code indisvalid=false} leftover from an interrupted concurrent
+ *       build is dropped first, because such an index satisfies {@code IF NOT EXISTS} and
+ *       would otherwise be kept silently.</li>
+ * </ul>
  *
  * <p>The index is an optimization, never a boot gate: any failure is a WARN naming the
  * index, schema and SQLState, and the engine boots on. Non-PostgreSQL databases (the H2
@@ -47,7 +57,7 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
 
   private static final Logger log = LoggerFactory.getLogger(JobPriorityIndexPlugin.class);
 
-  /** One shared key ("CF_DDL_1") serializes the index DDL across replicas. */
+  /** One shared key ("CF_DDL_1") serializes schema create and index DDL across replicas. */
   static final long SCHEMA_DDL_LOCK_KEY = 0x43465F44444C5F31L;
 
   static final String INDEX_NAME = "act_idx_job_priority";
@@ -66,6 +76,12 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
        where ci.relname = ? and ct.relname = ?
          and n.nspname = coalesce(?, current_schema())
       """;
+
+  @Override
+  public void preInit(ProcessEngineConfigurationImpl engineConfig) {
+    engineConfig.setSchemaOperationsCommand(
+        new AdvisoryLockedSchemaOperations(engineConfig.getSchemaOperationsCommand()));
+  }
 
   @Override
   public void postProcessEngineBuild(ProcessEngine processEngine) {
@@ -194,5 +210,47 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
 
   private static String qualified(String schema, String name) {
     return schema == null ? name : schema + "." + name;
+  }
+
+  /**
+   * Serializes the engine's schema operations across replicas booting together: the stock
+   * {@code SchemaOperationsProcessEngineBuild} runs {@code dbSchemaCreate/dbSchemaUpdate}
+   * with no lock of any kind, so two engines on an empty database race the DDL. The
+   * transaction-scoped advisory lock rides the command's own connection and releases
+   * itself at commit or rollback.
+   */
+  static final class AdvisoryLockedSchemaOperations implements SchemaOperationsCommand {
+
+    private final SchemaOperationsCommand delegate;
+
+    AdvisoryLockedSchemaOperations(SchemaOperationsCommand delegate) {
+      this.delegate = delegate;
+    }
+
+    SchemaOperationsCommand delegate() {
+      return delegate;
+    }
+
+    @Override
+    public Void execute(CommandContext commandContext) {
+      if (DbSqlSessionFactory.POSTGRES.equals(
+          commandContext.getProcessEngineConfiguration().getDatabaseType())) {
+        try {
+          Connection connection =
+              commandContext.getDbSqlSession().getSqlSession().getConnection();
+          try (PreparedStatement statement =
+              connection.prepareStatement("select pg_advisory_xact_lock(?)")) {
+            statement.setLong(1, SCHEMA_DDL_LOCK_KEY);
+            statement.execute();
+          }
+        } catch (SQLException | RuntimeException e) {
+          log.warn(
+              "Could not take the schema DDL advisory lock; schema operations proceed"
+                  + " unserialized: {}",
+              e.getMessage());
+        }
+      }
+      return delegate.execute(commandContext);
+    }
   }
 }

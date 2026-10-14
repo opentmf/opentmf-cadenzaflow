@@ -30,6 +30,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   database) — the right deploy gate is a read-back that `pg_index.indisvalid` is `t` for
   exactly one `act_idx_job_priority` in the engine's schema.
 
+- **Two engine replicas can now boot concurrently against an empty database.** The stock
+  engine runs its schema create/update with no lock of any kind, so simultaneous first
+  boots race the DDL. The same plugin wraps the engine's schema-operations command with a
+  `pg_advisory_xact_lock` on the same key, serializing `DbSchemaUpdate` across replicas
+  on PostgreSQL. On other databases, and if the lock itself cannot be taken, schema
+  operations proceed exactly as before.
+
 ## [1.4.1] - 2026-09-29
 
 ### Security
