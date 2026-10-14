@@ -7,10 +7,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * Qualifies engine table names with the prefix the engine itself is configured with
- * ({@code cadenzaflow.bpm.database.table-prefix}, e.g. {@code cadenzaflow.}). Every
- * hand-written SQL statement against the {@code ACT_*} tables must go through
- * {@link #table(String)} — a bare table name only works when the prefix happens to
- * match the connection's default schema.
+ * ({@code cadenzaflow.bpm.database.table-prefix}, e.g. {@code cadenzaflow.} — derived
+ * from the one stated schema property {@code cadenzaflow.schema}). Every hand-written
+ * SQL statement against the {@code ACT_*} tables must go through {@link #table(String)}
+ * — a bare table name only works when the prefix happens to match the connection's
+ * default schema.
  *
  * <p>The prefix is validated once, at startup: it participates in SQL text (a schema
  * name cannot be a bound parameter), so anything but a plain optionally-dot-terminated

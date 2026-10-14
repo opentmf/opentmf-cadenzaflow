@@ -43,8 +43,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cadenzaflow?useUnicode=yes&characterEncoding=UTF-8&currentSchema=public
       SPRING_DATASOURCE_USERNAME: cadenzaflow
       SPRING_DATASOURCE_PASSWORD: cadenzaflow-local
-      SPRING_DATASOURCE_HIKARI_SCHEMA: public
-      CADENZAFLOW_BPM_DATABASE_TABLE_PREFIX: "public."
+      # The URL's currentSchema is where the engine tables live; this states the same
+      # name once (schema-name and the table prefix both derive from it).
+      CADENZAFLOW_SCHEMA: public
 
       # --- directory: Entra through Microsoft Graph --------------------------
       PLUGIN_IDENTITY_PROVIDER: entra

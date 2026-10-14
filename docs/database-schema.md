@@ -2,7 +2,11 @@
 
 `opentmf-cadenzaflow` embeds the CadenzaFlow BPM engine (a Camunda 7 derivative) and lets the
 engine own its own schema. On start-up the engine creates every table it needs; the application
-declares no JPA entities and ships no Flyway/Liquibase migrations of its own.
+declares no JPA entities and ships no Flyway/Liquibase migrations of its own. The tables land in
+the connection's **current schema**, selected by the JDBC URL's `currentSchema` parameter; the
+same name is stated once as `cadenzaflow.schema` (env `CADENZAFLOW_SCHEMA`), from which the
+engine's `schema-name` and its mandatory `schema + '.'` table prefix both derive, and a boot
+where the stated name and `current_schema()` disagree is refused before any DDL runs.
 
 > ## ⚠ This schema is the engine's private storage, not an API
 >

@@ -240,8 +240,9 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
 
     @Override
     public Void execute(CommandContext commandContext) {
-      if (DbSqlSessionFactory.POSTGRES.equals(
-          commandContext.getProcessEngineConfiguration().getDatabaseType())) {
+      ProcessEngineConfigurationImpl engineConfig =
+          commandContext.getProcessEngineConfiguration();
+      if (DbSqlSessionFactory.POSTGRES.equals(engineConfig.getDatabaseType())) {
         try {
           Connection connection =
               commandContext.getDbSqlSession().getSqlSession().getConnection();
@@ -256,8 +257,52 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
                   + " unserialized: {}",
               e.getMessage());
         }
+        assertStatedSchema(commandContext, engineConfig);
       }
       return delegate.execute(commandContext);
+    }
+
+    /**
+     * Fails the boot when the connection's {@code current_schema()} is not the stated
+     * {@code databaseSchema}: with no table prefix, every unqualified statement - the
+     * engine's own DDL first among them - lands in the current schema, so a missing or
+     * wrong {@code currentSchema} on the JDBC URL must die here, BEFORE any DDL runs,
+     * not as tables silently created in the wrong schema. Runs under the advisory lock
+     * on the command's own connection; skipped when no schema is stated.
+     */
+    private void assertStatedSchema(
+        CommandContext commandContext, ProcessEngineConfigurationImpl engineConfig) {
+      String stated = engineConfig.getDatabaseSchema();
+      if (stated == null || stated.isBlank()) {
+        return;
+      }
+      String actual;
+      try {
+        Connection connection =
+            commandContext.getDbSqlSession().getSqlSession().getConnection();
+        try (PreparedStatement statement =
+                connection.prepareStatement("select current_schema()");
+            ResultSet resultSet = statement.executeQuery()) {
+          actual = resultSet.next() ? resultSet.getString(1) : null;
+        }
+      } catch (SQLException e) {
+        log.warn(
+            "Could not read current_schema() to verify the stated schema '{}': {}",
+            stated,
+            e.getMessage());
+        return;
+      }
+      if (stated.equals(actual)) {
+        log.info(
+            "Engine schema check: stated schema-name '{}' matches current_schema() '{}'",
+            stated,
+            actual);
+      } else {
+        throw new IllegalStateException(
+            "Engine schema mismatch: schema-name '" + stated
+                + "' but the connection's current_schema() is '" + actual
+                + "' — put currentSchema=" + stated + " on the JDBC URL");
+      }
     }
   }
 }
