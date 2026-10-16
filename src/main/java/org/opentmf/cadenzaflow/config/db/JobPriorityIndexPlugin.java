@@ -246,11 +246,17 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
         try {
           Connection connection =
               commandContext.getDbSqlSession().getSqlSession().getConnection();
+          long waitStart = System.nanoTime();
           try (PreparedStatement statement =
               connection.prepareStatement("select pg_advisory_xact_lock(?)")) {
             statement.setLong(1, SCHEMA_DDL_LOCK_KEY);
             statement.execute();
           }
+          // Logged on every boot: a wait well above zero is the visible trace of a peer
+          // replica holding the lock while it created or updated the schema.
+          log.info(
+              "schema DDL advisory lock acquired after {} ms",
+              (System.nanoTime() - waitStart) / 1_000_000);
         } catch (SQLException | RuntimeException e) {
           log.warn(
               "Could not take the schema DDL advisory lock; schema operations proceed"
