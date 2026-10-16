@@ -189,6 +189,15 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # The commit the image is BUILT FROM, read from the checkout rather than taken
+      # from github.sha: on a release event the two agree (the tagged commit), but a
+      # workflow_dispatch recovery runs with github.sha = the develop head while the
+      # checkout above is the tag - stamping github.sha there would label the image
+      # with a commit it was not built from.
+      - name: Resolve the source commit
+        id: src
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
@@ -213,11 +222,19 @@ jobs:
           context: .
           file: ./Dockerfile_release
           platforms: linux/${{ matrix.arch }}
+          # APP_COMMIT/APP_SOURCE feed the Dockerfile's OCI provenance LABELs. 1.4.2
+          # shipped without them, so its images carry an EMPTY image.revision; the
+          # guard below now fails the leg if that ever happens again.
           build-args: |
             MAVEN_PROFILES=${{ matrix.maven-profiles }}
+            APP_COMMIT=${{ steps.src.outputs.commit }}
+            APP_SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # image.version is set explicitly: unset, it is inherited from the Ubuntu
+          # base image and every release up to 1.4.2 advertised version "24.04".
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=Built from release ${{ env.RELEASE_TAG }} (${{ matrix.flavour }})
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           # Buildx's OWN attestations are off, and this is load-bearing rather than a
           # preference. With them on, a push-by-digest build publishes an INDEX
@@ -244,6 +261,31 @@ jobs:
           sbom: false
           cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.flavour }}-${{ matrix.arch }}
+
+      # Reads the labels back from the PUSHED image, not from the build inputs, so it
+      # proves what a consumer will see. Fails the leg - and with it the merge, so no
+      # tag is ever written - when image.revision is not exactly the source commit or
+      # image.version is not the release tag. With provenance off the by-digest push
+      # is a plain manifest, but the jq accepts an index-shaped answer too.
+      - name: Provenance label guard
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          WANT_REVISION: ${{ steps.src.outputs.commit }}
+        run: |
+          set -euo pipefail
+          labels=$(docker buildx imagetools inspect "$IMAGE_REF" --format '{{ json .Image }}' \
+            | jq -c 'if has("config") then . else .[keys[0]] end | .config.Labels // {}')
+          revision=$(jq -r '."org.opencontainers.image.revision" // ""' <<<"$labels")
+          version=$(jq -r '."org.opencontainers.image.version" // ""' <<<"$labels")
+          echo "image.revision='${revision}' image.version='${version}'"
+          if [ -z "$WANT_REVISION" ] || [ "$revision" != "$WANT_REVISION" ]; then
+            echo "::error::image.revision is '${revision}', expected the source commit '${WANT_REVISION}'"
+            exit 1
+          fi
+          if [ "$version" != "$RELEASE_TAG" ]; then
+            echo "::error::image.version is '${version}', expected the release tag '${RELEASE_TAG}'"
+            exit 1
+          fi
 
       # --platform is REQUIRED, not decoration: the image is scanned remotely by digest,
       # and for a remote index Trivy defaults to the RUNNER's platform (linux/amd64).
