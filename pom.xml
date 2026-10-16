@@ -46,18 +46,20 @@
 
     <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
 
-    <!-- Keeps `mvn versions:display-*-updates` stable-only. The separator after the
-         qualifier is optional and may be `-` or `.`: without that, `4.0.0-beta-4`
-         and `4.0.0-beta.38` slipped through and were offered as upgrades, which is
-         exactly what this property exists to prevent. -->
-    <maven.version.ignore>.*-M\d+,.*-RC\d+,.*-SNAPSHOT,(?i).*-(alpha|beta|rc|cr|pre)[-.]?\d*</maven.version.ignore>
+    <!-- Keeps `mvn versions:display-*-updates` stable-only. The DNMS estate string,
+         verbatim (it must stay identical across every pom and the gate): hides
+         pre-release qualifiers separated by `-` OR `.` (`-beta-4`, `.Beta1`, `.CR1`,
+         `-M2`, `-ea`, ...) case-insensitively, plus bare 40-hex commit "versions",
+         while `.Final`, `.RELEASE`, `-jre` stay proposable. No commas: the property
+         splits on them. -->
+    <maven.version.ignore>(?i).*[.-](alpha|beta|m|rc|cr|dev|ea|preview)[0-9]*([.+-].*)?$|^[0-9a-f]{40}$</maven.version.ignore>
 
     <!-- Application dependencies -->
     <!-- Spring Boot 4. Ahead of the CadenzaFlow SB4 starters' own baseline (their
          parent pins 4.0.7); the compatibility proof is this repo's full IT suite,
          which boots the engine, both identity plugins and the REST surface. -->
     <spring-boot.version>4.1.1</spring-boot.version>
-    <cadenzaflow.version>1.2.3</cadenzaflow.version>
+    <cadenzaflow.version>1.2.4</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
@@ -83,7 +85,7 @@
          its own `tomcat.version` internally and a property here is silently ignored -
          the httpcore5 lesson of 1.1.2, verified again by reading BOOT-INF/lib.
          Remove when a Boot GA pins >= 11.0.25. -->
-    <tomcat.version>11.0.26</tomcat.version>
+    <tomcat.version>11.0.27</tomcat.version>
 
     <!-- Overrides the Spring Boot 4.1.1 BOM's Jackson 2.21.5 / 3.1.5: CVE-2026-68497
          (HIGH) in jackson-databind, on both the 2.x and the 3.x line, in EVERY flavour -
@@ -94,10 +96,10 @@
          properties of the same names internally and a bare property here is silently
          ignored - see tomcat.version above. Remove when a Boot GA pins >= 2.21.7 and
          >= 3.1.7.
-         HOLD (1.4.1, CVE-only re-cut, ruled by Gökhan 2026-09-29): the versions goals
-         propose 2.22.x / 3.2.x. Deliberately NOT taken - these pins stay on the minor
-         lines Spring Boot 4.1.1 is built and tested against, moved only as far as the
-         fix; the next minors arrive with the Boot BOM that adopts them. -->
+         Minor-line rule (estate): these pins stay on the minors Spring Boot 4.1.1 is
+         built and tested against - the newest PATCH of 2.21 / 3.1 - even though the
+         versions goals propose 2.22.x / 3.2.x; the next minors arrive with the Boot
+         BOM that adopts them. A rule, not a hold. -->
     <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
     <jackson-bom.version>3.1.7</jackson-bom.version>
 
@@ -106,21 +108,21 @@
          allowlist) is plain public API, called programmatically from the Jersey
          resource - the -autoconfigure sibling is Spring-MVC-only and would never
          see a request under /engine-rest. -->
-    <tmf630-toolkit.version>3.4.0</tmf630-toolkit.version>
+    <tmf630-toolkit.version>3.5.1</tmf630-toolkit.version>
 
     <archunit.version>1.5.1</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <pitest-maven.version>1.30.0</pitest-maven.version>
+    <pitest-maven.version>1.30.1</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
-    <testcontainers-keycloak.version>4.3.1</testcontainers-keycloak.version>
+    <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
     <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <!-- pins the version the default lifecycle binding already resolves -->
-    <maven-jar-plugin.version>3.4.1</maven-jar-plugin.version>
+    <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
@@ -130,7 +132,7 @@
     <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
     <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
-    <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+    <central-publishing-maven-plugin.version>0.12.0</central-publishing-maven-plugin.version>
 
     <!-- Sonar properties. Organization + project key target SonarCloud and are used
          by the GitHub Actions workflows; the local `sonar` profile below overrides
@@ -728,11 +730,8 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
-        <!-- HOLD (1.4.1 only): 2.55.7 was proposed after 1.4.0; the 1.4.1 re-cut is
-             CVE-only by ruling (Gökhan, 2026-09-29), so it is taken in the next regular
-             release - remove this note then. -->
-        <awssdk.version>2.55.6</awssdk.version>
-        <aws-advanced-jdbc-wrapper.version>4.4.0</aws-advanced-jdbc-wrapper.version>
+        <awssdk.version>2.56.0</awssdk.version>
+        <aws-advanced-jdbc-wrapper.version>4.5.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
         <dependencies>
@@ -791,11 +790,11 @@
            not in the effective model and the versions plugin cannot see it, so the
            check must activate every flavour:
              mvn versions:display-property-updates -Paws,azure \
-                 -Dmaven.version.ignore="(?i).*-(alpha|beta|m|rc).*"
+                 -Dmaven.version.ignore="(?i).*[.-](alpha|beta|m|rc|cr|dev|ea|preview)[0-9]*([.+-].*)?$|^[0-9a-f]{40}$"
            An unprofiled run reports BUILD SUCCESS with no findings, which reads
            exactly like "everything is current". -->
       <properties>
-        <azure-identity-extensions.version>1.2.9</azure-identity-extensions.version>
+        <azure-identity-extensions.version>1.2.10</azure-identity-extensions.version>
       </properties>
       <dependencies>
         <dependency>
@@ -816,7 +815,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
-        <trivy-image.version>0.74.0</trivy-image.version>
+        <trivy-image.version>0.76.0</trivy-image.version>
         <!-- Stamped into the OCI provenance labels (DNMS template convention); pass
              -Dapp.commit=$(git rev-parse HEAD) for a provenance-labeled image. Pom
              properties rather than ${env.*} because Maven passes an UNSET env

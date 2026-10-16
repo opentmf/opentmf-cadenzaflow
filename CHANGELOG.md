@@ -32,6 +32,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `services/camunda-jobs/values.yaml`) is stale once this ships and needs its
   follow-up rewrite there.
 
+- **CadenzaFlow engine 1.2.3 → 1.2.4.** `GET`/`POST /engine-rest/process-instance`
+  can now sort by start time (`sortBy=startTime`), and with
+  `withStartTimeInReturn=true` each result carries its `startTime` (one history
+  lookup per page; without the flag the response is unchanged). The engine's schema
+  scripts and schema-creation code are unchanged, so no database migration.
+
+- **Dependency and plugin updates** (every update the versions goals proposed, taken in
+  this release except Jackson, which stays on the newest patch of the 2.21 / 3.1
+  minors Spring Boot 4.1.1 is built against): Tomcat 11.0.26 → 11.0.27 (the override
+  is still needed, because Boot 4.1.1 still pins 11.0.24); tmf630-toolkit 3.4.0 → 3.5.1;
+  AWS flavour: AWS SDK 2.55.6 → 2.56.0 (lifting the 1.4.1 hold) and
+  aws-advanced-jdbc-wrapper 4.4.0 → 4.5.0; Azure flavour: azure-identity-extensions
+  1.2.9 → 1.2.10. Build only: maven-jar-plugin 3.5.1, pitest-maven 1.30.1,
+  testcontainers-keycloak 4.4.0, central-publishing-maven-plugin 0.12.0; the image
+  gate's Trivy scanner 0.74.0 → 0.76.0 (release workflow and the `docker` profile).
+
 ### Added
 
 - **The job-acquisition priority index is now created by the engine itself, on the very
