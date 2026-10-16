@@ -61,7 +61,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   boots race the DDL. The same plugin wraps the engine's schema-operations command with a
   `pg_advisory_xact_lock` on the same key, serializing `DbSchemaUpdate` across replicas
   on PostgreSQL. On other databases, and if the lock itself cannot be taken, schema
-  operations proceed exactly as before.
+  operations proceed exactly as before. Every PostgreSQL boot logs
+  `schema DDL advisory lock acquired after N ms` at INFO once the lock is held, so an
+  operator can see the serialization: the replica that waited for a peer's schema
+  create shows a wait well above zero, and a missing line next to the existing
+  "proceed unserialized" WARN means the boot ran without the lock.
 
 - **The images now carry OCI provenance labels** (DNMS template convention). Both
   Dockerfiles stamp `org.opencontainers.image.revision` and

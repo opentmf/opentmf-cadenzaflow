@@ -12,6 +12,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -25,10 +30,12 @@ import org.cadenzaflow.bpm.engine.SchemaOperationsCommand;
 import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfiguration;
 import org.cadenzaflow.bpm.engine.impl.db.sql.DbSqlSession;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.cadenzaflow.bpm.engine.impl.interceptor.CommandContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.slf4j.LoggerFactory;
 
 /**
  * Unit coverage for {@link JobPriorityIndexPlugin}: the non-PostgreSQL skip (through a real
@@ -209,6 +216,49 @@ class JobPriorityIndexPluginTests {
   }
 
   @Test
+  void wrapperLogsTheLockWaitAtInfoOnceTheLockIsHeld() throws SQLException {
+    ListAppender<ILoggingEvent> captured = captureThePluginLog();
+    try {
+      CommandContext commandContext = commandContextOn("postgres");
+      stubLockStatement(commandContext);
+
+      new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(
+              mock(SchemaOperationsCommand.class))
+          .execute(commandContext);
+
+      assertThat(captured.list)
+          .filteredOn(event -> event.getLevel() == Level.INFO)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .singleElement(InstanceOfAssertFactories.STRING)
+          .matches("schema DDL advisory lock acquired after \\d+ ms");
+    } finally {
+      releaseThePluginLog(captured);
+    }
+  }
+
+  @Test
+  void wrapperDoesNotClaimTheLockWhenItCannotBeTaken() throws SQLException {
+    ListAppender<ILoggingEvent> captured = captureThePluginLog();
+    try {
+      CommandContext commandContext = commandContextOn("postgres");
+      when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+              .prepareStatement(anyString()))
+          .thenThrow(new SQLException("no lock", "55P03"));
+
+      new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(
+              mock(SchemaOperationsCommand.class))
+          .execute(commandContext);
+
+      assertThat(captured.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .noneMatch(message -> message.contains("advisory lock acquired"))
+          .anyMatch(message -> message.contains("proceed unserialized"));
+    } finally {
+      releaseThePluginLog(captured);
+    }
+  }
+
+  @Test
   void wrapperDelegatesDirectlyOffPostgres() {
     SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
     CommandContext commandContext = mock(CommandContext.class);
@@ -312,6 +362,19 @@ class JobPriorityIndexPluginTests {
   // -------------------------------------------------------------------------
   // Fixtures
   // -------------------------------------------------------------------------
+
+  private static ListAppender<ILoggingEvent> captureThePluginLog() {
+    ListAppender<ILoggingEvent> captured = new ListAppender<>();
+    captured.setContext((LoggerContext) LoggerFactory.getILoggerFactory());
+    captured.start();
+    ((Logger) LoggerFactory.getLogger(JobPriorityIndexPlugin.class)).addAppender(captured);
+    return captured;
+  }
+
+  private static void releaseThePluginLog(ListAppender<ILoggingEvent> captured) {
+    ((Logger) LoggerFactory.getLogger(JobPriorityIndexPlugin.class)).detachAppender(captured);
+    captured.stop();
+  }
 
   private static void stubLockStatement(CommandContext commandContext) throws SQLException {
     when(commandContext.getDbSqlSession().getSqlSession().getConnection()
