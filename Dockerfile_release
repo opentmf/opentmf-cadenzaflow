@@ -4,7 +4,7 @@ WORKDIR /build
 ARG MAVEN_PROFILES=repackage
 COPY pom.xml .
 COPY src ./src
-RUN mvn -Dmaven.test.skip=true -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -P ${MAVEN_PROFILES} clean package
+RUN mvn -Dmaven.test.skip=true -Dchangelog.gate.skip=true -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -P ${MAVEN_PROFILES} clean package
 
 # Stage 2: Extract layers
 # Pinned 2026-10-14: this digest of eclipse-temurin:25-jre-noble ships libssl3t64

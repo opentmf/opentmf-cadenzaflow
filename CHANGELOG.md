@@ -4,7 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.4.2] - unreleased
+## [1.4.3] - 2026-10-16
+
+### Fixed
+
+- **Release images now carry the commit they were built from.** The 1.4.2 entry below
+  says the images stamp `org.opencontainers.image.revision`; on the published 1.4.2
+  images (`1.4.2`, `1.4.2-aws`, `1.4.2-azure`) that label is **empty**, because the
+  release workflow never passed `APP_COMMIT` to the build. Local `docker`-profile
+  builds were fine. The release build now passes the checked-out source commit and
+  the repository URL, and a new **provenance label guard** reads the labels back from
+  each pushed image and fails the build leg, before any tag is written, when
+  `image.revision` is not exactly the source commit. The 1.4.2 images cannot be
+  relabelled in place; consumers that need the commit should resolve the 1.4.2 tag
+  (`671719e`) or pin by digest.
+
+- **Release images no longer report `org.opencontainers.image.version=24.04`.** That
+  value was inherited from the Ubuntu base image on every release so far. The release
+  workflow now sets it to the release tag, and the same guard checks it.
+
+## [1.4.2] - 2026-10-16
 
 ### Changed
 
