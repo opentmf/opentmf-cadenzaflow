@@ -45,6 +45,8 @@
     <maven.compiler.release>${java.version}</maven.compiler.release>
 
     <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+    <!-- See the changelog-release-date execution; true only in Dockerfile_release. -->
+    <changelog.gate.skip>false</changelog.gate.skip>
 
     <!-- Keeps `mvn versions:display-*-updates` stable-only. The DNMS estate string,
          verbatim (it must stay identical across every pom and the gate): hides
@@ -541,6 +543,36 @@
           <goals>deploy</goals>
           <tagNameFormat>@{project.version}</tagNameFormat>
         </configuration>
+      </plugin>
+      <!-- CHANGELOG release-date guard (ci/changelog-release-date.sh): SNAPSHOT builds
+           pass; a release-version build - release:prepare's forked `clean verify`,
+           before anything is committed or tagged - fails unless CHANGELOG.md has
+           `## [<version>] - <today>`. 1.4.2 was cut with its section still reading
+           "unreleased". Skipped in Dockerfile_release (changelog.gate.skip), whose
+           build context carries neither ci/ nor the CHANGELOG and may rebuild a tag
+           on a later day. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>${exec-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>changelog-release-date</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <skip>${changelog.gate.skip}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${project.basedir}/ci/changelog-release-date.sh</argument>
+                <argument>${project.version}</argument>
+                <argument>${project.basedir}/CHANGELOG.md</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.jacoco</groupId>
