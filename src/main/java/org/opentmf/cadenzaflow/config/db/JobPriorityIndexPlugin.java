@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Optional;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.ProcessEngineException;
 import org.cadenzaflow.bpm.engine.SchemaOperationsCommand;
 import org.cadenzaflow.bpm.engine.impl.cfg.AbstractProcessEnginePlugin;
 import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
@@ -31,17 +32,25 @@ import org.springframework.context.annotation.Configuration;
  * and one schema everywhere removes the drift class where the acquisition flag and the
  * index disagree per environment.</p>
  *
- * <p>Two concerns ride the one plugin because they share the same advisory-lock key:</p>
+ * <p>Two concerns ride the one plugin, each under its OWN advisory key — they must never
+ * share one. {@code CREATE INDEX CONCURRENTLY} waits for every open transaction, so an
+ * index build holding the schema key while a peer's schema-operations TRANSACTION queues
+ * on that same key is a deadlock by construction: Postgres kills the queued boot with
+ * "deadlock detected" (measured on CI run 39504862831 — the fresh-race IT caught it).
+ * Index-half waiters sit on autocommit connections with no open transaction, so the
+ * concurrent build can never cycle with them on a key of its own.</p>
  *
  * <ul>
  *   <li>{@link #preInit}: wraps the engine's schema-operations command so that concurrent
  *       first boots (the {@code camunda} and {@code camunda-jobs} deployments) serialize
  *       their {@code DbSchemaUpdate} on a {@code pg_advisory_xact_lock} — the engine takes
- *       no lock of its own around schema creation.</li>
+ *       no lock of its own around schema creation. A failed acquisition FAILS the boot:
+ *       proceeding would run the DDL unserialized, and after a transaction-aborting error
+ *       every later statement dies anyway, surfacing as a misleading ENGINE-03018.</li>
  *   <li>{@link #postProcessEngineBuild}: runs after {@code DbSchemaUpdate} has created
  *       {@code act_ru_job}, on its own autocommit connection ({@code CREATE INDEX
  *       CONCURRENTLY} refuses a transaction block), under {@code pg_advisory_lock} on the
- *       same key. An {@code indisvalid=false} leftover from an interrupted concurrent
+ *       index key. An {@code indisvalid=false} leftover from an interrupted concurrent
  *       build is dropped first, because such an index satisfies {@code IF NOT EXISTS} and
  *       would otherwise be kept silently.</li>
  * </ul>
@@ -57,8 +66,14 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
 
   private static final Logger log = LoggerFactory.getLogger(JobPriorityIndexPlugin.class);
 
-  /** One shared key ("CF_DDL_1") serializes schema create and index DDL across replicas. */
+  /** "CF_DDL_1" serializes the engine's schema create/update across replicas. */
   static final long SCHEMA_DDL_LOCK_KEY = 0x43465F44444C5F31L;
+
+  /**
+   * "CF_IDX_1" serializes the index DDL across replicas — deliberately NOT the schema key
+   * (see the class comment: CIC under the schema key deadlocks a peer's queued boot).
+   */
+  static final long INDEX_DDL_LOCK_KEY = 0x43465F4944585F31L;
 
   static final String INDEX_NAME = "act_idx_job_priority";
   static final String TABLE_NAME = "act_ru_job";
@@ -171,7 +186,7 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
   private void acquireAdvisoryLock(Connection connection) throws SQLException {
     try (PreparedStatement statement =
         connection.prepareStatement("select pg_advisory_lock(?)")) {
-      statement.setLong(1, SCHEMA_DDL_LOCK_KEY);
+      statement.setLong(1, INDEX_DDL_LOCK_KEY);
       statement.execute();
     }
   }
@@ -179,7 +194,7 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
   private void releaseAdvisoryLock(Connection connection) {
     try (PreparedStatement statement =
         connection.prepareStatement("select pg_advisory_unlock(?)")) {
-      statement.setLong(1, SCHEMA_DDL_LOCK_KEY);
+      statement.setLong(1, INDEX_DDL_LOCK_KEY);
       statement.execute();
     } catch (SQLException e) {
       // The session-level lock dies with the connection the try-with-resources is about
@@ -257,11 +272,18 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
           log.info(
               "schema DDL advisory lock acquired after {} ms",
               (System.nanoTime() - waitStart) / 1_000_000);
-        } catch (SQLException | RuntimeException e) {
-          log.warn(
-              "Could not take the schema DDL advisory lock; schema operations proceed"
-                  + " unserialized: {}",
-              e.getMessage());
+        } catch (SQLException e) {
+          // Fail the boot, loudly, with the real cause. Proceeding would run the schema
+          // DDL unserialized - the exact ENGINE-03015 race this lock exists to prevent -
+          // and after a transaction-aborting error (e.g. "deadlock detected") it cannot
+          // work at all: every later statement, the engine's own metadata check first,
+          // dies with "current transaction is aborted" and the boot ends in a misleading
+          // ENGINE-03018 instead of this message (measured: CI run 39504862831).
+          throw new ProcessEngineException(
+              "Could not take the schema DDL advisory lock; refusing to run schema"
+                  + " operations unserialized: "
+                  + e.getMessage(),
+              e);
         }
         assertStatedSchema(commandContext, engineConfig);
       }

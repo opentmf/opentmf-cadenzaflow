@@ -103,7 +103,7 @@ class JobPriorityIndexPluginTests {
             "create index concurrently if not exists act_idx_job_priority"
                 + " on cadenzaflow.act_ru_job (priority_ desc, duedate_)");
     order.verify(fixture.unlockStatement).execute();
-    verify(fixture.lockStatement).setLong(1, JobPriorityIndexPlugin.SCHEMA_DDL_LOCK_KEY);
+    verify(fixture.lockStatement).setLong(1, JobPriorityIndexPlugin.INDEX_DDL_LOCK_KEY);
   }
 
   @Test
@@ -237,25 +237,34 @@ class JobPriorityIndexPluginTests {
   }
 
   @Test
-  void wrapperDoesNotClaimTheLockWhenItCannotBeTaken() throws SQLException {
-    ListAppender<ILoggingEvent> captured = captureThePluginLog();
-    try {
-      CommandContext commandContext = commandContextOn("postgres");
-      when(commandContext.getDbSqlSession().getSqlSession().getConnection()
-              .prepareStatement(anyString()))
-          .thenThrow(new SQLException("no lock", "55P03"));
+  void aFailedLockAcquisitionFailsTheBootAndNeverRunsTheSchemaOperations()
+      throws SQLException {
+    // The old behavior - WARN "proceed unserialized" and continue - re-opened the exact
+    // DDL race the lock exists for, and after a transaction-aborting error (deadlock
+    // detected, CI run 39504862831) it could only die later as a misleading ENGINE-03018.
+    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
+    CommandContext commandContext = commandContextOn("postgres");
+    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
+            .prepareStatement(anyString()))
+        .thenThrow(new SQLException("deadlock detected", "40P01"));
 
-      new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(
-              mock(SchemaOperationsCommand.class))
-          .execute(commandContext);
+    assertThatThrownBy(
+            () ->
+                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
+                    .execute(commandContext))
+        .isInstanceOf(org.cadenzaflow.bpm.engine.ProcessEngineException.class)
+        .hasMessageContaining("refusing to run schema operations unserialized")
+        .hasMessageContaining("deadlock detected");
+    verify(delegate, never()).execute(commandContext);
+  }
 
-      assertThat(captured.list)
-          .extracting(ILoggingEvent::getFormattedMessage)
-          .noneMatch(message -> message.contains("advisory lock acquired"))
-          .anyMatch(message -> message.contains("proceed unserialized"));
-    } finally {
-      releaseThePluginLog(captured);
-    }
+  @Test
+  void theIndexAndSchemaLocksAreDistinctKeys() {
+    // Shared, they deadlock by construction: CREATE INDEX CONCURRENTLY under the key
+    // waits for every open transaction, including a peer's schema-ops transaction
+    // queued on that same key (CI run 39504862831).
+    assertThat(JobPriorityIndexPlugin.INDEX_DDL_LOCK_KEY)
+        .isNotEqualTo(JobPriorityIndexPlugin.SCHEMA_DDL_LOCK_KEY);
   }
 
   @Test
@@ -272,21 +281,9 @@ class JobPriorityIndexPluginTests {
     verify(commandContext, never()).getDbSqlSession();
   }
 
-  @Test
-  void wrapperProceedsUnserializedWhenTheLockCannotBeTaken() throws SQLException {
-    SchemaOperationsCommand delegate = mock(SchemaOperationsCommand.class);
-    CommandContext commandContext = commandContextOn("postgres");
-    when(commandContext.getDbSqlSession().getSqlSession().getConnection()
-            .prepareStatement(anyString()))
-        .thenThrow(new SQLException("no lock", "55P03"));
-
-    assertThatCode(
-            () ->
-                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
-                    .execute(commandContext))
-        .doesNotThrowAnyException();
-    verify(delegate).execute(commandContext);
-  }
+  // The former wrapperProceedsUnserializedWhenTheLockCannotBeTaken is gone on purpose:
+  // CF-FRESH-RACE-METADATA-FLAKE-1 flipped the contract to fail-closed, pinned by
+  // aFailedLockAcquisitionFailsTheBootAndNeverRunsTheSchemaOperations above.
 
   @Test
   void wrapperFailsBootWhenCurrentSchemaDiffersFromTheStatedSchema() throws SQLException {
