@@ -141,7 +141,11 @@
          the project key and host URL for scans against a local SonarQube. -->
     <sonar.organization>opentmf</sonar.organization>
     <sonar.projectKey>opentmf_opentmf-cadenzaflow</sonar.projectKey>
-    <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java</sonar.coverage.exclusions>
+    <!-- The CI helper scripts are analyzed for ISSUES (that is how S8707 was found
+         there) but excluded from the COVERAGE requirement: no Python test harness
+         exists in this repo, so a changed script line would otherwise fail the
+         new-coverage gate condition with 0% forever (measured on PR #20). -->
+    <sonar.coverage.exclusions>**/OpenTmfCadenzaFlowApplication.java,**/.github/**</sonar.coverage.exclusions>
     <!-- java:S2143 (use java.time) is exempted for the extensions tree, where
          java.util.Date IS the API's date vocabulary on purpose: the engine's query
          API takes Date and the engine REST Jackson setup formats Date - java.time
