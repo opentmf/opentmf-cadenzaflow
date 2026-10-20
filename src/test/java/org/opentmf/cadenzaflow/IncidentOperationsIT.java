@@ -27,8 +27,12 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import org.awaitility.Awaitility;
+import org.cadenzaflow.bpm.engine.AuthorizationService;
 import org.cadenzaflow.bpm.engine.ExternalTaskService;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
+import org.cadenzaflow.bpm.engine.authorization.Authorization;
+import org.cadenzaflow.bpm.engine.authorization.Permissions;
+import org.cadenzaflow.bpm.engine.authorization.Resources;
 import org.cadenzaflow.bpm.engine.externaltask.ExternalTask;
 import org.cadenzaflow.bpm.engine.externaltask.LockedExternalTask;
 import org.junit.jupiter.api.MethodOrderer;
@@ -579,6 +583,40 @@ class IncidentOperationsIT {
         """.formatted(retries);
   }
 
+  @Test
+  void theAdminGroupsOwnGrantCannotBeRepointedThroughEngineRest() throws Exception {
+    // Pentest V01 through the door the services actually have: on /engine-rest the
+    // engine sees no authenticated user, so without the guard a writer token could
+    // re-point the administrator group's grant. The guard answers 403 (the engine
+    // REST layer's mapping of AuthorizationException) and the grant survives.
+    AuthorizationService authorizationService = processEngine.getAuthorizationService();
+    // The fork's engine-default admin group ("cadenzaflow-admin"), never a literal.
+    String adminGroup = org.cadenzaflow.bpm.engine.authorization.Groups.CAMUNDA_ADMIN;
+    Authorization grant =
+        authorizationService.createNewAuthorization(Authorization.AUTH_TYPE_GRANT);
+    grant.setGroupId(adminGroup);
+    grant.setResource(Resources.APPLICATION);
+    grant.setResourceId("*");
+    grant.addPermission(Permissions.ALL);
+    authorizationService.saveAuthorization(grant);
+    // No cleanup by design: the guard itself forbids deleting the grant, and an extra
+    // GRANT row for the admin group changes nothing for the other tests.
+
+    HttpResponse<String> response = put("/engine-rest/authorization/" + grant.getId(), """
+        {
+          "groupId": "%s <img src=x onerror=confirm(1)>",
+          "resourceType": 0,
+          "resourceId": "*",
+          "permissions": ["ALL"]
+        }
+        """.formatted(adminGroup), WRITER_TOKEN);
+
+    assertThat(response.statusCode()).isEqualTo(403);
+    Authorization survived = authorizationService.createAuthorizationQuery()
+        .authorizationId(grant.getId()).singleResult();
+    assertThat(survived.getGroupId()).isEqualTo(adminGroup);
+  }
+
   private HttpResponse<String> get(String path, String token) throws Exception {
     return httpClient.send(request(path, token).GET().build(),
         HttpResponse.BodyHandlers.ofString());
@@ -589,6 +627,15 @@ class IncidentOperationsIT {
         request(path, token)
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private HttpResponse<String> put(String path, String body, String token) throws Exception {
+    return httpClient.send(
+        request(path, token)
+            .header("Content-Type", "application/json")
+            .PUT(HttpRequest.BodyPublishers.ofString(body))
             .build(),
         HttpResponse.BodyHandlers.ofString());
   }

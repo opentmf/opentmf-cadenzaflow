@@ -4,9 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.4.4] - unreleased
+## [1.5.0] - unreleased
 
 ### Added
+
+- **The administrator group can no longer lock itself out** (CF-ADMIN-AUTHZ-GUARD-1;
+  pentest finding V01). A new engine plugin replaces the authorization service with a
+  guarded subclass: saving an EXISTING authorization whose stored group is one of the
+  engine's admin groups is refused when the update changes its group, resource,
+  resource id or permissions, and deleting such an authorization is refused outright —
+  both with `AuthorizationException` ("the administrator group's own authorizations
+  are protected"), which the engine REST layer answers as 403. Creating new grants for
+  the admin group stays allowed (the restart self-heal's own path, which remains the
+  safety net), a no-op save passes, and every other group and user grant is untouched.
+  The guard covers all entry points — the webapp's `/api`, `/engine-rest`'s
+  authorization resource and the Java API — because all three go through the same two
+  service methods, and it reads the admin groups at call time, so identity plugins
+  registering their configured administrator group at boot are honored.
 
 - **The fresh-database boot race is now pinned by the suite**
   (CF-SCHEMA-CREATE-FRESH-RACE-IT-1, test-only). Two engines boot concurrently against
