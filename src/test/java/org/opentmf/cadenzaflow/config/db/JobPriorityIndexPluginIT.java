@@ -2,6 +2,9 @@ package org.opentmf.cadenzaflow.config.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -17,6 +20,7 @@ import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneProcessEngineConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -24,9 +28,12 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * donor is {@code IncidentGroupQueryPlanProbeIT}): a fresh first boot creates
  * {@code act_idx_job_priority} present and valid; a second boot is a no-op that does not
  * rebuild it; an {@code indisvalid=false} leftover from an interrupted concurrent build is
- * dropped and rebuilt; and two engines booting together - the {@code camunda} +
+ * dropped and rebuilt; two engines booting together - the {@code camunda} +
  * {@code camunda-jobs} deployment pair - serialize on the advisory lock and end with
- * exactly one valid index. Each scenario runs in its own schema on one shared container.
+ * exactly one valid index; and the same pair FIRST-booting a schema no engine has ever
+ * touched creates it exactly once (the CF-SCHEMA-CREATE-RACE incident shape - without
+ * the lock one replica dies with ENGINE-03015 and restarts). Each scenario runs in its
+ * own schema on one shared container.
  */
 class JobPriorityIndexPluginIT {
 
@@ -132,6 +139,72 @@ class JobPriorityIndexPluginIT {
       }
     }
     assertThat(indexState("race_case").orElseThrow().valid()).isTrue();
+  }
+
+  @Test
+  void twoEnginesBootingTogetherOnAFreshSchemaCreateItExactlyOnce() throws Exception {
+    // The CF-SCHEMA-CREATE-RACE incident shape: camunda and camunda-jobs both running
+    // their FIRST boot against a schema no engine has ever touched. Unserialized, one
+    // replica dies with ENGINE-03015 ("act_ge_property ... already exists") and
+    // restarts; under the advisory-xact-lock wrap both must boot cleanly, and each
+    // boot leaves the lock-acquisition line as the visible trace.
+    createSchema("fresh_race");
+
+    ListAppender<ILoggingEvent> lockLog = new ListAppender<>();
+    lockLog.start();
+    Logger pluginLogger = (Logger) LoggerFactory.getLogger(JobPriorityIndexPlugin.class);
+    pluginLogger.addAppender(lockLog);
+    ProcessEngine engineOne;
+    ProcessEngine engineTwo;
+    try {
+      CompletableFuture<ProcessEngine> first =
+          CompletableFuture.supplyAsync(() -> bootEngine("fresh_race", "fresh-race-1"));
+      CompletableFuture<ProcessEngine> second =
+          CompletableFuture.supplyAsync(() -> bootEngine("fresh_race", "fresh-race-2"));
+      engineOne = first.join();
+      engineTwo = second.join();
+    } finally {
+      pluginLogger.detachAppender(lockLog);
+    }
+    try {
+      assertThat(engineOne).isNotNull();
+      assertThat(engineTwo).isNotNull();
+    } finally {
+      engineOne.close();
+      engineTwo.close();
+    }
+
+    // Exactly one complete schema came out of the two creates.
+    try (Connection connection = adminConnection();
+        Statement statement = connection.createStatement()) {
+      try (ResultSet resultSet =
+          statement.executeQuery(
+              "select count(*) from fresh_race.act_ge_property"
+                  + " where name_ = 'schema.version'")) {
+        assertThat(resultSet.next()).isTrue();
+        assertThat(resultSet.getInt(1)).as("exactly one schema.version row").isEqualTo(1);
+      }
+      try (ResultSet resultSet =
+          statement.executeQuery(
+              "select count(*) from information_schema.tables"
+                  + " where table_schema = 'fresh_race'"
+                  + " and table_name like 'act\\_%' escape '\\'")) {
+        assertThat(resultSet.next()).isTrue();
+        assertThat(resultSet.getInt(1))
+            .as("the engine's tables, created once")
+            .isGreaterThan(40);
+      }
+    }
+    assertThat(indexState("fresh_race").orElseThrow().valid()).isTrue();
+
+    // Both boots went through the advisory-locked schema operations: each logs the
+    // acquisition line. The waiter's wait length is timing, so only presence is pinned.
+    long acquisitionLines =
+        lockLog.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(message -> message.startsWith("schema DDL advisory lock acquired after"))
+            .count();
+    assertThat(acquisitionLines).as("both boots acquired the schema DDL lock").isEqualTo(2);
   }
 
   // -------------------------------------------------------------------------
