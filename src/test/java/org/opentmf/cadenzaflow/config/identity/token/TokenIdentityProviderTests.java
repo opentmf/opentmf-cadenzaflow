@@ -12,6 +12,7 @@ import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfigura
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
@@ -69,6 +70,71 @@ class TokenIdentityProviderTests {
   }
 
   @Test
+  void theIdListFilterConstrainsTheSelfAnswerBothWays() {
+    signIn("jane@vf.com", "dnms-read");
+
+    TokenUserQuery inList = new TokenUserQuery();
+    inList.userIdIn("jane@vf.com", "someone-else");
+    assertThat(session.findUsers(inList)).extracting(User::getId).containsExactly("jane@vf.com");
+
+    TokenUserQuery notInList = new TokenUserQuery();
+    notInList.userIdIn("other-a", "other-b");
+    assertThat(session.findUsers(notInList)).isEmpty();
+  }
+
+  @Test
+  void theGroupFilterConstrainsTheSelfAnswerBothWays() {
+    signIn("jane@vf.com", "dnms-read");
+
+    TokenUserQuery myGroup = new TokenUserQuery();
+    myGroup.memberOfGroup("dnms-read");
+    assertThat(session.findUsers(myGroup)).extracting(User::getId).containsExactly("jane@vf.com");
+
+    TokenUserQuery otherGroup = new TokenUserQuery();
+    otherGroup.memberOfGroup("not-my-group");
+    assertThat(session.findUsers(otherGroup)).isEmpty();
+  }
+
+  @Test
+  void theEmailIsThePrincipalNameAndTheEmailFilterMatchesIt() {
+    signIn("jane@vf.com", "dnms-read");
+
+    assertThat(session.currentUser().getEmail()).isEqualTo("jane@vf.com");
+    TokenUserQuery byMyEmail = new TokenUserQuery();
+    byMyEmail.userEmail("jane@vf.com");
+    assertThat(session.findUsers(byMyEmail)).extracting(User::getId)
+        .containsExactly("jane@vf.com");
+  }
+
+  @Test
+  void anUnauthenticatedTokenIsNobody() {
+    // isAuthenticated() false is its own branch, distinct from no authentication at
+    // all - and the token CARRIES authorities, so a provider that skipped the check
+    // would hand them out as groups.
+    TestingAuthenticationToken token =
+        new TestingAuthenticationToken("jane@vf.com", "n/a", "dnms-read", "dnms-platform-admin");
+    token.setAuthenticated(false);
+    SecurityContextHolder.getContext().setAuthentication(token);
+
+    assertThat(session.currentUser()).isNull();
+    assertThat(session.findUsers(new TokenUserQuery())).isEmpty();
+    assertThat(session.groupIds()).isEmpty();
+  }
+
+  @Test
+  void anAuthenticatedTokenWithoutANameIsNobodyToo() {
+    // TestingAuthenticationToken can never answer getName() == null (a null principal
+    // becomes ""), so this branch needs a stubbed Authentication: authenticated, but
+    // nameless - the engine must not mint a user with a null id from it.
+    Authentication nameless = org.mockito.Mockito.mock(Authentication.class);
+    org.mockito.Mockito.when(nameless.isAuthenticated()).thenReturn(true);
+    org.mockito.Mockito.when(nameless.getName()).thenReturn(null);
+    SecurityContextHolder.getContext().setAuthentication(nameless);
+
+    assertThat(session.currentUser()).isNull();
+  }
+
+  @Test
   void passwordsNeverCheck() {
     signIn("jane@vf.com", "dnms-read");
     assertThat(session.checkPassword("jane@vf.com", "any")).isFalse();
@@ -114,6 +180,51 @@ class TokenIdentityProviderTests {
 
     assertThat(session.findGroupById("dnms-platform-admin")).isNotNull();
     assertThat(session.findGroupById("anything-else")).isNull();
+  }
+
+  @Test
+  void groupQueriesFilterByIdAndIdListBothWays() {
+    signIn("jane@vf.com", "dnms-read", "dnms-write");
+
+    TokenGroupQuery byId = new TokenGroupQuery();
+    byId.groupId("dnms-read");
+    assertThat(session.findGroups(byId)).extracting(Group::getId).containsExactly("dnms-read");
+
+    TokenGroupQuery byWrongId = new TokenGroupQuery();
+    byWrongId.groupId("not-mine");
+    assertThat(session.findGroups(byWrongId)).isEmpty();
+
+    TokenGroupQuery byIds = new TokenGroupQuery();
+    byIds.groupIdIn("dnms-read", "someone-elses");
+    assertThat(session.findGroups(byIds)).extracting(Group::getId).containsExactly("dnms-read");
+
+    TokenGroupQuery byWrongIds = new TokenGroupQuery();
+    byWrongIds.groupIdIn("other-a", "other-b");
+    assertThat(session.findGroups(byWrongIds)).isEmpty();
+  }
+
+  @Test
+  void aNullGroupIdResolvesToNothingEvenSignedIn() {
+    signIn("jane@vf.com", "dnms-read");
+    assertThat(session.findGroupById(null)).isNull();
+  }
+
+  @Test
+  void aTokenGroupResolvesByIdWithItsNameAndType() {
+    signIn("jane@vf.com", "dnms-read");
+
+    Group group = session.findGroupById("dnms-read");
+    assertThat(group).isNotNull();
+    assertThat(group.getName()).isEqualTo("dnms-read");
+    assertThat(group.getType()).isEqualTo("TOKEN");
+  }
+
+  @Test
+  void theCommandContextFactoriesHandOutTheTokenQueries() {
+    // The engine calls these inside a command; the context argument is unused here.
+    assertThat(session.createUserQuery(null)).isInstanceOf(TokenUserQuery.class);
+    assertThat(session.createGroupQuery(null)).isInstanceOf(TokenGroupQuery.class);
+    assertThat(session.createTenantQuery(null)).isInstanceOf(TokenTenantQuery.class);
   }
 
   // -------------------------------------------------------------------------

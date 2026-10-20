@@ -56,7 +56,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   table set come out, the service-owned index is valid, and both boots log the 1.4.2
   lock-acquisition line. No runtime change.
 
+### Fixed
+
+- **The CI Sonar report script no longer follows a path argument out of the
+  workspace** (CF-SONAR-REPORT-PATH-1; SonarCloud S8707 × 2, the repo's only open
+  vulnerability findings — both in this CI helper, which never ships in the jar or
+  the images). `sonar-report.py` now resolves its two JSON path arguments against
+  the working directory and refuses anything that escapes it; the workflows' own
+  calls (workspace-relative `status.json`/`measures.json`) are unchanged. No Python
+  test harness exists in this repo; the fix is proven by direct invocation (normal
+  render intact, `../` and absolute escapes refused with exit 1).
+
 ### Changed
+
+- **The token provider's unit suite now kills its mutation survivors**
+  (CF-TOKEN-PROVIDER-MUTANTS-1, test-only). The 1.5.0 readiness PIT run left 20
+  surviving mutants in `TokenIdentityProviderSession` — the query-filter branches
+  (id-list/group/email filters), the unauthenticated-token branch, the group
+  name/type fields and the command-context query factories. New unit cells cover
+  each branch both ways.
 
 - **AWS SDK BOM 2.56.0 → 2.57.0** (aws flavour only). The one update the 1.5.0
   readiness versions check proposed outside the Boot-BOM minor lines; the jackson
