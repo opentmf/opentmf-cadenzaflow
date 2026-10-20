@@ -58,6 +58,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Two replicas booting together can no longer deadlock between the schema lock and
+  the index build** (CF-FRESH-RACE-METADATA-FLAKE-1; caught by the fresh-race IT on CI
+  run 39504862831). The schema-operations wrap and the `act_idx_job_priority` build
+  shared one advisory key — and `CREATE INDEX CONCURRENTLY` waits for every open
+  transaction, so a build holding the key while a peer's schema-operations transaction
+  queued on it was a deadlock by construction: Postgres killed the queued boot with
+  "deadlock detected", and the plugin then "proceeded unserialized" on an aborted
+  transaction, dying as a misleading ENGINE-03018. The index build now serializes on
+  its own key (`CF_IDX_1`; its waiters hold no open transaction, so no cycle exists),
+  and a failed schema-lock acquisition now FAILS the boot with the real cause instead
+  of continuing — outcome-unchanged (the boot already died), but true and immediate.
+
 - **The CI Sonar report script no longer follows a path argument out of the
   workspace** (CF-SONAR-REPORT-PATH-1; SonarCloud S8707 × 2, the repo's only open
   vulnerability findings — both in this CI helper, which never ships in the jar or
