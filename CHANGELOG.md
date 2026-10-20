@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **The standalone ACL closes the identity and authorization endpoints**
+  (CF-STANDALONE-IDENTITY-ACL-DEFAULT-1; the config half of pentest finding V02 —
+  standalone defaults only, a deployment that activates a profile still authors its own
+  ACL, §3.5). Eleven `admin`-only rules land in `config-security.yml` ABOVE the
+  `/engine-rest/**` wildcards (first match wins): `GET` on `/user`, `/group`,
+  `/identity` and `/tenant` — behind the wildcards alone, any `reader` token enumerated
+  every user the identity provider knows — and all four methods on `/authorization`,
+  which any `writer` token could previously edit over plain REST. The identity rows are
+  GET-only because the identity providers are read-only and writes there already fail
+  in the engine. The `/engine-rest/external-task/**` whitelist entry is deliberately
+  untouched (worker polling, §3.3).
+
 - **A third identity provider: `plugin.identity.provider: token`**
   (CF-TOKEN-IDENTITY-PROVIDER-1; closes pentest finding V02 by design — an OPTION, the
   default stays `keycloak`). No directory behind it: the engine's one user is the

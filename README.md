@@ -222,6 +222,8 @@ caller needs **any one** of them.
 | `PUT` | `/engine-rest/**` | `writer`, `admin` | modifying |
 | `DELETE` | `/engine-rest/**` | `writer`, `admin` | deleting instances, deployments |
 | `POST` | `/engine-rest/extensions/incident/retry` | `writer`, `admin` | bulk incident retry (§9.3). Shipped with the same roles as the POST wildcard, as a **dedicated rule listed before the wildcards** so a deployment can tighten this one operation (e.g. `admin` only) without touching them |
+| `GET` | `/engine-rest/user/**`, `/group/**`, `/identity/**`, `/tenant/**` | `admin` | identity administration is a console concern (`/api/*`), not an API one. Listed **before** the wildcards; behind them alone, any `reader` token enumerates every user the identity provider knows |
+| `GET`/`POST`/`PUT`/`DELETE` | `/engine-rest/authorization`, `/authorization/**` | `admin` | the engine's authorization model — reading it maps the ACL, writing it edits grants. Every method is closed, not only the writes |
 | any | `/engine-rest/external-task/**` | **none — open** | worker polling; see the warning below |
 | any | `/engine-rest/extensions/openapi.yaml` | **none — open** | the API document; the contract, no engine data |
 | any | the web UIs (`/app/**`, `/api/**`, static assets) | **none at this layer** | not whitelisted — the OIDC login chain redirects an unauthenticated browser to the provider |
@@ -232,7 +234,8 @@ caller needs **any one** of them.
 > **Rule order is load-bearing.** The list is applied to Spring Security in the
 > order written and the **first matching rule wins** — a specific rule placed after
 > a wildcard that also matches is unreachable and silently does nothing. That is
-> why the incident-retry rule stands above the `/engine-rest/**` wildcards.
+> why the incident-retry and the identity/authorization rules stand above the
+> `/engine-rest/**` wildcards.
 >
 > **The external-task path is deliberately open** so high-frequency worker polling
 > costs no token round-trips. This is only safe where the application port is

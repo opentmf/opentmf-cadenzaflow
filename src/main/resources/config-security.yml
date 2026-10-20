@@ -44,6 +44,26 @@ opentmf:
         roles:
           - writer
           - admin
+      # Identity and authorization administration is not an API concern: the
+      # consoles reach these resources through /api/*, and no service calls them
+      # on /engine-rest. Admin only, and listed BEFORE the wildcards - behind the
+      # wildcards alone, any reader token lists every user and group the identity
+      # provider knows (pentest V02, user enumeration), and any writer token edits
+      # engine authorizations over plain REST. The identity resources are GET-only
+      # rows because the identity providers are read-only - a write there fails in
+      # the engine regardless; the authorization resource is writable, so every
+      # method the wildcards would otherwise grant is closed.
+      - { method: GET,    path: /engine-rest/user/**,          roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/user,             roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/group/**,         roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/group,            roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/identity/**,      roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/tenant/**,        roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/authorization/**, roles: [ admin ] }
+      - { method: GET,    path: /engine-rest/authorization,    roles: [ admin ] }
+      - { method: POST,   path: /engine-rest/authorization/**, roles: [ admin ] }
+      - { method: PUT,    path: /engine-rest/authorization/**, roles: [ admin ] }
+      - { method: DELETE, path: /engine-rest/authorization/**, roles: [ admin ] }
       - method: GET
         path: /engine-rest/**
         roles:
