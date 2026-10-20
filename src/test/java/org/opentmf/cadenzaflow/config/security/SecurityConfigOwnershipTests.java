@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
+import org.opentmf.security.model.SecureEndpoint;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
@@ -122,6 +124,49 @@ class SecurityConfigOwnershipTests {
       // nothing to authorise, which is the wrong fix for the same defect.
       assertThat(environment.getProperty("management.endpoint.loggers.access"))
           .isEqualTo("unrestricted");
+    }
+
+    @Test
+    @DisplayName("identity and authorization endpoints are admin-only, listed above the wildcards")
+    void closeIdentityAndAuthorizationEndpointsToAdmins() {
+      // Pentest V02: behind the wildcards alone, any reader token enumerates every user
+      // the identity provider knows, and any writer token edits engine authorizations
+      // over plain REST. First match wins, so the ORDER is as load-bearing as the roles.
+      List<SecureEndpoint> rules =
+          Binder.get(configurationWith())
+              .bind("opentmf.security.secure-endpoints", Bindable.listOf(SecureEndpoint.class))
+              .orElse(List.of());
+
+      int firstWildcard =
+          IntStream.range(0, rules.size())
+              .filter(i -> "/engine-rest/**".equals(rules.get(i).getPath()))
+              .findFirst()
+              .orElseThrow();
+
+      List<SecureEndpoint> identityRules =
+          rules.stream()
+              .filter(
+                  rule ->
+                      rule.getPath().startsWith("/engine-rest/user")
+                          || rule.getPath().startsWith("/engine-rest/group")
+                          || rule.getPath().startsWith("/engine-rest/identity")
+                          || rule.getPath().startsWith("/engine-rest/tenant")
+                          || rule.getPath().startsWith("/engine-rest/authorization"))
+              .toList();
+
+      assertThat(identityRules).hasSize(11);
+      for (SecureEndpoint rule : identityRules) {
+        assertThat(rule.getRoles()).containsExactly("admin");
+        assertThat(rules.indexOf(rule)).isLessThan(firstWildcard);
+      }
+      // The writable resource is closed on every method the wildcards would grant,
+      // not only the writes - reading the authorization model maps the ACL.
+      assertThat(
+              identityRules.stream()
+                  .filter(rule -> rule.getPath().startsWith("/engine-rest/authorization"))
+                  .map(rule -> rule.getMethod().name())
+                  .toList())
+          .contains("GET", "POST", "PUT", "DELETE");
     }
 
     @Test
