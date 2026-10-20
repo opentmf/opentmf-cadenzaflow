@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.4] - unreleased
+
+### Added
+
+- **The fresh-database boot race is now pinned by the suite**
+  (CF-SCHEMA-CREATE-FRESH-RACE-IT-1, test-only). Two engines boot concurrently against
+  a schema no engine has ever touched — the camunda/camunda-jobs first-boot incident
+  that the 1.4.2 advisory-lock wrap serializes; unserialized, the recorded proof run
+  dies with ENGINE-03015 ("act_ge_property … already exists") exactly as window B did.
+  The IT asserts both boots succeed, exactly one `schema.version` row and one complete
+  table set come out, the service-owned index is valid, and both boots log the 1.4.2
+  lock-acquisition line. No runtime change.
+
 ## [1.4.3] - 2026-10-16
 
 ### Fixed
