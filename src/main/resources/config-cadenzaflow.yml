@@ -127,9 +127,20 @@ opentmf.tmf630:
       - configuration
       - tenantId
 
-# Identity provider selection: 'keycloak' (default) or 'entra'. The engine mounts
-# exactly one identity provider; the switch makes them mutually exclusive.
+# Identity provider selection: 'keycloak' (default), 'entra' or 'token'. The engine
+# mounts exactly one identity provider; the switch makes them mutually exclusive.
 plugin.identity.provider: keycloak
+
+# Token-based identity - activate with plugin.identity.provider: token. No directory
+# behind it: the engine's one user is the signed-in principal, groups are the token's
+# authorities (Entra App Roles via authorities-claim: roles, or Keycloak roles/groups).
+# User enumeration is impossible by construction and no Graph/Admin-API permission is
+# needed. Trade-offs (README §8.5.1): Admin pages show only yourself, authorizations
+# are typed by hand, Tasklist cannot search users.
+# plugin.identity.token:
+#   administrator-group-name: camunda-admin
+#   # strip a converter prefix from authorities before using them as groups, e.g. ROLE_
+#   authority-prefix: ""
 
 # Entra ID (Azure AD) alternative - activate with plugin.identity.provider: entra.
 # Requires an app registration with application permissions User.Read.All +

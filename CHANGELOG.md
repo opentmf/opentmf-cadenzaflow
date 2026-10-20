@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **A third identity provider: `plugin.identity.provider: token`**
+  (CF-TOKEN-IDENTITY-PROVIDER-1; closes pentest finding V02 by design — an OPTION, the
+  default stays `keycloak`). No directory behind it: the engine's one user is the
+  signed-in principal, groups are the token's authorities (Entra App Roles
+  recommended; a configurable `authority-prefix` strips converter prefixes), passwords
+  never check, tenants are empty, and the configured `administrator-group-name` is
+  registered and granted ALL on every resource at boot exactly like the directory
+  plugins, so the restart self-heal and the admin-authorization guard keep working.
+  User enumeration is impossible by construction and no `User.Read.All`/Admin-API
+  credentials are needed. Trade-offs in README §8.3: Admin pages show only yourself,
+  authorizations are typed by hand, Tasklist cannot search users, off-request threads
+  see nobody.
+
 - **The administrator group can no longer lock itself out** (CF-ADMIN-AUTHZ-GUARD-1;
   pentest finding V01). A new engine plugin replaces the authorization service with a
   guarded subclass: saving an EXISTING authorization whose stored group is one of the
