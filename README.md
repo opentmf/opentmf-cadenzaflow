@@ -1312,7 +1312,7 @@ To adopt an existing `opentmf-camunda7` database, point these at it (e.g. schema
 
 ### 8.3 Identity provider
 
-Pick one with `PLUGIN_IDENTITY_PROVIDER`: `keycloak` (default) or `entra`.
+Pick one with `PLUGIN_IDENTITY_PROVIDER`: `keycloak` (default), `entra` or `token`.
 
 Keycloak:
 
@@ -1341,6 +1341,25 @@ Entra ID (Azure AD). Needs an app registration with **application** permissions
 > For a deployment where Entra ID is the **only** identity provider, everything
 > below is already assembled: [`deploy/entra/`](deploy/entra/) has the from-scratch
 > tenant setup, a ready-to-fill environment file and Kubernetes manifests.
+
+Token (`PLUGIN_IDENTITY_PROVIDER=token`) — **no directory at all**. The engine's one
+user is the signed-in principal of the current request, and that user's groups are the
+token's authorities (Entra **App Roles** via `authorities-claim: roles` are the
+recommended source — group claims silently truncate to an overage pointer past a
+tenant-dependent limit; Keycloak realm/client roles or group paths work the same way):
+
+| Variable | Description | Default |
+|---|---|---|
+| `PLUGIN_IDENTITY_TOKEN_ADMINISTRATOR_GROUP_NAME` | Group granted engine administrator rights at boot, exactly like the directory plugins | — |
+| `PLUGIN_IDENTITY_TOKEN_AUTHORITY_PREFIX` | A converter prefix (e.g. `ROLE_`) stripped from authorities before they become engine groups | empty |
+
+What it buys: user enumeration is **impossible by construction** — there is no list to
+page through, whatever the caller's role — and the deployment needs no
+`User.Read.All`/Admin-API credentials. What it costs, chosen deliberately: the Admin
+console's user and group pages show only yourself; authorizations are written against
+group names typed by hand; Tasklist cannot search a directory to assign tasks (matters
+only for workflows with user tasks); and threads without a request — the job executor,
+history cleanup — see no user and get empty identity query results.
 
 Entra deployment notes, each of which has cost somebody an afternoon:
 
