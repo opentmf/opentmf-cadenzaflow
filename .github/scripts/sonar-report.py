@@ -15,6 +15,7 @@ rendered (and read) on a red gate.
 
 import json
 import sys
+from pathlib import Path
 
 RATINGS = {"1.0": "A", "2.0": "B", "3.0": "C", "4.0": "D", "5.0": "E"}
 
@@ -70,13 +71,28 @@ def pretty(metric, value):
     return value
 
 
+def workspace_file(argument):
+    """Resolve a CLI path argument and confine it to the working directory.
+
+    The workflows pass workspace-relative names (`status.json`, `measures.json`), but
+    the value still arrives via argv: resolve it against the working directory and
+    refuse anything that escapes it (S8707, path traversal), so a crafted argument
+    cannot make the report read and echo a file outside the checkout.
+    """
+    workspace = Path.cwd().resolve()
+    path = (workspace / argument).resolve()
+    if workspace != path and workspace not in path.parents:
+        raise SystemExit(f"refusing path outside the workspace: {argument}")
+    return path
+
+
 def main():
     # The report carries ✅/❌; don't inherit a legacy console encoding.
     sys.stdout.reconfigure(encoding="utf-8")
     status_path, measures_path, project_key, branch = sys.argv[1:5]
-    with open(status_path, encoding="utf-8") as handle:
+    with workspace_file(status_path).open(encoding="utf-8") as handle:
         project_status = json.load(handle)["projectStatus"]
-    with open(measures_path, encoding="utf-8") as handle:
+    with workspace_file(measures_path).open(encoding="utf-8") as handle:
         values = measure_values(json.load(handle))
 
     status = project_status.get("status", "UNKNOWN")
