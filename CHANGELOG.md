@@ -56,6 +56,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   table set come out, the service-owned index is valid, and both boots log the 1.4.2
   lock-acquisition line. No runtime change.
 
+### Changed
+
+- **AWS SDK BOM 2.56.0 → 2.57.0** (aws flavour only). The one update the 1.5.0
+  readiness versions check proposed outside the Boot-BOM minor lines; the jackson
+  pins deliberately stay on Spring Boot 4.1.1's tested minors (estate minor-line
+  rule — see the pom comment at `jackson-2-bom.version`).
+
 ## [1.4.3] - 2026-10-16
 
 ### Fixed
