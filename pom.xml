@@ -4,7 +4,7 @@
   <groupId>org.opentmf.cadenzaflow</groupId>
   <artifactId>opentmf-cadenzaflow</artifactId>
   <name>opentmf-cadenzaflow</name>
-  <version>1.4.4-SNAPSHOT</version>
+  <version>1.5.0-SNAPSHOT</version>
 
   <description>
     An OpenTMF produced Spring Boot 4 microservice that embeds the CadenzaFlow community edition
@@ -102,8 +102,8 @@
          built and tested against - the newest PATCH of 2.21 / 3.1 - even though the
          versions goals propose 2.22.x / 3.2.x; the next minors arrive with the Boot
          BOM that adopts them. A rule, not a hold. -->
-    <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
-    <jackson-bom.version>3.1.7</jackson-bom.version>
+    <jackson-2-bom.version>2.21.8</jackson-2-bom.version>
+    <jackson-bom.version>3.1.8</jackson-bom.version>
 
     <!-- TMF-630 paging/sorting semantics for the incident list. The -core module
          only: its logic (status resolution, range/link headers, sort grammar with
@@ -766,7 +766,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
-        <awssdk.version>2.57.0</awssdk.version>
+        <awssdk.version>2.57.1</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.5.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
@@ -851,7 +851,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
-        <trivy-image.version>0.76.0</trivy-image.version>
+        <trivy-image.version>0.76.1</trivy-image.version>
         <!-- Stamped into the OCI provenance labels (DNMS template convention); pass
              -Dapp.commit=$(git rev-parse HEAD) for a provenance-labeled image. Pom
              properties rather than ${env.*} because Maven passes an UNSET env

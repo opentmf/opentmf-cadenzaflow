@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.0] - unreleased
+## [1.5.0] - 2026-10-21
 
 ### Added
 
@@ -81,17 +81,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **The token provider's unit suite now kills its mutation survivors**
-  (CF-TOKEN-PROVIDER-MUTANTS-1, test-only). The 1.5.0 readiness PIT run left 20
-  surviving mutants in `TokenIdentityProviderSession` — the query-filter branches
-  (id-list/group/email filters), the unauthenticated-token branch, the group
-  name/type fields and the command-context query factories. New unit cells cover
-  each branch both ways.
+- **AWS SDK BOM 2.56.0 → 2.57.1** (aws flavour only).
 
-- **AWS SDK BOM 2.56.0 → 2.57.0** (aws flavour only). The one update the 1.5.0
-  readiness versions check proposed outside the Boot-BOM minor lines; the jackson
-  pins deliberately stay on Spring Boot 4.1.1's tested minors (estate minor-line
-  rule — see the pom comment at `jackson-2-bom.version`).
+- **Jackson 2.21.7 → 2.21.8 and 3.1.7 → 3.1.8**, the newest patches of the minors
+  Spring Boot 4.1.1 is built against. The pins themselves stay (the Boot BOM still
+  resolves 2.21.5 / 3.1.5, which carry CVE-2026-68497); 2.22.x / 3.2.x stay out by the estate
+  minor-line rule — see the pom comment at `jackson-2-bom.version`.
+
+- **Build only:** the image gate's Trivy scanner 0.76.0 → 0.76.1 (release workflow
+  and the `docker` profile).
 
 ## [1.4.3] - 2026-10-16
 
