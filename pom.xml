@@ -60,7 +60,7 @@
     <!-- Spring Boot 4. Ahead of the CadenzaFlow SB4 starters' own baseline (their
          parent pins 4.0.7); the compatibility proof is this repo's full IT suite,
          which boots the engine, both identity plugins and the REST surface. -->
-    <spring-boot.version>4.1.1</spring-boot.version>
+    <spring-boot.version>4.1.2</spring-boot.version>
     <cadenzaflow.version>1.2.4</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
@@ -74,36 +74,9 @@
     <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
     <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 
-    <!-- The postgresql/netty/httpcore5 CVE overrides that lived here until 1.2.0
-         are gone: the Spring Boot 4.1.1 BOM manages 42.7.13 / 4.2.17.Final / 5.4.3
-         itself - exactly the fixed versions the overrides pinned. -->
-
-    <!-- Overrides the Spring Boot 4.1.1 BOM's 11.0.24: CVE-2026-65182 (CRITICAL,
-         security-constraint bypass) plus two more CRITICALs in tomcat-embed-core,
-         first fixed in 11.0.25. In EVERY flavour - Tomcat is the embedded servlet
-         container. 4.1.1 is the latest Boot GA and pins 11.0.24; 4.2.0-M1 is a
-         milestone we do not adopt. Applied as explicit dependencyManagement entries
-         (not as a property override), because with a BOM-only IMPORT the BOM resolves
-         its own `tomcat.version` internally and a property here is silently ignored -
-         the httpcore5 lesson of 1.1.2, verified again by reading BOOT-INF/lib.
-         Remove when a Boot GA pins >= 11.0.25. -->
-    <tomcat.version>11.0.27</tomcat.version>
-
-    <!-- Overrides the Spring Boot 4.1.1 BOM's Jackson 2.21.5 / 3.1.5: CVE-2026-68497
-         (HIGH) in jackson-databind, on both the 2.x and the 3.x line, in EVERY flavour -
-         the engine's REST API (Jersey) and Spin serialize with Jackson 2, Spring Boot 4
-         with Jackson 3. First fixed in 2.21.7 and 3.1.7. Applied by importing Jackson's
-         own BOMs ahead of spring-boot-dependencies (first import wins), NOT by setting
-         these properties alone: with a BOM-only import the Boot BOM resolves its own
-         properties of the same names internally and a bare property here is silently
-         ignored - see tomcat.version above. Remove when a Boot GA pins >= 2.21.7 and
-         >= 3.1.7.
-         Minor-line rule (estate): these pins stay on the minors Spring Boot 4.1.1 is
-         built and tested against - the newest PATCH of 2.21 / 3.1 - even though the
-         versions goals propose 2.22.x / 3.2.x; the next minors arrive with the Boot
-         BOM that adopts them. A rule, not a hold. -->
-    <jackson-2-bom.version>2.21.8</jackson-2-bom.version>
-    <jackson-bom.version>3.1.8</jackson-bom.version>
+    <!-- No CVE overrides remain. The postgresql/netty/httpcore5 ones (until 1.2.0) and
+         the Tomcat 11.0.25+ / Jackson 2.21.7+ / 3.1.7+ ones (until 1.5.0) went once the
+         Spring Boot BOM itself managed those fixed versions or newer (4.1.1 and 4.1.2). -->
 
     <!-- TMF-630 paging/sorting semantics for the incident list. The -core module
          only: its logic (status resolution, range/link headers, sort grammar with
@@ -158,41 +131,6 @@
 
   <dependencyManagement>
     <dependencies>
-      <!-- Before spring-boot-dependencies: among managed entries the first declaration
-           wins. Explicit entries rather than a property, see tomcat.version above. All
-           three embed artifacts move together so one Tomcat version ships. -->
-      <dependency>
-        <groupId>org.apache.tomcat.embed</groupId>
-        <artifactId>tomcat-embed-core</artifactId>
-        <version>${tomcat.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.tomcat.embed</groupId>
-        <artifactId>tomcat-embed-websocket</artifactId>
-        <version>${tomcat.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.apache.tomcat.embed</groupId>
-        <artifactId>tomcat-embed-el</artifactId>
-        <version>${tomcat.version}</version>
-      </dependency>
-      <!-- Before spring-boot-dependencies, for the same reason: CVE-2026-68497, see
-           jackson-bom.version above. Both BOMs, so every Jackson module of each line
-           moves together. -->
-      <dependency>
-        <groupId>com.fasterxml.jackson</groupId>
-        <artifactId>jackson-bom</artifactId>
-        <version>${jackson-2-bom.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-      <dependency>
-        <groupId>tools.jackson</groupId>
-        <artifactId>jackson-bom</artifactId>
-        <version>${jackson-bom.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
@@ -766,7 +704,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
-        <awssdk.version>2.57.1</awssdk.version>
+        <awssdk.version>2.57.3</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.5.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
