@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.1] - 2026-10-23
+
+### Changed
+
+- **Spring Boot 4.1.1 → 4.1.2.** Boot 4.1.2 itself manages Tomcat 11.0.27 and Jackson
+  2.21.7 / 3.1.7, the versions that fix CVE-2026-65182 (Tomcat) and CVE-2026-68497
+  (jackson-databind), so this project's own Tomcat and Jackson overrides are removed, as
+  their pom comments said they would be. Tomcat stays at 11.0.27. Jackson goes from
+  2.21.8 / 3.1.8 back to Boot's 2.21.7 / 3.1.7: a patch step on the same minors that is
+  still on the fixed side of the CVE. Every version now comes from the Boot BOM again,
+  with no overrides left.
+
+- **AWS SDK BOM 2.57.1 → 2.57.3** (aws flavour only).
+
 ## [1.5.0] - 2026-10-21
 
 ### Added
