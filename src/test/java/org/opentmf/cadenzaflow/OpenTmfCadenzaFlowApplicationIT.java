@@ -63,6 +63,9 @@ class OpenTmfCadenzaFlowApplicationIT {
     // Resource Server (JWT) and/or client config – adapt to your app:
     r.add("plugin.identity.keycloak.keycloak-issuer-url", () -> issuer);
     r.add("plugin.identity.keycloak.keycloak-admin-url", () -> admin);
+    // The Entra shape of CF-SHARED-CALLBACK-2: the shared URL is set for the sign-out only;
+    // shared-callback-sign-in stays at its default false.
+    r.add("cadenzaflow.sso.shared-callback-url", () -> "https://ui.example.test/auth/callback");
   }
 
   /**
@@ -213,9 +216,10 @@ class OpenTmfCadenzaFlowApplicationIT {
   }
 
   @Test
-  void withoutSharedCallbackTheAuthorizeRedirectKeepsTheTemplateRedirectUri() throws Exception {
-    // CF-SHARED-CALLBACK-1, property empty: the redirect URI stays Spring's template, as
-    // before. PKCE and the cf. state prefix apply either way.
+  void withoutSharedSignInTheAuthorizeRedirectKeepsTheTemplateRedirectUri() throws Exception {
+    // CF-SHARED-CALLBACK-2, the Entra shape (shared URL set, sign-in through it off): the
+    // redirect URI stays Spring's template, the per-app Web-type URI Entra requires, and
+    // the state carries no cf. prefix. PKCE applies either way.
     HttpResponse<String> response = get("/oauth2/authorization/oidc", null);
     Assertions.assertEquals(302, response.statusCode());
     var authorize = UriComponentsBuilder
@@ -225,7 +229,8 @@ class OpenTmfCadenzaFlowApplicationIT {
     Assertions.assertEquals(
         "http://localhost:" + port + "/cadenzaflow/v1/login/oauth2/code/oidc",
         URLDecoder.decode(authorize.getFirst("redirect_uri"), StandardCharsets.UTF_8));
-    Assertions.assertTrue(authorize.getFirst("state").startsWith("cf."));
+    Assertions.assertFalse(
+        URLDecoder.decode(authorize.getFirst("state"), StandardCharsets.UTF_8).startsWith("cf."));
     Assertions.assertEquals("S256", authorize.getFirst("code_challenge_method"));
   }
 

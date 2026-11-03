@@ -17,13 +17,21 @@ public class SsoProperties {
 
   /**
    * Absolute URL of the browser callback page the UIs share, e.g.
-   * {@code https://ui.example.com/auth/callback}. When it is set it replaces the
-   * registration's redirect URI for the sign-in and becomes the sign-out return, so one
-   * redirect URI per environment serves Cockpit and the UIs. The page bounces states that
-   * start with {@code cf.} to this application's {@code /login/oauth2/code/<id>}. Empty
-   * (the default) keeps Spring's template redirect URI and today's sign-out return.
+   * {@code https://ui.example.com/auth/callback}. When it is set it is the sign-out return
+   * (with the end-session state {@code cf.so:<path>}). Empty (the default) keeps today's
+   * sign-out return.
    */
   private String sharedCallbackUrl = "";
+
+  /**
+   * Also SIGN IN through {@link #sharedCallbackUrl}: it then replaces the registration's
+   * redirect URI and the state gets the {@code cf.} prefix the shared page routes on.
+   * Default {@code false}, which is the only shape Entra allows: Entra binds a redirect URI
+   * to one platform type, and Cockpit redeems its code server-side (Web) while the UIs
+   * redeem theirs in the browser (SPA), so one URI cannot serve both sign-ins there. Set it
+   * only where the provider has no platform types, e.g. Keycloak.
+   */
+  private boolean sharedCallbackSignIn = false;
 
   public String getSharedCallbackUrl() {
     return sharedCallbackUrl;
@@ -31,6 +39,32 @@ public class SsoProperties {
 
   public void setSharedCallbackUrl(String sharedCallbackUrl) {
     this.sharedCallbackUrl = sharedCallbackUrl;
+  }
+
+  public boolean isSharedCallbackSignIn() {
+    return sharedCallbackSignIn;
+  }
+
+  public void setSharedCallbackSignIn(boolean sharedCallbackSignIn) {
+    this.sharedCallbackSignIn = sharedCallbackSignIn;
+  }
+
+  /**
+   * The shared callback URL for the sign-in, if sign-in through it is switched on.
+   *
+   * @throws IllegalStateException when sign-in is switched on without a valid URL
+   */
+  public Optional<String> sharedCallbackSignInUrl() {
+    if (!sharedCallbackSignIn) {
+      return Optional.empty();
+    }
+    Optional<String> url = sharedCallback();
+    if (url.isEmpty()) {
+      throw new IllegalStateException(
+          PREFIX + ".shared-callback-sign-in is true but " + PREFIX
+              + ".shared-callback-url is empty");
+    }
+    return url;
   }
 
   /**

@@ -31,8 +31,14 @@ class SharedCallbackAuthorizationRequestCustomizerTests {
   }
 
   @Test
-  void withoutSharedCallbackTheTemplateRedirectUriStays() {
+  void withoutSharedSignInTheTemplateRedirectUriStays() {
     assertEquals(TEMPLATE_REDIRECT, customise(null).getRedirectUri());
+  }
+
+  /** CF-SHARED-CALLBACK-2: no shared sign-in (the Entra shape), no cf. prefix. */
+  @Test
+  void withoutSharedSignInSpringsStateStays() {
+    assertEquals("spring-default-state", customise(null).getState());
   }
 
   @Test

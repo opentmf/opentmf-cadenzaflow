@@ -8,20 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **One redirect URI per environment: the webapp can sign in through the UIs' shared
-  browser callback** (CF-SHARED-CALLBACK-1). New property
-  `cadenzaflow.sso.shared-callback-url`; empty, the default, changes nothing. When set,
-  Cockpit/Admin/Tasklist send it as `redirect_uri` on sign-in and on the token exchange,
-  and their states start with `cf.` so the shared page can route the code back to
-  `/login/oauth2/code/oidc`. Sign-out returns to the bare shared URL with the end-session
-  `state=cf.so:<path>`. A malformed value fails the boot. See
-  docs/entra-azure-setup-and-testing-guide.md.
+- **The webapp can use the UIs' shared browser callback** (CF-SHARED-CALLBACK-1). New
+  property `cadenzaflow.sso.shared-callback-url`; empty, the default, changes nothing. When
+  set, Cockpit/Admin/Tasklist sign out to the bare shared URL with the end-session
+  `state=cf.so:<path>`. With sign-in through it switched on (next entry), they also send it
+  as `redirect_uri` on sign-in and on the token exchange, and their states start with
+  `cf.` so the shared page can route the code back to `/login/oauth2/code/oidc`. A
+  malformed value fails the boot. See docs/entra-azure-setup-and-testing-guide.md.
+
+- **The shared callback is for sign-out only unless `cadenzaflow.sso.shared-callback-sign-in`
+  is true** (CF-SHARED-CALLBACK-2, default `false`). Entra binds a redirect URI to one
+  platform type, and Cockpit (Web, server-side redemption) cannot share the UIs' SPA URI. So
+  on Entra, Cockpit keeps its own sign-in redirect URI and returns to the shared URL only on
+  sign-out. Set sign-in `true` only where the provider has no platform types (Keycloak);
+  only then do the sign-in redirect and the `cf.` state prefix apply. Sign-in `true`
+  without a URL fails the boot.
 
 ### Changed
 
 - **PKCE (S256) on every webapp sign-in** (CF-SHARED-CALLBACK-1), with or without the
-  shared callback, and every state now carries the `cf.` prefix. Keycloak and Entra accept
-  both from a confidential client. There is nothing to configure.
+  shared callback. Keycloak and Entra accept it from a confidential client. There is
+  nothing to configure.
 
 
 - **Spring Boot 4.1.1 → 4.1.2.** Boot 4.1.2 itself manages Tomcat 11.0.27 and Jackson

@@ -1,10 +1,12 @@
 package org.opentmf.cadenzaflow.config.sso;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -47,6 +49,35 @@ class SsoPropertiesTests {
     IllegalStateException e =
         assertThrows(IllegalStateException.class, properties::sharedCallback);
     assertTrue(e.getMessage().contains("cadenzaflow.sso.shared-callback-url"), e.getMessage());
+  }
+
+  @Test
+  void signInThroughTheSharedCallbackIsOffByDefault() {
+    SsoProperties properties = with("https://ui.example.com/auth/callback");
+
+    assertFalse(properties.isSharedCallbackSignIn());
+    assertEquals(Optional.empty(), properties.sharedCallbackSignInUrl());
+  }
+
+  @Test
+  void signInSwitchedOnUsesTheSharedCallback() {
+    SsoProperties properties = with("https://ui.example.com/auth/callback");
+    properties.setSharedCallbackSignIn(true);
+
+    assertEquals(
+        Optional.of("https://ui.example.com/auth/callback"),
+        properties.sharedCallbackSignInUrl());
+  }
+
+  @ParameterizedTest
+  @NullAndEmptySource
+  void signInSwitchedOnWithoutAUrlFailsAtBoot(String value) {
+    SsoProperties properties = with(value);
+    properties.setSharedCallbackSignIn(true);
+
+    IllegalStateException e =
+        assertThrows(IllegalStateException.class, properties::sharedCallbackSignInUrl);
+    assertTrue(e.getMessage().contains("shared-callback-sign-in"), e.getMessage());
   }
 
   @ParameterizedTest

@@ -40,16 +40,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * CF-SHARED-CALLBACK-1: with {@code cadenzaflow.sso.shared-callback-url} set, Cockpit's
- * sign-in leaves through the shared browser callback and still completes on this
- * application's own {@code /login/oauth2/code/oidc}.
+ * CF-SHARED-CALLBACK-1/-2, the Keycloak shape: with {@code cadenzaflow.sso.shared-callback-url}
+ * set and {@code shared-callback-sign-in} true, Cockpit's sign-in leaves through the shared
+ * browser callback and still completes on this application's own
+ * {@code /login/oauth2/code/oidc}. The Entra shape (sign-in off) is pinned in
+ * {@link OpenTmfCadenzaFlowApplicationIT}.
  *
  * <p>A real round trip against Keycloak: the authorize redirect carries the shared
  * {@code redirect_uri}, a {@code cf.} state and an S256 challenge; a user signs in on
  * Keycloak's form; Keycloak sends the code to the shared URL (not served here - the test
  * plays the shared page and forwards {@code code} and {@code state} unchanged); the code
  * redeemed with the same {@code redirect_uri} and the PKCE verifier signs the user in.
- * The template case (property empty) is pinned in {@link OpenTmfCadenzaFlowApplicationIT}.
  */
 @Testcontainers
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
@@ -84,6 +85,8 @@ class SharedCallbackIT {
     r.add("plugin.identity.keycloak.keycloak-issuer-url", () -> issuer);
     r.add("plugin.identity.keycloak.keycloak-admin-url", () -> admin);
     r.add("cadenzaflow.sso.shared-callback-url", () -> SHARED_CALLBACK);
+    // The Keycloak shape: no platform types, so Cockpit signs in through the shared URL too.
+    r.add("cadenzaflow.sso.shared-callback-sign-in", () -> "true");
   }
 
   /**

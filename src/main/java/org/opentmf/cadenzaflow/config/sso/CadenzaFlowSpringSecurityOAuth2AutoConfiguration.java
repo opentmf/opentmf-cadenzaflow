@@ -54,6 +54,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
       LoggerFactory.getLogger(CadenzaFlowSpringSecurityOAuth2AutoConfiguration.class);
   private final OAuth2Properties oAuth2Properties;
   private final String sharedCallbackUrl;
+  private final String signInCallbackUrl;
   private final String webappPath;
 
   public CadenzaFlowSpringSecurityOAuth2AutoConfiguration(
@@ -62,6 +63,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     this.oAuth2Properties = oAuth2Properties;
     // Validated here, at boot, rather than on the first sign-in.
     this.sharedCallbackUrl = ssoProperties.sharedCallback().orElse(null);
+    this.signInCallbackUrl = ssoProperties.sharedCallbackSignInUrl().orElse(null);
     WebappProperty webapp = properties.getWebapp();
     this.webappPath = webapp.getApplicationPath();
   }
@@ -95,8 +97,8 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   }
 
   /**
-   * Spring's resolver for {@code /oauth2/authorization/{id}}, with PKCE, the {@code cf.}
-   * state prefix and (when configured) the shared callback URL applied to every request.
+   * Spring's resolver for {@code /oauth2/authorization/{id}}, with PKCE on every request
+   * and, when signing in through the shared callback, its URL and the {@code cf.} state.
    */
   private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
       ClientRegistrationRepository clientRegistrationRepository) {
@@ -105,9 +107,11 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
             clientRegistrationRepository,
             OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI);
     resolver.setAuthorizationRequestCustomizer(
-        new SharedCallbackAuthorizationRequestCustomizer(sharedCallbackUrl));
-    if (sharedCallbackUrl != null) {
-      log.info("Webapp sign-in uses the shared callback {}", sharedCallbackUrl);
+        new SharedCallbackAuthorizationRequestCustomizer(signInCallbackUrl));
+    if (signInCallbackUrl != null) {
+      log.info("Webapp sign-in and sign-out use the shared callback {}", signInCallbackUrl);
+    } else if (sharedCallbackUrl != null) {
+      log.info("Webapp sign-out returns to the shared callback {}", sharedCallbackUrl);
     }
     return resolver;
   }
