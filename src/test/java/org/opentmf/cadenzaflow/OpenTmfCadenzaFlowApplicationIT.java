@@ -2,9 +2,11 @@ package org.opentmf.cadenzaflow;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
@@ -22,6 +24,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -207,6 +210,23 @@ class OpenTmfCadenzaFlowApplicationIT {
     // nothing serves, so its removal changed 404 into 401 there and nothing else.
     Assertions.assertEquals(302, get("/app/cockpit", null).statusCode());
     Assertions.assertEquals(302, get("/api/admin/auth/user/default", null).statusCode());
+  }
+
+  @Test
+  void withoutSharedCallbackTheAuthorizeRedirectKeepsTheTemplateRedirectUri() throws Exception {
+    // CF-SHARED-CALLBACK-1, property empty: the redirect URI stays Spring's template, as
+    // before. PKCE and the cf. state prefix apply either way.
+    HttpResponse<String> response = get("/oauth2/authorization/oidc", null);
+    Assertions.assertEquals(302, response.statusCode());
+    var authorize = UriComponentsBuilder
+        .fromUriString(response.headers().firstValue("Location").orElseThrow())
+        .build()
+        .getQueryParams();
+    Assertions.assertEquals(
+        "http://localhost:" + port + "/cadenzaflow/v1/login/oauth2/code/oidc",
+        URLDecoder.decode(authorize.getFirst("redirect_uri"), StandardCharsets.UTF_8));
+    Assertions.assertTrue(authorize.getFirst("state").startsWith("cf."));
+    Assertions.assertEquals("S256", authorize.getFirst("code_challenge_method"));
   }
 
   @Test

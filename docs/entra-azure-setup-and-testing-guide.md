@@ -33,6 +33,26 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
 - With a single registration the generated "Login with OAuth 2.0" page is skipped:
   `/login` (including the `/login?error` you get by navigating Back onto an already
   redeemed authorization code) redirects straight back to the provider.
+- **One redirect URI per environment (shared callback, CF-SHARED-CALLBACK-1).** Set
+  `CADENZAFLOW_SSO_SHARED_CALLBACK_URL` (`cadenzaflow.sso.shared-callback-url`) to the UIs'
+  shared browser callback, e.g. `https://<ui-host>/auth/callback`. The app registration then
+  needs only that one URL, as both its redirect URI and its front-channel sign-out return.
+  Empty (the default) keeps the template above. With it set:
+  - **Sign-in:** the authorize request carries `redirect_uri=<shared URL>`, PKCE (S256)
+    and a `state` that starts with `cf.`. The token exchange sends the same `redirect_uri`.
+    The shared page must send a `cf.` state to
+    `<ui-origin>/cadenzaflow/v1/login/oauth2/code/oidc` with the query (`code`, `state`, ...)
+    unchanged. Spring finds the saved sign-in by the whole state.
+  - **Sign-out:** the end-session request carries `post_logout_redirect_uri=<shared URL>`
+    exactly, with no query, and `state=cf.so:<path>`, where `<path>` is the path of
+    `cadenzaflow.bpm.oauth2.sso-logout.post-logout-redirect-uri` (by default
+    `/cadenzaflow/v1/app/`). The provider returns the `state` unchanged, and the shared page
+    checks the path against its allowlist before sending the browser there.
+  - **PKCE** is on for every sign-in, with or without the shared callback. An intercepted
+    code cannot be redeemed without the session's verifier. Keycloak accepts PKCE from a
+    confidential client (proven by `SharedCallbackIT`). Entra does too, per its
+    documentation; the first DEV deployment proves it.
+  - A value that is not an absolute http(s) URL without query or fragment fails the boot.
 - Local dev launch: `mvn spring-boot:run -Dspring-boot.repackage.skip=false`
   (the pom's global boot-plugin skip flag otherwise skips the run goal), plus the
   usual `SPRING_DATASOURCE_*` overrides for a local PostgreSQL.

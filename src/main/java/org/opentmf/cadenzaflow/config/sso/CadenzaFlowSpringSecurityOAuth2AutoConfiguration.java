@@ -30,7 +30,9 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
@@ -44,18 +46,22 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
   SpringProcessEngineServicesConfiguration.class
 })
 @ConditionalOnOAuth2ClientRegistrationProperties
-@EnableConfigurationProperties(OAuth2Properties.class)
+@EnableConfigurationProperties({OAuth2Properties.class, SsoProperties.class})
 @Configuration
 public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
 
   private static final Logger log =
       LoggerFactory.getLogger(CadenzaFlowSpringSecurityOAuth2AutoConfiguration.class);
   private final OAuth2Properties oAuth2Properties;
+  private final String sharedCallbackUrl;
   private final String webappPath;
 
   public CadenzaFlowSpringSecurityOAuth2AutoConfiguration(
-      CamundaBpmProperties properties, OAuth2Properties oAuth2Properties) {
+      CamundaBpmProperties properties, OAuth2Properties oAuth2Properties,
+      SsoProperties ssoProperties) {
     this.oAuth2Properties = oAuth2Properties;
+    // Validated here, at boot, rather than on the first sign-in.
+    this.sharedCallbackUrl = ssoProperties.sharedCallback().orElse(null);
     WebappProperty webapp = properties.getWebapp();
     this.webappPath = webapp.getApplicationPath();
   }
@@ -84,7 +90,26 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   protected SsoLogoutSuccessHandler ssoLogoutSuccessHandler(
       ClientRegistrationRepository clientRegistrationRepository) {
     log.debug("Registering SsoLogoutSuccessHandler");
-    return new SsoLogoutSuccessHandler(clientRegistrationRepository, oAuth2Properties);
+    return new SsoLogoutSuccessHandler(
+        clientRegistrationRepository, oAuth2Properties, sharedCallbackUrl);
+  }
+
+  /**
+   * Spring's resolver for {@code /oauth2/authorization/{id}}, with PKCE, the {@code cf.}
+   * state prefix and (when configured) the shared callback URL applied to every request.
+   */
+  private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
+      ClientRegistrationRepository clientRegistrationRepository) {
+    DefaultOAuth2AuthorizationRequestResolver resolver =
+        new DefaultOAuth2AuthorizationRequestResolver(
+            clientRegistrationRepository,
+            OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_BASE_URI);
+    resolver.setAuthorizationRequestCustomizer(
+        new SharedCallbackAuthorizationRequestCustomizer(sharedCallbackUrl));
+    if (sharedCallbackUrl != null) {
+      log.info("Webapp sign-in uses the shared callback {}", sharedCallbackUrl);
+    }
+    return resolver;
   }
 
   @Bean
@@ -153,8 +178,12 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
         .addFilterAfter(authorizeTokenFilter, OAuth2AuthorizationRequestRedirectFilter.class)
         .anonymous(AbstractHttpConfigurer::disable)
         .oidcLogout(c -> c.backChannel(withDefaults()))
-        .oauth2Login(login -> soleRegistrationId(clientRegistrationRepository)
-            .ifPresent(id -> login.loginPage("/oauth2/authorization/" + id)))
+        .oauth2Login(login -> {
+          soleRegistrationId(clientRegistrationRepository)
+              .ifPresent(id -> login.loginPage("/oauth2/authorization/" + id));
+          login.authorizationEndpoint(endpoint -> endpoint.authorizationRequestResolver(
+              authorizationRequestResolver(clientRegistrationRepository)));
+        })
         .logout(logout -> logout.clearAuthentication(true).invalidateHttpSession(true))
         .oauth2Client(withDefaults())
         .cors(AbstractHttpConfigurer::disable)

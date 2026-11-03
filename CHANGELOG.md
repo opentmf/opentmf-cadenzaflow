@@ -4,9 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.1] - 2026-10-23
+## [1.5.1] - unreleased
+
+### Added
+
+- **One redirect URI per environment: the webapp can sign in through the UIs' shared
+  browser callback** (CF-SHARED-CALLBACK-1). New property
+  `cadenzaflow.sso.shared-callback-url`; empty, the default, changes nothing. When set,
+  Cockpit/Admin/Tasklist send it as `redirect_uri` on sign-in and on the token exchange,
+  and their states start with `cf.` so the shared page can route the code back to
+  `/login/oauth2/code/oidc`. Sign-out returns to the bare shared URL with the end-session
+  `state=cf.so:<path>`. A malformed value fails the boot. See
+  docs/entra-azure-setup-and-testing-guide.md.
 
 ### Changed
+
+- **PKCE (S256) on every webapp sign-in** (CF-SHARED-CALLBACK-1), with or without the
+  shared callback, and every state now carries the `cf.` prefix. Keycloak and Entra accept
+  both from a confidential client. There is nothing to configure.
+
 
 - **Spring Boot 4.1.1 → 4.1.2.** Boot 4.1.2 itself manages Tomcat 11.0.27 and Jackson
   2.21.7 / 3.1.7, the versions that fix CVE-2026-65182 (Tomcat) and CVE-2026-68497

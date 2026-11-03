@@ -168,6 +168,14 @@ plugin.identity.keycloak:
   administrator-group-name: camunda-admin
   cache-enabled: true
 
+# The UIs' shared browser callback (env CADENZAFLOW_SSO_SHARED_CALLBACK_URL). When set,
+# the webapp sign-in sends THAT URL as redirect_uri instead of the registration's
+# template below, and the sign-out returns there with the end-session state
+# cf.so:<path>. One redirect URI per environment then serves Cockpit and the UIs.
+# Empty = the template and today's sign-out return.
+cadenzaflow.sso:
+  shared-callback-url: ""
+
 # Webapp SSO client. The registration id is deliberately provider-NEUTRAL ('oidc'):
 # it is user-visible in /oauth2/authorization/{id} and on Spring's generated login
 # page, so a provider-specific id would advertise "keycloak" on an Entra deployment.

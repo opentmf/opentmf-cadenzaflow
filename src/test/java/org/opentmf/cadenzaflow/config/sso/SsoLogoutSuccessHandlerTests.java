@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow.config.sso;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -96,6 +97,8 @@ class SsoLogoutSuccessHandlerTests {
         redirect.contains(
             "post_logout_redirect_uri=http://localhost:8091/cadenzaflow/v1/app/"),
         redirect);
+    // No shared callback: no end-session state, today's request unchanged.
+    assertFalse(redirect.contains("state="), redirect);
   }
 
   /**
@@ -154,5 +157,65 @@ class SsoLogoutSuccessHandlerTests {
         redirect.contains(
             "post_logout_redirect_uri=http://localhost:8091/cadenzaflow/v1/app/"),
         redirect);
+  }
+
+  /**
+   * With the shared callback configured, {@code post_logout_redirect_uri} is that URL
+   * exactly as registered (Entra matches it verbatim, so no query), and the way back into
+   * Cockpit - the path of the configured post-logout URI - rides in the end-session
+   * {@code state} as {@code cf.so:<path>}.
+   */
+  @Test
+  void sharedCallbackIsTheBareSignOutReturn() throws ServletException, IOException {
+    ClientRegistration registration =
+        ClientRegistration.withRegistrationId("oidc")
+            .clientId("entra-client")
+            .clientSecret("secret")
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .redirectUri("{baseUrl}/{action}/oauth2/code/{registrationId}")
+            .authorizationUri(
+                "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize")
+            .tokenUri("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token")
+            .build();
+    ClientRegistrationRepository repository = mock(ClientRegistrationRepository.class);
+    when(repository.findByRegistrationId("oidc")).thenReturn(registration);
+
+    OidcIdToken idToken =
+        new OidcIdToken(
+            "entra-id-token",
+            Instant.now(),
+            Instant.now().plusSeconds(60),
+            Map.of("sub", "user-uuid", "email", "gokhan.demir@pia-team.com"));
+    OidcUser oidcUser = new DefaultOidcUser(List.of(), idToken, "email");
+    OAuth2AuthenticationToken authentication =
+        new OAuth2AuthenticationToken(oidcUser, List.of(), "oidc");
+
+    OAuth2Properties properties = new OAuth2Properties();
+    properties.getSsoLogout().setPostLogoutRedirectUri("{baseUrl}/app/");
+    SsoLogoutSuccessHandler handler = new SsoLogoutSuccessHandler(
+        repository, properties, "https://ui.example.com/auth/callback");
+
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setScheme("https");
+    request.setServerName("ui.example.com");
+    request.setServerPort(443);
+    request.setContextPath("/cadenzaflow/v1");
+    request.setRequestURI("/cadenzaflow/v1/logout");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    handler.onLogoutSuccess(request, response, authentication);
+
+    String redirect = response.getRedirectedUrl();
+    assertNotNull(redirect);
+    assertTrue(
+        redirect.startsWith(
+            "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/logout?"),
+        "expected Entra end-session endpoint, got: " + redirect);
+    assertTrue(
+        redirect.contains(
+            "&post_logout_redirect_uri=https://ui.example.com/auth/callback&state="),
+        redirect);
+    assertTrue(redirect.endsWith("&state=cf.so:/cadenzaflow/v1/app/"), redirect);
+    assertFalse(redirect.contains("callback?"), redirect);
   }
 }
