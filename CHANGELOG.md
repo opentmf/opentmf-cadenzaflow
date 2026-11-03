@@ -24,6 +24,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   only then do the sign-in redirect and the `cf.` state prefix apply. Sign-in `true`
   without a URL fails the boot.
 
+- **Cockpit signs in through the shared page by token** (CF-SHARED-CALLBACK-3). New
+  property `cadenzaflow.sso.login-page-url`; empty, the default, changes nothing. When it
+  is set, an unauthenticated webapp request is redirected there with `returnTo`. The page
+  posts its access token to the new `POST /cadenzaflow/v1/app/login-with-token`, which
+  validates it exactly as `/engine-rest` validates bearer tokens and opens a fresh session
+  (204 with the Cockpit URL; 401 for a refused token, 403 for a cross-origin call). It is
+  an ordinary webapp session, capped by the new `cadenzaflow.sso.bearer-session-max`
+  (default `PT8H`). An optional `X-ID-Token`, validated the same way, becomes the logout's
+  `id_token_hint`; without it, sign-out goes without a hint. Only a delegated user token
+  opens a session (`cadenzaflow.sso.bearer-login.user-token-only`, default `true`):
+  client-credentials tokens (Entra `idtyp=app` or no `scp`, Keycloak `service-account-*`)
+  answer 401. Rate limiting belongs to the ingress. On Entra, the registration then needs
+  one SPA-type redirect URI per environment. (Tests: the ITs' own containers now get a
+  10-minute startup timeout, so a slow build machine costs time, not a red build.)
+
 ### Changed
 
 - **PKCE (S256) on every webapp sign-in** (CF-SHARED-CALLBACK-1), with or without the

@@ -16,6 +16,7 @@ import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneProcessEngineConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.opentmf.cadenzaflow.ItContainers;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -39,7 +40,8 @@ class SchemaFromUrlBootIT {
 
   @BeforeAll
   static void startPostgresAndCreateRoleAndSchema() throws SQLException {
-    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine");
+    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")
+        .withStartupTimeout(ItContainers.STARTUP_TIMEOUT);
     postgres.start();
     try (Connection connection = superuserConnection();
         Statement statement = connection.createStatement()) {

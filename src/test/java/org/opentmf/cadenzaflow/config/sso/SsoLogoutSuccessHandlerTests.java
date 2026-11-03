@@ -19,6 +19,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
@@ -217,5 +219,77 @@ class SsoLogoutSuccessHandlerTests {
         redirect);
     assertTrue(redirect.endsWith("&state=cf.so:/cadenzaflow/v1/app/"), redirect);
     assertFalse(redirect.contains("callback?"), redirect);
+  }
+
+  /**
+   * CF-SHARED-CALLBACK-3: a session opened by POST /app/login-with-token signs out the same
+   * way, with the ID token the page sent at login as the hint.
+   */
+  @Test
+  void aBearerSessionSignsOutWithItsIdTokenAsTheHint() throws ServletException, IOException {
+    String redirect = bearerLogout(new BearerSessionDetails("page-id-token", Instant.now()));
+
+    assertTrue(
+        redirect.startsWith("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/logout?"
+            + "id_token_hint=page-id-token&client_id=entra-client&"),
+        redirect);
+    assertTrue(
+        redirect.endsWith("post_logout_redirect_uri=https://ui.example.com/auth/callback"
+            + "&state=cf.so:/cadenzaflow/v1/app/"),
+        redirect);
+  }
+
+  /** Without an ID token from the page, the end-session request goes without a hint. */
+  @Test
+  void aBearerSessionWithoutIdTokenSignsOutWithoutHint() throws ServletException, IOException {
+    String redirect = bearerLogout(new BearerSessionDetails(null, Instant.now()));
+
+    assertTrue(
+        redirect.startsWith("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/logout?"
+            + "client_id=entra-client&post_logout_redirect_uri="),
+        redirect);
+    assertFalse(redirect.contains("id_token_hint"), redirect);
+  }
+
+  private static String bearerLogout(BearerSessionDetails details)
+      throws ServletException, IOException {
+    ClientRegistration registration =
+        ClientRegistration.withRegistrationId("oidc")
+            .clientId("entra-client")
+            .clientSecret("secret")
+            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+            .redirectUri("{baseUrl}/{action}/oauth2/code/{registrationId}")
+            .authorizationUri(
+                "https://login.microsoftonline.com/tenant-id/oauth2/v2.0/authorize")
+            .tokenUri("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token")
+            .build();
+    Jwt jwt = Jwt.withTokenValue("access-token")
+        .header("alg", "RS256")
+        .claim("email", "gokhan.demir@pia-team.com")
+        .issuedAt(Instant.now())
+        .expiresAt(Instant.now().plusSeconds(300))
+        .build();
+    BearerSessionAuthentication authentication = new BearerSessionAuthentication(
+        jwt, "gokhan.demir@pia-team.com", List.of(), details);
+
+    OAuth2Properties properties = new OAuth2Properties();
+    properties.getSsoLogout().setPostLogoutRedirectUri("{baseUrl}/app/");
+    SsoLogoutSuccessHandler handler = new SsoLogoutSuccessHandler(
+        new InMemoryClientRegistrationRepository(registration), properties,
+        "https://ui.example.com/auth/callback");
+
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setScheme("https");
+    request.setServerName("ui.example.com");
+    request.setServerPort(443);
+    request.setContextPath("/cadenzaflow/v1");
+    request.setRequestURI("/cadenzaflow/v1/logout");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    handler.onLogoutSuccess(request, response, authentication);
+
+    String redirect = response.getRedirectedUrl();
+    assertNotNull(redirect);
+    return redirect;
   }
 }

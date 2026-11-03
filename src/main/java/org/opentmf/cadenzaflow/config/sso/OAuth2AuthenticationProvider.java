@@ -27,11 +27,15 @@ public class OAuth2AuthenticationProvider extends ContainerBasedAuthenticationPr
       return AuthenticationResult.unsuccessful();
     }
 
-    if (!(authentication instanceof OAuth2AuthenticationToken oauth2)) {
+    // OAuth2AuthenticationToken: the server-side OIDC login. BearerSessionAuthentication: a
+    // session opened by POST /app/login-with-token (CF-SHARED-CALLBACK-3), whose name is
+    // the user claim engine-rest maps its bearer tokens with.
+    if (!(authentication instanceof OAuth2AuthenticationToken
+        || authentication instanceof BearerSessionAuthentication)) {
       log.debug("Authentication is not OAuth2, it is {}", authentication.getClass());
       return AuthenticationResult.unsuccessful();
     }
-    String camundaUserId = oauth2.getName();
+    String camundaUserId = authentication.getName();
     if (camundaUserId.isEmpty()) {
       log.debug("UserId is empty");
       return AuthenticationResult.unsuccessful();

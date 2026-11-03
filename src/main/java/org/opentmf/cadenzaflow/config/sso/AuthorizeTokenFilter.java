@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Duration;
 import org.cadenzaflow.bpm.engine.impl.util.ClockUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,9 +50,20 @@ public class AuthorizeTokenFilter extends OncePerRequestFilter {
 
   private static final Logger log = LoggerFactory.getLogger(AuthorizeTokenFilter.class);
   private final OAuth2AuthorizedClientManager clientManager;
+  private final Duration bearerSessionMax;
 
   public AuthorizeTokenFilter(OAuth2AuthorizedClientManager clientManager) {
+    this(clientManager, SsoProperties.DEFAULT_BEARER_SESSION_MAX);
+  }
+
+  /**
+   * @param bearerSessionMax the most a session opened by {@code POST /app/login-with-token}
+   *     may last ({@code cadenzaflow.sso.bearer-session-max})
+   */
+  public AuthorizeTokenFilter(
+      OAuth2AuthorizedClientManager clientManager, Duration bearerSessionMax) {
     this.clientManager = clientManager;
+    this.bearerSessionMax = bearerSessionMax;
   }
 
   @Override
@@ -64,6 +76,15 @@ public class AuthorizeTokenFilter extends OncePerRequestFilter {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (authentication instanceof OAuth2AuthenticationToken token) {
       authorizeToken(token, request, response);
+    } else if (authentication instanceof BearerSessionAuthentication bearer
+        && !ClockUtil.now().toInstant()
+            .isBefore(bearer.getDetails().openedAt().plus(bearerSessionMax))) {
+      BearerSessionDetails details = bearer.getDetails();
+      // A session opened by POST /app/login-with-token is an ordinary webapp session (the
+      // token only proved the identity at login), capped at bearer-session-max.
+      log.debug("Bearer session of '{}' ended: opened at {}, max {}",
+          bearer.getName(), details.openedAt(), bearerSessionMax);
+      clearContext(request);
     }
     filterChain.doFilter(request, response);
   }

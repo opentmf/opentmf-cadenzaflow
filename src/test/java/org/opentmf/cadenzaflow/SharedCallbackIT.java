@@ -14,7 +14,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -74,7 +73,7 @@ class SharedCallbackIT {
           .waitingFor(
               Wait.forHttp("/realms/dsync/.well-known/openid-configuration")
                   .forPort(8080)
-                  .withStartupTimeout(Duration.ofMinutes(5)));
+                  .withStartupTimeout(ItContainers.STARTUP_TIMEOUT));
 
   @DynamicPropertySource
   static void registerProps(DynamicPropertyRegistry r) {

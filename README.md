@@ -176,6 +176,13 @@ identity provider, comes back with a code, and gets a session. There is no local
 username/password form and no local user table. Logging out of a UI also ends the
 provider session.
 
+With `cadenzaflow.sso.login-page-url` set, the browser goes to the UIs' shared sign-in
+page instead. That page signs in in the browser and hands the access token to
+`POST /cadenzaflow/v1/app/login-with-token`, which validates it like any REST bearer
+token and opens the session. On Entra, the whole estate then needs **one redirect URI per
+environment**, and Cockpit no longer needs its own Web-type URI
+([guide](docs/entra-azure-setup-and-testing-guide.md)).
+
 ### 3.2 Getting a token and calling the API
 
 Keycloak, client-credentials (how a worker or another service authenticates):

@@ -80,6 +80,26 @@ class SsoPropertiesTests {
     assertTrue(e.getMessage().contains("shared-callback-sign-in"), e.getMessage());
   }
 
+  @Test
+  void loginPageIsOffByDefaultAndTakenWhenSet() {
+    SsoProperties properties = new SsoProperties();
+    assertEquals(Optional.empty(), properties.loginPage());
+    assertEquals(SsoProperties.DEFAULT_BEARER_SESSION_MAX, properties.getBearerSessionMax());
+
+    properties.setLoginPageUrl("https://ui.example.com/auth/cockpit");
+    assertEquals(Optional.of("https://ui.example.com/auth/cockpit"), properties.loginPage());
+  }
+
+  @Test
+  void aMalformedLoginPageFailsAtBootNamingItsOwnKey() {
+    SsoProperties properties = new SsoProperties();
+    properties.setLoginPageUrl("/auth/cockpit");
+
+    IllegalStateException e =
+        assertThrows(IllegalStateException.class, properties::loginPage);
+    assertTrue(e.getMessage().contains("cadenzaflow.sso.login-page-url"), e.getMessage());
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {" https://ui.example.com/auth/callback "})
   void surroundingWhitespaceIsTrimmed(String value) {

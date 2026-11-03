@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow.config.sso;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -14,6 +15,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SsoProperties {
 
   public static final String PREFIX = "cadenzaflow.sso";
+
+  /** Default of {@code bearer-session-max}. */
+  public static final Duration DEFAULT_BEARER_SESSION_MAX = Duration.ofHours(8);
 
   /**
    * Absolute URL of the browser callback page the UIs share, e.g.
@@ -33,12 +37,80 @@ public class SsoProperties {
    */
   private boolean sharedCallbackSignIn = false;
 
+  /**
+   * Absolute URL of the shared page's Cockpit sign-in route (CF-SHARED-CALLBACK-3). When it
+   * is set, an unauthenticated webapp request is redirected there with
+   * {@code returnTo=<requested path>} instead of starting the server-side OAuth2 login. The
+   * page signs the user in in the browser and posts the access token to
+   * {@code POST /app/login-with-token}, an endpoint that exists only while this is set.
+   * Empty (the default) keeps the server-side login.
+   */
+  private String loginPageUrl = "";
+
+  /**
+   * The most a session opened by {@code POST /app/login-with-token} may last, however
+   * active it is. The webapp's idle timeout applies as for any session; the token's own
+   * expiry does not end it.
+   */
+  private Duration bearerSessionMax = DEFAULT_BEARER_SESSION_MAX;
+
+  /** {@code POST /app/login-with-token} settings. */
+  private final BearerLogin bearerLogin = new BearerLogin();
+
+  public static class BearerLogin {
+
+    /**
+     * Only a delegated USER token may open a session; a client-credentials token of a
+     * service or worker, which {@code /engine-rest} also trusts, is refused (401). Default
+     * {@code true}. See {@link UserTokenPolicy}.
+     */
+    private boolean userTokenOnly = true;
+
+    public boolean isUserTokenOnly() {
+      return userTokenOnly;
+    }
+
+    public void setUserTokenOnly(boolean userTokenOnly) {
+      this.userTokenOnly = userTokenOnly;
+    }
+  }
+
+  public BearerLogin getBearerLogin() {
+    return bearerLogin;
+  }
+
+  public Duration getBearerSessionMax() {
+    return bearerSessionMax;
+  }
+
+  public void setBearerSessionMax(Duration bearerSessionMax) {
+    this.bearerSessionMax = bearerSessionMax;
+  }
+
   public String getSharedCallbackUrl() {
     return sharedCallbackUrl;
   }
 
   public void setSharedCallbackUrl(String sharedCallbackUrl) {
     this.sharedCallbackUrl = sharedCallbackUrl;
+  }
+
+  public String getLoginPageUrl() {
+    return loginPageUrl;
+  }
+
+  public void setLoginPageUrl(String loginPageUrl) {
+    this.loginPageUrl = loginPageUrl;
+  }
+
+  /**
+   * The shared page's Cockpit sign-in route, if one is configured.
+   *
+   * @throws IllegalStateException when the value is set but is not an absolute http(s) URL
+   *     without query or fragment
+   */
+  public Optional<String> loginPage() {
+    return absoluteUrl("login-page-url", loginPageUrl);
   }
 
   public boolean isSharedCallbackSignIn() {
@@ -75,27 +147,31 @@ public class SsoProperties {
    *     redirect-URI mismatch the user cannot act on
    */
   public Optional<String> sharedCallback() {
-    if (sharedCallbackUrl == null || sharedCallbackUrl.isBlank()) {
+    return absoluteUrl("shared-callback-url", sharedCallbackUrl);
+  }
+
+  private static Optional<String> absoluteUrl(String key, String raw) {
+    if (raw == null || raw.isBlank()) {
       return Optional.empty();
     }
-    String value = sharedCallbackUrl.trim();
+    String value = raw.trim();
     URI uri;
     try {
       uri = URI.create(value);
     } catch (IllegalArgumentException e) {
-      throw invalid(value, e);
+      throw invalid(key, value, e);
     }
     String scheme = uri.getScheme();
     if (!("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
         || uri.getHost() == null || uri.getQuery() != null || uri.getFragment() != null) {
-      throw invalid(value, null);
+      throw invalid(key, value, null);
     }
     return Optional.of(value);
   }
 
-  private static IllegalStateException invalid(String value, Throwable cause) {
+  private static IllegalStateException invalid(String key, String value, Throwable cause) {
     return new IllegalStateException(
-        PREFIX + ".shared-callback-url must be an absolute http(s) URL without query or"
+        PREFIX + "." + key + " must be an absolute http(s) URL without query or"
             + " fragment: '" + value + "'", cause);
   }
 }

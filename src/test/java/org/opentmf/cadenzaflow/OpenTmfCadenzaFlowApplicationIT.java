@@ -7,7 +7,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Map;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
 import org.cadenzaflow.bpm.engine.repository.Deployment;
@@ -51,7 +50,7 @@ class OpenTmfCadenzaFlowApplicationIT {
           .waitingFor(
               Wait.forHttp("/realms/dsync/.well-known/openid-configuration")
                   .forPort(8080)
-                  .withStartupTimeout(Duration.ofMinutes(5)));
+                  .withStartupTimeout(ItContainers.STARTUP_TIMEOUT));
 
   @DynamicPropertySource
   static void registerProps(DynamicPropertyRegistry r) {
@@ -232,6 +231,25 @@ class OpenTmfCadenzaFlowApplicationIT {
     Assertions.assertFalse(
         URLDecoder.decode(authorize.getFirst("state"), StandardCharsets.UTF_8).startsWith("cf."));
     Assertions.assertEquals("S256", authorize.getFirst("code_challenge_method"));
+  }
+
+  @Test
+  void withoutALoginPageTheTokenLoginEndpointDoesNotExist() throws Exception {
+    // CF-SHARED-CALLBACK-3: POST /app/login-with-token exists only with
+    // cadenzaflow.sso.login-page-url set (LoginWithTokenIT); here it is unset.
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + port + "/cadenzaflow/v1/app/login-with-token"))
+        .header("Authorization", "Bearer not-even-a-jwt")
+        .POST(HttpRequest.BodyPublishers.noBody())
+        .build();
+    HttpResponse<String> response =
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    Assertions.assertEquals(404, response.statusCode());
+    Assertions.assertTrue(response.headers().allValues("Set-Cookie").stream()
+        .noneMatch(c -> c.startsWith("JSESSIONID=")));
+    // ...and an unauthenticated webapp request still starts the server-side login.
+    Assertions.assertTrue(get("/app/cockpit/", null).headers().firstValue("Location")
+        .orElseThrow().endsWith("/cadenzaflow/v1/oauth2/authorization/oidc"));
   }
 
   @Test

@@ -38,8 +38,35 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
   page, e.g. `https://<ui-host>/auth/callback`; and `CADENZAFLOW_SSO_SHARED_CALLBACK_SIGN_IN`
   (`cadenzaflow.sso.shared-callback-sign-in`, default `false`). Both empty/false keeps
   today's behaviour.
-  - **On Entra, the shared URL is for sign-out only, until CF-SHARED-CALLBACK-3** (sign-in
-    stays `false`; a bearer sign-in through the shared SPA page is being decided). Entra binds a
+  - **On Entra, Cockpit signs in through the shared page by token (CF-SHARED-CALLBACK-3).**
+    Set `CADENZAFLOW_SSO_LOGIN_PAGE_URL` (`cadenzaflow.sso.login-page-url`) to the page's
+    Cockpit route. An unauthenticated Cockpit/Admin/Tasklist request is then redirected
+    there with `?returnTo=<path>`. The page runs authorization code + PKCE in the browser
+    (SPA platform, the shared URL, the same registration, a scope that includes the
+    registration's API scope, so the access token's `aud` is what `/engine-rest` accepts).
+    It then calls `POST /cadenzaflow/v1/app/login-with-token` (same origin) with
+    `Authorization: Bearer <access token>` and, optionally, `X-ID-Token: <ID token>`. The
+    access token is validated exactly as an `/engine-rest` bearer: same keys, issuer,
+    audience (on Entra the bare client id, via the registration's API scope the page
+    requests), expiry, user and roles claims. The ID token is validated by the same decoder
+    and kept only as the logout's `id_token_hint`. A new session is opened (any previous
+    session is invalidated), and the answer is `204` with `Location` = the Cockpit app URL.
+    Only a delegated USER token opens a session
+    (`cadenzaflow.sso.bearer-login.user-token-only`, default `true`). It needs the
+    configured user claim, and it must not be a client-credentials token: on Entra
+    `idtyp=app`, or no `scp`; on Keycloak a `service-account-*` principal. Such tokens,
+    which `/engine-rest` does accept, answer `401` with one WARN naming the reason. Rate
+    limiting of this endpoint is not the engine's: the ingress carries it, with the same
+    per-IP limit as the Cockpit login page.
+    A refused token answers `401` and nothing is stored; a cross-origin call
+    (`Sec-Fetch-Site` other than `same-origin`, or another `Origin` host) answers `403`.
+    From then on it is an ordinary webapp session: the token's own expiry does not end it,
+    the idle timeout does, and so does `cadenzaflow.sso.bearer-session-max` (default `PT8H`)
+    counted from the login. Sign-out goes to the shared URL as above, with the ID token as
+    `id_token_hint` when the page sent one. With this in place, the
+    registration needs ONE SPA-type redirect URI per environment, and Cockpit's Web-type
+    `.../login/oauth2/code/oidc` URI leaves the registration. Without
+    `login-page-url`, the shared URL is for sign-out only. Entra binds a
     redirect URI to ONE platform type: Cockpit redeems its code server-side with the
     secret (Web), the UIs redeem theirs in the browser (SPA). One URI cannot serve both
     (AADSTS9002326 / AADSTS9002327). So Cockpit keeps its own Web-type sign-in URI

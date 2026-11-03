@@ -88,7 +88,7 @@ class IncidentOperationsIT {
           .waitingFor(
               Wait.forHttp("/realms/dsync/.well-known/openid-configuration")
                   .forPort(8080)
-                  .withStartupTimeout(Duration.ofMinutes(5)));
+                  .withStartupTimeout(ItContainers.STARTUP_TIMEOUT));
 
   /** Minimal OIDC issuer stand-in: RSA key, file-served JWKS, per-test token minting. */
   static final class TestIssuer {
