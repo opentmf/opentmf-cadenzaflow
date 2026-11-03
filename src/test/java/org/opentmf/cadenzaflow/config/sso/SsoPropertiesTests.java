@@ -43,8 +43,9 @@ class SsoPropertiesTests {
       "https://ui.example.com/auth/callback#f",
       "https://ui example.com/auth/callback"})
   void anythingElseFailsAtBoot(String value) {
+    SsoProperties properties = with(value);
     IllegalStateException e =
-        assertThrows(IllegalStateException.class, () -> with(value).sharedCallback());
+        assertThrows(IllegalStateException.class, properties::sharedCallback);
     assertTrue(e.getMessage().contains("cadenzaflow.sso.shared-callback-url"), e.getMessage());
   }
 
