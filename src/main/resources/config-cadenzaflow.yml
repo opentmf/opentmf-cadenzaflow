@@ -193,6 +193,12 @@ cadenzaflow.sso:
   # workers (which engine-rest also accepts) are refused with 401.
   bearer-login:
     user-token-only: true
+    # The token claim that names the Cockpit session's engine user (env
+    # CADENZAFLOW_SSO_BEARERLOGIN_USERCLAIM). Empty = the principal engine-rest derives with
+    # the issuer's user-claim. Only for projects on a directory provider (entra/keycloak)
+    # whose directory keys users on another claim than engine-rest does, e.g. `email` with
+    # the Entra plugin (engine-rest: oid; the plugin: mail). Not needed with provider: token.
+    user-claim: ""
 
 # Webapp SSO client. The registration id is deliberately provider-NEUTRAL ('oidc'):
 # it is user-visible in /oauth2/authorization/{id} and on Spring's generated login

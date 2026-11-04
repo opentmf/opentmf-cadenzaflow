@@ -64,6 +64,7 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
       new HttpSessionSecurityContextRepository();
   private final JwtDecoder idTokenDecoder;
   private final UserTokenPolicy userTokenPolicy;
+  private final String userClaim;
 
   /**
    * @param idTokenDecoder the decoder {@code /engine-rest} trusts (it routes by {@code iss}
@@ -73,8 +74,19 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
    */
   public LoginWithTokenFilter(
       JwtDecoder idTokenDecoder, @Nullable UserTokenPolicy userTokenPolicy) {
+    this(idTokenDecoder, userTokenPolicy, null);
+  }
+
+  /**
+   * @param userClaim {@code bearer-login.user-claim}: the claim that names the session's
+   *     user, or {@code null} for the principal {@code /engine-rest} derives
+   */
+  public LoginWithTokenFilter(
+      JwtDecoder idTokenDecoder, @Nullable UserTokenPolicy userTokenPolicy,
+      @Nullable String userClaim) {
     this.idTokenDecoder = idTokenDecoder;
     this.userTokenPolicy = userTokenPolicy;
+    this.userClaim = userClaim;
   }
 
   @Override
@@ -96,10 +108,23 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
       response.setStatus(HttpServletResponse.SC_FORBIDDEN);
       return;
     }
+    String principal = token.getName();
+    String user = principal;
+    if (userClaim != null) {
+      user = token.getToken().getClaimAsString(userClaim);
+      if (user == null || user.isBlank()) {
+        log.warn("Refused a token login for '{}': the token has no '{}' claim"
+            + " (cadenzaflow.sso.bearer-login.user-claim)", principal, userClaim);
+        SecurityContextHolder.clearContext();
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        return;
+      }
+    }
     if (userTokenPolicy != null) {
-      Optional<String> refusal = userTokenPolicy.refusal(token.getToken(), token.getName());
+      Optional<String> refusal = userTokenPolicy.refusal(token.getToken(), user);
       if (refusal.isPresent()) {
-        log.warn("Refused a token login for '{}': {}", token.getName(), refusal.get());
+        String reason = refusal.get();
+        log.warn("Refused a token login for '{}': {}", user, reason);
         SecurityContextHolder.clearContext();
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         return;
@@ -127,11 +152,11 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
     // @Transient, and the session repository silently refuses to store it.
     SecurityContext context = SecurityContextHolder.createEmptyContext();
     context.setAuthentication(BearerSessionAuthentication.of(
-        token, new BearerSessionDetails(idToken, ClockUtil.now().toInstant())));
+        token, user, new BearerSessionDetails(idToken, ClockUtil.now().toInstant())));
     SecurityContextHolder.setContext(context);
     sessionRepository.saveContext(context, request, response);
 
-    log.info("Opened a webapp session for '{}' by token login", token.getName());
+    log.info("Opened a webapp session for '{}' by token login", user);
     response.setHeader("Location", request.getContextPath() + "/app/cockpit/");
     response.setStatus(HttpServletResponse.SC_NO_CONTENT);
   }

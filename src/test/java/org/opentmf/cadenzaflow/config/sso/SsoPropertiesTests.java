@@ -91,6 +91,18 @@ class SsoPropertiesTests {
   }
 
   @Test
+  void theBearerLoginUserClaimIsUnsetByDefaultAndTrimmedWhenSet() {
+    SsoProperties properties = new SsoProperties();
+    assertEquals(Optional.empty(), properties.getBearerLogin().userClaimOverride());
+
+    properties.getBearerLogin().setUserClaim("   ");
+    assertEquals(Optional.empty(), properties.getBearerLogin().userClaimOverride());
+
+    properties.getBearerLogin().setUserClaim(" email ");
+    assertEquals(Optional.of("email"), properties.getBearerLogin().userClaimOverride());
+  }
+
+  @Test
   void aMalformedLoginPageFailsAtBootNamingItsOwnKey() {
     SsoProperties properties = new SsoProperties();
     properties.setLoginPageUrl("/auth/cockpit");

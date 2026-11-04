@@ -39,6 +39,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one SPA-type redirect URI per environment. (Tests: the ITs' own containers now get a
   10-minute startup timeout, so a slow build machine costs time, not a red build.)
 
+- **`cadenzaflow.sso.bearer-login.user-claim`: the claim that names the Cockpit token
+  login's user** (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1). It is for projects on a
+  directory identity provider whose directory keys users on another claim than
+  `/engine-rest` does, e.g. `email` with the Entra plugin (mail-keyed) while
+  `/engine-rest` maps by `oid`. A token without the claim answers 401. The default, empty,
+  changes nothing; with `plugin.identity.provider: token` it is not needed.
+
 ### Changed
 
 - **PKCE (S256) on every webapp sign-in** (CF-SHARED-CALLBACK-1), with or without the

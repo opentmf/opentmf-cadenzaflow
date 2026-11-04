@@ -72,6 +72,19 @@ class UserTokenPolicyTests {
     assertRefused(policy.refusal(jwt, "subject-id"), "'email'");
   }
 
+  /** CF-5: with bearer-login.user-claim, that claim must name the user. */
+  @Test
+  void theLoginUserClaimReplacesTheIssuersForTheUserCheck() {
+    UserTokenPolicy byEmail = new UserTokenPolicy(List.of(issuer(ENTRA, "oid")), "email");
+
+    Jwt withEmail = jwt(ENTRA, Map.of("oid", "the-oid", "email", "gokhan@example.test",
+        "scp", "dnms.api"));
+    assertEquals(Optional.empty(), byEmail.refusal(withEmail, "gokhan@example.test"));
+
+    Jwt withoutEmail = jwt(ENTRA, Map.of("oid", "the-oid", "scp", "dnms.api"));
+    assertRefused(byEmail.refusal(withoutEmail, "the-oid"), "'email'");
+  }
+
   @Test
   void anIssuerWithoutConfigurationIsRefused() {
     Jwt jwt = jwt("https://elsewhere.test", Map.of("email", "gokhan@example.test"));

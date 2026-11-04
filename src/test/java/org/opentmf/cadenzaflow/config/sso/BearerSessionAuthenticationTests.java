@@ -34,6 +34,19 @@ class BearerSessionAuthenticationTests {
     assertTrue(session.isAuthenticated());
   }
 
+  /** CF-5: the session's user may be named by another claim; authorities stay. */
+  @Test
+  void theUserMayBeNamedByAnotherClaimOfTheValidatedToken() {
+    JwtAuthenticationToken validated = new JwtAuthenticationToken(
+        jwt("access-token"), List.of(new SimpleGrantedAuthority("admin")), "the-oid");
+
+    BearerSessionAuthentication session =
+        BearerSessionAuthentication.of(validated, "gokhan@example.test", DETAILS);
+
+    assertEquals("gokhan@example.test", session.getName());
+    assertEquals(validated.getAuthorities(), session.getAuthorities());
+  }
+
   @Test
   void equalityFollowsTheTokenAndTheAuthenticationFields() {
     BearerSessionAuthentication one = session("access-token");

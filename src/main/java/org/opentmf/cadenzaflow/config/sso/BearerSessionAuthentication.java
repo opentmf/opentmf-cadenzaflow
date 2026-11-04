@@ -39,8 +39,17 @@ public class BearerSessionAuthentication extends AbstractAuthenticationToken {
   /** A session's authentication from the token the resource server validated. */
   public static BearerSessionAuthentication of(
       JwtAuthenticationToken validated, BearerSessionDetails details) {
+    return of(validated, validated.getName(), details);
+  }
+
+  /**
+   * The same, with the user named by another claim of the validated token
+   * ({@code bearer-login.user-claim}); the authorities stay the validated ones.
+   */
+  public static BearerSessionAuthentication of(
+      JwtAuthenticationToken validated, String name, BearerSessionDetails details) {
     return new BearerSessionAuthentication(
-        validated.getToken(), validated.getName(), validated.getAuthorities(), details);
+        validated.getToken(), name, validated.getAuthorities(), details);
   }
 
   public Jwt getToken() {

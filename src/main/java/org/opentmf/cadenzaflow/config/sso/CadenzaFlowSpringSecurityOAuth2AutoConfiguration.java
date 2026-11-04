@@ -66,6 +66,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   private final String loginPageUrl;
   private final Duration bearerSessionMax;
   private final boolean userTokenOnly;
+  private final String bearerLoginUserClaim;
   private final String webappPath;
 
   public CadenzaFlowSpringSecurityOAuth2AutoConfiguration(
@@ -78,6 +79,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     this.loginPageUrl = ssoProperties.loginPage().orElse(null);
     this.bearerSessionMax = ssoProperties.getBearerSessionMax();
     this.userTokenOnly = ssoProperties.getBearerLogin().isUserTokenOnly();
+    this.bearerLoginUserClaim = ssoProperties.getBearerLogin().userClaimOverride().orElse(null);
     WebappProperty webapp = properties.getWebapp();
     this.webappPath = webapp.getApplicationPath();
   }
@@ -254,7 +256,10 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
       http.authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
           .oauth2ResourceServer(servletJwtSupport::apply)
           .addFilterAfter(new LoginWithTokenFilter(jwtDecoder,
-                  userTokenOnly ? new UserTokenPolicy(openTmfSecurityProperties) : null),
+                  userTokenOnly
+                      ? new UserTokenPolicy(openTmfSecurityProperties, bearerLoginUserClaim)
+                      : null,
+                  bearerLoginUserClaim),
               AuthorizationFilter.class);
     }
     return http.build();

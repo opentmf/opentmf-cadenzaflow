@@ -98,6 +98,7 @@ class LoginWithTokenIT {
             .audience(audience)
             .issueTime(Date.from(expiresAt.minusSeconds(600)))
             .expirationTime(Date.from(expiresAt))
+            .claim("oid", "00000000-0000-0000-0000-0000000000a1")
             .claim("roles", List.of("ebu-federation-admin"));
         userClaims.forEach(claims::claim);
         SignedJWT jwt = new SignedJWT(
@@ -132,12 +133,16 @@ class LoginWithTokenIT {
     r.add("opentmf.security.issuers[0].name", () -> "it");
     r.add("opentmf.security.issuers[0].issuer", () -> ISSUER.issuer);
     r.add("opentmf.security.issuers[0].jwk-set-uri", () -> ISSUER.jwkSetUri);
-    r.add("opentmf.security.issuers[0].user-claim", () -> "email");
+    // A directory-provider project's shape (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1):
+    // /engine-rest maps tokens by the stable `oid`, while the directory keys users on their
+    // mail address - so the Cockpit login names its user by `email` (bearer-login.user-claim).
+    r.add("opentmf.security.issuers[0].user-claim", () -> "oid");
     r.add("opentmf.security.issuers[0].authorities-claim", () -> "roles");
     r.add("opentmf.security.issuers[0].audiences[0]", () -> AUDIENCE);
 
     r.add("cadenzaflow.sso.shared-callback-url", () -> SHARED_CALLBACK);
     r.add("cadenzaflow.sso.login-page-url", () -> LOGIN_PAGE);
+    r.add("cadenzaflow.sso.bearer-login.user-claim", () -> "email");
   }
 
   @LocalServerPort
@@ -173,7 +178,8 @@ class LoginWithTokenIT {
     HttpResponse<String> cockpit = get("/app/cockpit/default/", session);
     assertEquals(200, cockpit.statusCode(), cockpit.headers().map().toString());
 
-    // The engine webapp sees the token's user as the signed-in user.
+    // The engine webapp sees the token's user as the signed-in user: its EMAIL (the
+    // bearer-login.user-claim), not the oid /engine-rest maps it by.
     HttpResponse<String> me = get("/api/admin/auth/user/default", session);
     assertEquals(200, me.statusCode(), me.body());
     assertTrue(me.body().contains(EMAIL), me.body());

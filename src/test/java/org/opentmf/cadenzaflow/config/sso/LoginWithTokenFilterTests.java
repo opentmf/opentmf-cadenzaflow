@@ -158,6 +158,31 @@ class LoginWithTokenFilterTests {
     assertNull(SecurityContextHolder.getContext().getAuthentication());
   }
 
+  /** CF-5: bearer-login.user-claim names the session's user. */
+  @Test
+  void theLoginUserClaimNamesTheSessionsUser() throws Exception {
+    LoginWithTokenFilter byEmail =
+        new LoginWithTokenFilter(idTokenDecoder, userTokenPolicy, "email");
+    authenticate();
+
+    byEmail.doFilter(request, response, chain);
+
+    assertEquals(204, response.getStatus());
+    assertEquals("gokhan@example.test", storedAuthentication().getName());
+  }
+
+  @Test
+  void aTokenWithoutTheLoginUserClaimIsRefusedAndStoresNothing() throws Exception {
+    LoginWithTokenFilter byUpn = new LoginWithTokenFilter(idTokenDecoder, userTokenPolicy, "upn");
+    authenticate();
+
+    byUpn.doFilter(request, response, chain);
+
+    assertEquals(401, response.getStatus());
+    assertNull(request.getSession(false));
+    assertNull(SecurityContextHolder.getContext().getAuthentication());
+  }
+
   @Test
   void withUserTokenOnlyOffEveryValidatedTokenIsAccepted() throws Exception {
     LoginWithTokenFilter permissive = new LoginWithTokenFilter(idTokenDecoder, null);

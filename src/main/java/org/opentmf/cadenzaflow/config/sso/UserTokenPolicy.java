@@ -1,5 +1,6 @@
 package org.opentmf.cadenzaflow.config.sso;
 
+import jakarta.annotation.Nullable;
 import java.util.List;
 import java.util.Optional;
 import org.opentmf.security.config.CommonConfig;
@@ -29,13 +30,28 @@ public class UserTokenPolicy {
   private static final String SERVICE_ACCOUNT_PREFIX = "service-account-";
 
   private final List<ResolvedIssuer> issuers;
+  private final String userClaimOverride;
 
   public UserTokenPolicy(OpenTmfSecurityProperties properties) {
-    this(CommonConfig.resolveIssuers(properties));
+    this(properties, null);
+  }
+
+  /**
+   * @param userClaimOverride {@code bearer-login.user-claim}, or {@code null}: the claim that
+   *     must name the user instead of the issuer's {@code user-claim}
+   */
+  public UserTokenPolicy(
+      OpenTmfSecurityProperties properties, @Nullable String userClaimOverride) {
+    this(CommonConfig.resolveIssuers(properties), userClaimOverride);
   }
 
   UserTokenPolicy(List<ResolvedIssuer> issuers) {
+    this(issuers, null);
+  }
+
+  UserTokenPolicy(List<ResolvedIssuer> issuers, @Nullable String userClaimOverride) {
     this.issuers = issuers;
+    this.userClaimOverride = userClaimOverride;
   }
 
   /**
@@ -44,7 +60,7 @@ public class UserTokenPolicy {
    * @param name the principal name the resource server derived from the token
    */
   public Optional<String> refusal(Jwt jwt, String name) {
-    String userClaim = userClaim(jwt);
+    String userClaim = userClaimOverride != null ? userClaimOverride : userClaim(jwt);
     if (userClaim == null) {
       return Optional.of("no trusted issuer configuration names a user claim for '"
           + jwt.getClaimAsString("iss") + "'");

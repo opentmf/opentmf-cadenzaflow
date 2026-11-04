@@ -73,6 +73,31 @@ public class SsoProperties {
     public void setUserTokenOnly(boolean userTokenOnly) {
       this.userTokenOnly = userTokenOnly;
     }
+
+    /**
+     * The token claim that names the session's engine user
+     * (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1), for projects on a directory provider, e.g.
+     * {@code email} where the identity provider keys users on their mail address while
+     * {@code /engine-rest} maps tokens by {@code oid}. Empty (the default) keeps the
+     * principal {@code /engine-rest} derives with the issuer's {@code user-claim}. Token
+     * validation and the authorities are not affected.
+     */
+    private String userClaim = "";
+
+    public String getUserClaim() {
+      return userClaim;
+    }
+
+    public void setUserClaim(String userClaim) {
+      this.userClaim = userClaim;
+    }
+
+    /** The configured user claim, or empty for the issuer's. */
+    public Optional<String> userClaimOverride() {
+      return userClaim == null || userClaim.isBlank()
+          ? Optional.empty()
+          : Optional.of(userClaim.trim());
+    }
   }
 
   public BearerLogin getBearerLogin() {

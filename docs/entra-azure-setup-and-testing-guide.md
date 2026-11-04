@@ -51,6 +51,20 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
     requests), expiry, user and roles claims. The ID token is validated by the same decoder
     and kept only as the logout's `id_token_hint`. A new session is opened (any previous
     session is invalidated), and the answer is `204` with `Location` = the Cockpit app URL.
+    **Which claim names the user (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1).** With
+    `plugin.identity.provider: token` there is nothing to set: the engine user is the
+    signed-in principal, i.e. the claim `/engine-rest` maps tokens by (on Entra the stable
+    `oid`). This setting is for projects on a DIRECTORY provider (`entra`, `keycloak`) whose
+    directory keys users on another claim. For example, the Entra plugin keys users on their
+    mail address (`use-email-as-camunda-user-id`) while `/engine-rest` maps by `oid`. There,
+    set `CADENZAFLOW_SSO_BEARERLOGIN_USERCLAIM=email`
+    (`cadenzaflow.sso.bearer-login.user-claim`). The Cockpit session's engine user is then
+    the token's `email`; the authorities and `/engine-rest`'s own principal are unchanged.
+    The registration whose API scope the page requests (the access token's audience) must
+    then issue the **`email` optional claim in the access token**; a token without it
+    answers `401`. Without the setting, on such a project, a user whose `oid` is not a
+    directory id answers `401` at Cockpit (the directory does not know it). Empty, the
+    default, changes nothing.
     Only a delegated USER token opens a session
     (`cadenzaflow.sso.bearer-login.user-token-only`, default `true`). It needs the
     configured user claim, and it must not be a client-credentials token: on Entra
