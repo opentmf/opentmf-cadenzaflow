@@ -253,8 +253,11 @@ Inside the engine there is a **second** authorization layer: engine authorizatio
 (`cadenzaflow.bpm.authorization.enabled`, on by default) decides which users and
 groups may see and act on which process instances and tasks. Members of the group
 named by `administrator-group-name` (default `camunda-admin`) get full engine
-administrator rights. So an API caller passes the endpoint roles above *and* the
-engine's own checks.
+administrator rights. That layer applies to **people in the web consoles** only: the
+engine knows a user only on the webapp paths (`/app/*`, `/api/*`), so on
+`/engine-rest` the endpoint roles above are the **only** gate, and a service client
+needs no engine authorization or group. Providers, sign-in paths and worked examples:
+[docs/identity-and-access.md](docs/identity-and-access.md).
 
 ### 3.4 Role names are configurable
 

@@ -6,7 +6,9 @@ troubleshooting) lives with the identity plugin:
 
 **➡ [cadenzaflow-entra-identity: Setup and Testing Guide](https://github.com/cadenzaflow/cadenzaflow-entra-identity/blob/main/docs/setup-and-testing-guide.md)**
 
-This file only covers what is specific to **opentmf-cadenzaflow**.
+This file only covers what is specific to **opentmf-cadenzaflow**. Which identity provider
+to choose (`token`, `entra`, `keycloak`), what engine authorizations do and do not cover,
+and worked examples are in [identity-and-access.md](identity-and-access.md).
 
 ## Provider selection
 
