@@ -56,6 +56,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **AWS SDK BOM 2.57.1 → 2.57.3** (aws flavour only).
 
+### Fixed
+
+- **A signed-in user unknown to the identity provider gets 401, not 500**
+  (OPENTMF-CADENZAFLOW-UNKNOWN-DIRECTORY-USER-401-1). The engine webapp's
+  ContainerBasedAuthenticationFilter looked the user up, got null and failed with an NPE
+  (upstream, cadenzaflow-webapp-jakarta 1.2.4). The wrapper's OAuth2AuthenticationProvider
+  now answers "not authenticated" for such a user, so the webapp responds 401. It asks the
+  directory once per session. This affects `plugin.identity.provider: keycloak` and
+  `entra`, for both the server-side login and the token login; `token` was never
+  affected.
+
+- **Four SonarCloud findings in the CF-3 code**: an identical `getName()` override was
+  removed, an eager WARN argument list is now guarded, an unused catch variable became
+  `_`, and a test assertion was put into expected/actual order.
+
 ## [1.5.0] - 2026-10-21
 
 ### Added

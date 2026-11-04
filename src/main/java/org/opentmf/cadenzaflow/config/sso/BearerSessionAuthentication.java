@@ -58,13 +58,9 @@ public class BearerSessionAuthentication extends AbstractAuthenticationToken {
     return "";
   }
 
+  /** The user name; {@code getName()} is AbstractAuthenticationToken's, derived from it. */
   @Override
   public Object getPrincipal() {
-    return name;
-  }
-
-  @Override
-  public String getName() {
     return name;
   }
 

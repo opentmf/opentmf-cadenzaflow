@@ -88,8 +88,10 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
       return;
     }
     if (!sameOrigin(request)) {
-      log.warn("Refused a token login for '{}': cross-origin (Origin '{}', Sec-Fetch-Site '{}')",
-          token.getName(), request.getHeader("Origin"), request.getHeader("Sec-Fetch-Site"));
+      if (log.isWarnEnabled()) {
+        log.warn("Refused a token login for '{}': cross-origin (Origin '{}', Sec-Fetch-Site '{}')",
+            token.getName(), request.getHeader("Origin"), request.getHeader("Sec-Fetch-Site"));
+      }
       SecurityContextHolder.clearContext();
       response.setStatus(HttpServletResponse.SC_FORBIDDEN);
       return;
@@ -152,7 +154,7 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
     try {
       String host = URI.create(origin).getHost();
       return host != null && host.equalsIgnoreCase(request.getServerName());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return false;
     }
   }

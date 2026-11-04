@@ -43,7 +43,7 @@ class BearerSessionAuthenticationTests {
     assertEquals(one, same);
     assertEquals(one.hashCode(), same.hashCode());
     assertNotEquals(one, other);
-    assertNotEquals(one, "access-token");
+    assertNotEquals("access-token", one);
   }
 
   private static BearerSessionAuthentication session(String tokenValue) {

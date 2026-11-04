@@ -182,6 +182,22 @@ class LoginWithTokenIT {
     assertEquals(302, get("/api/admin/auth/user/default", before).statusCode());
   }
 
+  /**
+   * OPENTMF-CADENZAFLOW-UNKNOWN-DIRECTORY-USER-401-1: a signed-in user the identity provider
+   * does not know. The engine webapp's own filter would NPE on its null lookup (500); the
+   * wrapper's provider answers unsuccessful first, so the webapp says 401.
+   */
+  @Test
+  void aUserUnknownToTheDirectoryGets401NotA500() throws Exception {
+    String stranger = ISSUER.mint(AUDIENCE, Instant.now().plusSeconds(300),
+        Map.of("email", "stranger@example.test", "preferred_username", "stranger"));
+    String session = sessionCookie(login(stranger, null, null)).orElseThrow();
+
+    HttpResponse<String> cockpit = get("/app/cockpit/default/", session);
+
+    assertEquals(401, cockpit.statusCode(), cockpit.body());
+  }
+
   @Test
   void anExpiredTokenIsRefusedAndOpensNothing() throws Exception {
     // Past Spring's 60 s clock-skew allowance.
