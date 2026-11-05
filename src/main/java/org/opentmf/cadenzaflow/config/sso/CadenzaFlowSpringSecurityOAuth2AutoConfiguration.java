@@ -11,7 +11,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import org.cadenzaflow.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
 import org.cadenzaflow.bpm.engine.rest.security.auth.ProcessEngineAuthenticationFilter;
 import org.cadenzaflow.bpm.engine.spring.SpringProcessEngineServicesConfiguration;
 import org.cadenzaflow.bpm.spring.boot.starter.CamundaBpmAutoConfiguration;
@@ -98,6 +100,18 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     filterRegistration.addUrlPatterns(webappPath + "/app/*", webappPath + "/api/*");
     filterRegistration.setDispatcherTypes(DispatcherType.REQUEST);
     return filterRegistration;
+  }
+
+  /**
+   * ENGINE-COCKPIT-FORBIDDEN-PAGE-1: a signed-in user without an ACCESS grant on a webapp
+   * sees this page, not Spring's Whitelabel 403. The administrator groups are read at
+   * render time: the identity plugin adds the configured one after the engine is built.
+   */
+  @Bean
+  public WebappAccessDeniedPage webappAccessDeniedPage(
+      ProcessEngineConfigurationImpl engineConfiguration) {
+    return new WebappAccessDeniedPage(webappPath,
+        () -> Objects.requireNonNullElse(engineConfiguration.getAdminGroups(), List.of()));
   }
 
   @Bean

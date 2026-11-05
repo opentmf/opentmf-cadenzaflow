@@ -65,6 +65,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Cockpit no longer labels the signed-in user "null null"** (ENGINE-COCKPIT-USER-LABEL-NULL-1).
+  With `plugin.identity.provider: token` the engine's one user carried no names. It now
+  takes `given_name` / `family_name` from the login token (the shared page's bearer login
+  or the server-side OIDC login); without them the label is `preferred_username`, then
+  `email`, then `sub`, then the user id - never "null".
+
+- **A signed-in user without the Cockpit (Admin, Tasklist) access grant gets a plain
+  no-access page, not Spring's Whitelabel Error Page** (ENGINE-COCKPIT-FORBIDDEN-PAGE-1).
+  The engine webapp's 403 under `/app/**` now renders a page that names the application,
+  the group(s) that may open it (the engine's administrator groups, i.e.
+  `administrator-group-name`) and a sign-out link to `/logout`. Every other error keeps
+  Boot's default page.
+
 - **Base image moved to `eclipse-temurin:25-jre-noble@sha256:a98128a5…` (25.0.5_8)**, which
   moves the JRE from 25.0.4.1 to 25.0.5. The new base closes CVE-2026-111497 (libbrotli1
   1.1.0-2ubuntu0.1, HIGH). It still ships apt/libapt-pkg6.0t64 2.8.3, so CVE-2026-109518

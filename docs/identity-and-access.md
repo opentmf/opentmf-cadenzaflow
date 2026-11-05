@@ -115,7 +115,7 @@ With `token`, leave it empty: the user is the principal itself.
 
 | Project | Provider | Needs | Loses |
 |---|---|---|---|
-| No human tasks; consoles for operators only | `token` | the operators' role in the token (`authorities-claim`); an admin role → `administrator-group-name` | user/group search; readable names in Cockpit (the id is shown); directory-backed authorizations |
+| No human tasks; consoles for operators only | `token` | the operators' role in the token (`authorities-claim`); an admin role → `administrator-group-name` | user/group search; directory-backed authorizations. Cockpit labels the user with the token's `given_name` / `family_name`, else `preferred_username`, `email`, `sub` or the id |
 | Human tasks, people in Entra | `entra` | Graph application permissions + secret; for the bearer login usually `bearer-login.user-claim: email` + the `email` access-token claim | nothing functional; carries the Graph permissions and a secret |
 | Human tasks, people in a project Keycloak (possibly brokered to Entra) | `keycloak` | a realm client allowed to read users/groups; realm groups for candidate groups | nothing functional; users must exist in the realm (brokered users after their first login) |
 
