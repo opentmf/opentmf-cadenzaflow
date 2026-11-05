@@ -65,6 +65,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Base image moved to `eclipse-temurin:25-jre-noble@sha256:a98128a5…` (25.0.5_8)**, which
+  ships apt/libapt-pkg6.0t64 2.8.4ubuntu0.1 (CVE-2026-109518, HIGH) and libbrotli1
+  1.1.0-2ubuntu0.1 (CVE-2026-111497, HIGH). Closed at the image as before, with no apt
+  upgrade and no `.trivyignore` entry. **This also moves the JRE from 25.0.4.1 to 25.0.5.**
+
 - **A signed-in user unknown to the identity provider gets 401, not 500**
   (OPENTMF-CADENZAFLOW-UNKNOWN-DIRECTORY-USER-401-1). The engine webapp's
   ContainerBasedAuthenticationFilter looked the user up, got null and failed with an NPE

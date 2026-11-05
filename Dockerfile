@@ -2,11 +2,12 @@
 # hence another lightweight distro noble for broader coverage
 # JRE 25 matches the GraalJS/Truffle 25.x runtime requirement. JS script tasks still run
 # interpreted: as of GraalVM 25, in-process JIT of guest code requires a GraalVM JDK.
-# Pinned 2026-10-14: this digest of eclipse-temurin:25-jre-noble ships libssl3t64
-# 3.0.13-0ubuntu3.16, noble's fixed version for CVE-2026-84782 (openssl HIGH) -
-# closed at the image, no .trivyignore entry, no apt-get upgrade (upgrades belong
-# to the base bump). Re-measure and re-point the digest on the next base bump.
-FROM eclipse-temurin:25-jre-noble@sha256:d9a39a23634650173f1e2bbc176227af9728587ecf0f4b62d53e9355cd7a19ab AS builder
+# Pinned 2026-11-05 (C-2037): this digest of eclipse-temurin:25-jre-noble (25.0.5_8,
+# built 2026-10-29) ships apt/libapt-pkg6.0t64 2.8.4ubuntu0.1 (CVE-2026-109518) and
+# libbrotli1 1.1.0-2ubuntu0.1 (CVE-2026-111497), as well as libssl3t64 3.0.13-0ubuntu3.16
+# (CVE-2026-84782) - closed at the image, no .trivyignore entry, no apt-get upgrade
+# (upgrades belong to the base bump). Re-measure and re-point the digest on the next bump.
+FROM eclipse-temurin:25-jre-noble@sha256:a98128a57de944a72bd31fbc79b898edd5a5864d3652071d5bbd2160ab7d7dce AS builder
 WORKDIR /application
 ARG JAR_FILE=target/*.jar
 COPY ${JAR_FILE} application.jar
@@ -14,7 +15,7 @@ COPY ${JAR_FILE} application.jar
 # --layers --launcher produces the same layered, JarLauncher-ready layout.
 RUN java -Djarmode=tools -jar application.jar extract --layers --launcher --destination extracted
 
-FROM eclipse-temurin:25-jre-noble@sha256:d9a39a23634650173f1e2bbc176227af9728587ecf0f4b62d53e9355cd7a19ab
+FROM eclipse-temurin:25-jre-noble@sha256:a98128a57de944a72bd31fbc79b898edd5a5864d3652071d5bbd2160ab7d7dce
 # The uid is PINNED because a deployment's securityContext.runAsUser has to name it
 # and must not silently drift when the base image changes. 1001, not 1000: Ubuntu
 # noble already ships an `ubuntu` user at 1000, so an unpinned adduser lands on 1001
