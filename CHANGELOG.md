@@ -66,9 +66,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Base image moved to `eclipse-temurin:25-jre-noble@sha256:a98128a5…` (25.0.5_8)**, which
-  ships apt/libapt-pkg6.0t64 2.8.4ubuntu0.1 (CVE-2026-109518, HIGH) and libbrotli1
-  1.1.0-2ubuntu0.1 (CVE-2026-111497, HIGH). Closed at the image as before, with no apt
-  upgrade and no `.trivyignore` entry. **This also moves the JRE from 25.0.4.1 to 25.0.5.**
+  moves the JRE from 25.0.4.1 to 25.0.5. That base alone did not close CVE-2026-109518
+  (apt/libapt-pkg6.0t64) and CVE-2026-111497 (libbrotli1), both HIGH. **As an exception to
+  the house rule (C-2037 b)**, both Dockerfiles upgrade those three packages in place
+  (`apt-get install --only-upgrade apt libapt-pkg6.0t64 libbrotli1`), with no
+  `.trivyignore` entry. The line goes again with the next base digest that ships the fixes.
 
 - **A signed-in user unknown to the identity provider gets 401, not 500**
   (OPENTMF-CADENZAFLOW-UNKNOWN-DIRECTORY-USER-401-1). The engine webapp's
