@@ -2,7 +2,9 @@ package org.opentmf.cadenzaflow.config.identity.token;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.cadenzaflow.bpm.engine.IdentityService;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
 import org.cadenzaflow.bpm.engine.authorization.Resources;
@@ -11,9 +13,13 @@ import org.cadenzaflow.bpm.engine.identity.User;
 import org.cadenzaflow.bpm.engine.impl.cfg.StandaloneInMemProcessEngineConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.opentmf.cadenzaflow.config.sso.BearerSessionAuthentication;
+import org.opentmf.cadenzaflow.config.sso.BearerSessionDetails;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 /**
  * Unit coverage for the token identity provider: the signed-in principal is the ONLY
@@ -269,8 +275,61 @@ class TokenIdentityProviderTests {
   }
 
   // -------------------------------------------------------------------------
+  // Names: Cockpit shows "firstName lastName" - never "null null"
+  // (ENGINE-COCKPIT-USER-LABEL-NULL-1)
+  // -------------------------------------------------------------------------
+
+  @Test
+  void theTokensGivenAndFamilyNamesAreTheUsersNames() {
+    signInByToken("jane@vf.com", Map.of(
+        "given_name", "Jane", "family_name", "Doe", "preferred_username", "jdoe"));
+
+    User self = session.currentUser();
+    assertThat(self.getFirstName()).isEqualTo("Jane");
+    assertThat(self.getLastName()).isEqualTo("Doe");
+  }
+
+  @Test
+  void withoutNamesTheLabelIsThePreferredUsername() {
+    signInByToken("jane@vf.com", Map.of("preferred_username", "jdoe", "email", "jane@vf.com"));
+
+    User self = session.currentUser();
+    assertThat(self.getFirstName()).isEqualTo("jdoe");
+    assertThat(self.getLastName()).isEmpty();
+  }
+
+  @Test
+  void withoutNamesOrPreferredUsernameTheLabelFallsBackToEmailThenSubject() {
+    signInByToken("jane@vf.com", Map.of("email", "jane@vf.com", "sub", "0000-a1"));
+    assertThat(session.currentUser().getFirstName()).isEqualTo("jane@vf.com");
+
+    signInByToken("0000-a1", Map.of("sub", "0000-a1"));
+    assertThat(session.currentUser().getFirstName()).isEqualTo("0000-a1");
+  }
+
+  @Test
+  void aPrincipalWithoutClaimsIsLabelledByItsName() {
+    signIn("jane@vf.com", "dnms-read");
+
+    User self = session.currentUser();
+    assertThat(self.getFirstName()).isEqualTo("jane@vf.com");
+    assertThat(self.getLastName()).isEmpty();
+  }
+
+  // -------------------------------------------------------------------------
   // Fixtures
   // -------------------------------------------------------------------------
+
+  /** A session opened by {@code POST /app/login-with-token} from a token with these claims. */
+  private static void signInByToken(String name, Map<String, Object> claims) {
+    Jwt.Builder jwt = Jwt.withTokenValue("token").header("alg", "RS256")
+        .issuedAt(Instant.parse("2026-11-06T10:00:00Z"))
+        .expiresAt(Instant.parse("2026-11-06T10:05:00Z"));
+    claims.forEach(jwt::claim);
+    SecurityContextHolder.getContext().setAuthentication(new BearerSessionAuthentication(
+        jwt.build(), name, List.of(new SimpleGrantedAuthority("dnms-read")),
+        new BearerSessionDetails(null, Instant.parse("2026-11-06T10:00:00Z"))));
+  }
 
   private static void signIn(String name, String... authorities) {
     SecurityContextHolder.getContext()
