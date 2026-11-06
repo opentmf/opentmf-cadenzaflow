@@ -77,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and the `docker` profile); the release image's Maven build stage
   `maven:3.9.12` → `3.9.16`; workflow actions download-artifact 8.0.2, setup-java 6.2.0,
   upload-artifact 7.0.2, login-action 4.8.0, setup-buildx-action 4.4.1 and
-  cosign-installer 4.1.3 (the signing binary stays pinned at cosign v2.6.1).
+  cosign-installer 4.1.3; the signing binary cosign 2.6.1 → 2.6.5 (same major).
 
 ### Fixed
 
