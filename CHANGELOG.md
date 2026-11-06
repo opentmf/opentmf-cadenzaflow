@@ -63,6 +63,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **AWS SDK BOM 2.57.1 → 2.57.3** (aws flavour only).
 
+- **Versions** (CF-TRAIN8-VERSION-BUMPS-1 - a release bumps every dependency). Engine
+  `cadenzaflow` 1.2.4 → 1.2.5 (upstream: the external-task client starter applies
+  `order-by-create-time` / `use-create-time`; Cockpit skips only the permissions that are
+  disabled; the unknown-directory-user NPE above is NOT fixed there - the wrapper's own
+  guard stays). AWS SDK BOM 2.57.3 → 2.57.10 and aws-advanced-jdbc-wrapper 4.5.0 → 4.6.0
+  (aws flavour only); azure-identity-extensions 1.2.10 → 1.3.1 (azure flavour only);
+  GraalVM polyglot 25.4.4.1.1 → 25.5.5.0.3; tmf630-toolkit 3.5.1 → 3.5.2; build plugins
+  jacoco 0.8.15 → 0.8.16, maven-enforcer 3.6.3 → 3.7.0, maven-surefire and maven-failsafe
+  3.6.0 → 3.6.1, pitest-maven 1.30.1 → 1.30.2.
+
 ### Fixed
 
 - **Cockpit no longer labels the signed-in user "null null"** (ENGINE-COCKPIT-USER-LABEL-NULL-1).
