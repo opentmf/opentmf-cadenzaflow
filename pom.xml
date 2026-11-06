@@ -789,7 +789,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
-        <trivy-image.version>0.76.1</trivy-image.version>
+        <trivy-image.version>0.76.2</trivy-image.version>
         <!-- Stamped into the OCI provenance labels (DNMS template convention); pass
              -Dapp.commit=$(git rev-parse HEAD) for a provenance-labeled image. Pom
              properties rather than ${env.*} because Maven passes an UNSET env
