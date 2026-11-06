@@ -55,7 +55,7 @@ env:
   # The cosign BINARY version, pinned in one place because two jobs now install it:
   # the build legs attest a per-architecture SBOM, the merge job signs the index.
   # A split between them would sign and attest the same release with two majors.
-  COSIGN_VERSION: v2.6.1
+  COSIGN_VERSION: v3.1.4
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -455,15 +455,14 @@ jobs:
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           # PINNED DELIBERATELY, and the pin is on the cosign BINARY, not on the
-          # installer. The installer's own default moved from cosign v2.5.2 to v3.0.6
-          # in its v4, so taking the installer upgrade for the Node 24 runtime would
-          # ALSO swap the signing binary for a new major - quietly, in a commit whose
-          # stated purpose is clearing deprecation warnings. cosign 3 changes how
-          # signatures are attached and discovered, so anyone verifying our images
-          # could start failing. Moving to cosign 3 is a supply-chain decision that
-          # deserves its own change and its own verification pass, not a side effect.
-          # v2.6.1 is the version the rest of the estate pins; still cosign 2, so the
-          # signature format is identical to what signed 1.0.x through 1.1.2.
+          # installer: the installer's own default moves with its releases, and the
+          # signing major must never move as a side effect of an installer bump.
+          # cosign v3 since 1.5.1 (v2.6.1 before), the estate pin (dnms-service-template
+          # provision-cosign, ci-v1.4.34). v3 writes the Sigstore bundle format as an
+          # OCI 1.1 referrer of the signed digest (on GHCR the referrers-tag fallback
+          # `sha256-<digest>`). Verifiers need cosign v2.6.5 or v3: v2.6.1 and older
+          # report "no signatures found" on a 1.5.1+ image. v3 still verifies the v2
+          # signatures and attestations of 1.0.x-1.5.0 (checked against 1.5.0).
           cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Docker meta (tags & labels)
