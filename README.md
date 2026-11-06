@@ -1560,6 +1560,11 @@ Every published image is signed keylessly with cosign, and every architecture
 carries its own CycloneDX SBOM attestation. Both are worth checking before you run
 one in an environment you care about.
 
+**Use cosign 2.6.5 or later (cosign 3 recommended).** From 1.5.1 the images are signed
+with cosign 3, which stores the signature and the attestations as Sigstore bundles
+attached as OCI referrers. cosign 2.6.1 and older cannot find them and report "no
+signatures found". cosign 3 still verifies every earlier release.
+
 **Signature.** The signature is on the *index* — the multi-architecture manifest the
 tag points at — because that is the thing you pull. Substitute the version you are
 verifying in **both** places:
