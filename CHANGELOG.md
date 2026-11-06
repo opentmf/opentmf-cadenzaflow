@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.1] - unreleased
+## [1.5.1] - 2026-11-06
 
 ### Added
 
@@ -72,6 +72,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   GraalVM polyglot 25.4.4.1.1 → 25.5.5.0.3; tmf630-toolkit 3.5.1 → 3.5.2; build plugins
   jacoco 0.8.15 → 0.8.16, maven-enforcer 3.6.3 → 3.7.0, maven-surefire and maven-failsafe
   3.6.0 → 3.6.1, pitest-maven 1.30.1 → 1.30.2.
+
+- **Build only:** the image gate's Trivy scanner 0.76.1 → 0.76.2 (release workflow
+  and the `docker` profile); the release image's Maven build stage
+  `maven:3.9.12` → `3.9.16`; workflow actions download-artifact 8.0.2, setup-java 6.2.0,
+  upload-artifact 7.0.2, login-action 4.8.0, setup-buildx-action 4.4.1 and
+  cosign-installer 4.1.3 (the signing binary stays pinned at cosign v2.6.1).
 
 ### Fixed
 
