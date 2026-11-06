@@ -16,6 +16,7 @@
  */
 package org.opentmf.cadenzaflow.config.sso;
 
+import jakarta.annotation.Nullable;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -55,15 +56,38 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
   private static final String ENTRA_AUTH_SUFFIX = "/authorize";
   private static final String LOGOUT_ENDPOINT_SUFFIX = "/logout";
 
+  /**
+   * Prefix of the end-session {@code state} with the shared callback: the shared page reads
+   * the path after it, checks it against its allowlist and sends the browser there.
+   */
+  public static final String SIGN_OUT_STATE_PREFIX =
+      SharedCallbackAuthorizationRequestCustomizer.STATE_PREFIX + "so:";
+
   private final ClientRegistrationRepository clientRegistrationRepository;
   private final String postLogoutRedirectUri;
+  private final String sharedCallbackUrl;
 
   public SsoLogoutSuccessHandler(
       ClientRegistrationRepository clientRegistrationRepository,
       OAuth2Properties oAuth2Properties) {
+    this(clientRegistrationRepository, oAuth2Properties, null);
+  }
+
+  /**
+   * @param sharedCallbackUrl the shared browser callback URL, or {@code null}. When it is
+   *     set it is the {@code post_logout_redirect_uri} as it stands - no query, because
+   *     Entra matches it exactly against the registered URI - and the way back into
+   *     Cockpit (the path of the configured post-logout URI) travels in the end-session
+   *     {@code state} as {@code cf.so:<path>}, which the provider hands back unchanged.
+   */
+  public SsoLogoutSuccessHandler(
+      ClientRegistrationRepository clientRegistrationRepository,
+      OAuth2Properties oAuth2Properties,
+      @Nullable String sharedCallbackUrl) {
     super(clientRegistrationRepository);
     this.clientRegistrationRepository = clientRegistrationRepository;
     this.postLogoutRedirectUri = oAuth2Properties.getSsoLogout().getPostLogoutRedirectUri();
+    this.sharedCallbackUrl = sharedCallbackUrl;
     this.setPostLogoutRedirectUri(this.postLogoutRedirectUri);
   }
 
@@ -83,21 +107,61 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
       HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
     if (authentication instanceof OAuth2AuthenticationToken token
         && token.getPrincipal() instanceof OidcUser oidcUser) {
-      ClientRegistration registration =
+      String target = endSessionUrl(
           clientRegistrationRepository.findByRegistrationId(
-              token.getAuthorizedClientRegistrationId());
-      String endSessionEndpoint = endSessionEndpoint(registration);
-      if (endSessionEndpoint != null) {
-        return UriComponentsBuilder.fromUriString(endSessionEndpoint)
-            .queryParam("id_token_hint", oidcUser.getIdToken().getTokenValue())
-            .queryParam("client_id", registration.getClientId())
-            .queryParam("post_logout_redirect_uri", resolvePostLogoutRedirectUri(request))
-            .encode(StandardCharsets.UTF_8)
-            .build()
-            .toUriString();
+              token.getAuthorizedClientRegistrationId()),
+          oidcUser.getIdToken().getTokenValue(),
+          request);
+      if (target != null) {
+        return target;
+      }
+    }
+    if (authentication instanceof BearerSessionAuthentication bearer) {
+      // A session opened by POST /app/login-with-token (CF-SHARED-CALLBACK-3): the hint is
+      // the ID token the page sent at login, if any. Without one the end-session request
+      // goes without id_token_hint (the provider may then ask which account to sign out).
+      String idTokenHint = bearer.getDetails().idToken();
+      String target = endSessionUrl(soleRegistration(), idTokenHint, request);
+      if (target != null) {
+        return target;
       }
     }
     return super.determineTargetUrl(request, response, authentication);
+  }
+
+  private String endSessionUrl(
+      ClientRegistration registration, @Nullable String idTokenHint, HttpServletRequest request) {
+    String endSessionEndpoint = endSessionEndpoint(registration);
+    if (endSessionEndpoint == null) {
+      return null;
+    }
+    UriComponentsBuilder target = UriComponentsBuilder.fromUriString(endSessionEndpoint);
+    if (idTokenHint != null) {
+      target.queryParam("id_token_hint", idTokenHint);
+    }
+    target.queryParam("client_id", registration.getClientId());
+    if (sharedCallbackUrl != null) {
+      target
+          .queryParam("post_logout_redirect_uri", sharedCallbackUrl)
+          .queryParam("state", SIGN_OUT_STATE_PREFIX + returnPath(request));
+    } else {
+      target.queryParam("post_logout_redirect_uri", resolvePostLogoutRedirectUri(request));
+    }
+    return target.encode(StandardCharsets.UTF_8).build().toUriString();
+  }
+
+  /** The configured registration when there is exactly one, else {@code null}. */
+  private ClientRegistration soleRegistration() {
+    ClientRegistration sole = null;
+    if (clientRegistrationRepository instanceof Iterable<?> registrations) {
+      for (Object registration : registrations) {
+        if (sole != null) {
+          return null;
+        }
+        sole = (ClientRegistration) registration;
+      }
+    }
+    return sole;
   }
 
   private static String endSessionEndpoint(ClientRegistration registration) {
@@ -131,6 +195,14 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
       return KEYCLOAK_AUTH_SUFFIX;
     }
     return null;
+  }
+
+  /** The path part of the resolved post-logout URI - where Cockpit's user goes back to. */
+  private String returnPath(HttpServletRequest request) {
+    String path = UriComponentsBuilder.fromUriString(resolvePostLogoutRedirectUri(request))
+        .build()
+        .getPath();
+    return path == null || path.isEmpty() ? "/" : path;
   }
 
   private String resolvePostLogoutRedirectUri(HttpServletRequest request) {

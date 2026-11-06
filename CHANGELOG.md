@@ -4,9 +4,54 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.1] - 2026-10-23
+## [1.5.1] - 2026-11-06
+
+### Added
+
+- **The webapp can use the UIs' shared browser callback** (CF-SHARED-CALLBACK-1). New
+  property `cadenzaflow.sso.shared-callback-url`; empty, the default, changes nothing. When
+  set, Cockpit/Admin/Tasklist sign out to the bare shared URL with the end-session
+  `state=cf.so:<path>`. With sign-in through it switched on (next entry), they also send it
+  as `redirect_uri` on sign-in and on the token exchange, and their states start with
+  `cf.` so the shared page can route the code back to `/login/oauth2/code/oidc`. A
+  malformed value fails the boot. See docs/entra-azure-setup-and-testing-guide.md.
+
+- **The shared callback is for sign-out only unless `cadenzaflow.sso.shared-callback-sign-in`
+  is true** (CF-SHARED-CALLBACK-2, default `false`). Entra binds a redirect URI to one
+  platform type, and Cockpit (Web, server-side redemption) cannot share the UIs' SPA URI. So
+  on Entra, Cockpit keeps its own sign-in redirect URI and returns to the shared URL only on
+  sign-out. Set sign-in `true` only where the provider has no platform types (Keycloak);
+  only then do the sign-in redirect and the `cf.` state prefix apply. Sign-in `true`
+  without a URL fails the boot.
+
+- **Cockpit signs in through the shared page by token** (CF-SHARED-CALLBACK-3). New
+  property `cadenzaflow.sso.login-page-url`; empty, the default, changes nothing. When it
+  is set, an unauthenticated webapp request is redirected there with `returnTo`. The page
+  posts its access token to the new `POST /cadenzaflow/v1/app/login-with-token`, which
+  validates it exactly as `/engine-rest` validates bearer tokens and opens a fresh session
+  (204 with the Cockpit URL; 401 for a refused token, 403 for a cross-origin call). It is
+  an ordinary webapp session, capped by the new `cadenzaflow.sso.bearer-session-max`
+  (default `PT8H`). An optional `X-ID-Token`, validated the same way, becomes the logout's
+  `id_token_hint`; without it, sign-out goes without a hint. Only a delegated user token
+  opens a session (`cadenzaflow.sso.bearer-login.user-token-only`, default `true`):
+  client-credentials tokens (Entra `idtyp=app` or no `scp`, Keycloak `service-account-*`)
+  answer 401. Rate limiting belongs to the ingress. On Entra, the registration then needs
+  one SPA-type redirect URI per environment. (Tests: the ITs' own containers now get a
+  10-minute startup timeout, so a slow build machine costs time, not a red build.)
+
+- **`cadenzaflow.sso.bearer-login.user-claim`: the claim that names the Cockpit token
+  login's user** (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1). It is for projects on a
+  directory identity provider whose directory keys users on another claim than
+  `/engine-rest` does, e.g. `email` with the Entra plugin (mail-keyed) while
+  `/engine-rest` maps by `oid`. A token without the claim answers 401. The default, empty,
+  changes nothing; with `plugin.identity.provider: token` it is not needed.
 
 ### Changed
+
+- **PKCE (S256) on every webapp sign-in** (CF-SHARED-CALLBACK-1), with or without the
+  shared callback. Keycloak and Entra accept it from a confidential client. There is
+  nothing to configure.
+
 
 - **Spring Boot 4.1.1 → 4.1.2.** Boot 4.1.2 itself manages Tomcat 11.0.27 and Jackson
   2.21.7 / 3.1.7, the versions that fix CVE-2026-65182 (Tomcat) and CVE-2026-68497
@@ -17,6 +62,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with no overrides left.
 
 - **AWS SDK BOM 2.57.1 → 2.57.3** (aws flavour only).
+
+- **Versions** (CF-TRAIN8-VERSION-BUMPS-1 - a release bumps every dependency). Engine
+  `cadenzaflow` 1.2.4 → 1.2.5 (upstream: the external-task client starter applies
+  `order-by-create-time` / `use-create-time`; Cockpit skips only the permissions that are
+  disabled; the unknown-directory-user NPE above is NOT fixed there - the wrapper's own
+  guard stays). AWS SDK BOM 2.57.3 → 2.57.10 and aws-advanced-jdbc-wrapper 4.5.0 → 4.6.0
+  (aws flavour only); azure-identity-extensions 1.2.10 → 1.3.1 (azure flavour only);
+  GraalVM polyglot 25.4.4.1.1 → 25.5.5.0.3; tmf630-toolkit 3.5.1 → 3.5.2; build plugins
+  jacoco 0.8.15 → 0.8.16, maven-enforcer 3.6.3 → 3.7.0, maven-surefire and maven-failsafe
+  3.6.0 → 3.6.1, pitest-maven 1.30.1 → 1.30.2.
+
+- **Build only:** the image gate's Trivy scanner 0.76.1 → 0.76.2 (release workflow
+  and the `docker` profile); the release image's Maven build stage
+  `maven:3.9.12` → `3.9.16`; workflow actions download-artifact 8.0.2, setup-java 6.2.0,
+  upload-artifact 7.0.2, login-action 4.8.0, setup-buildx-action 4.4.1 and
+  cosign-installer 4.1.3.
+
+- **Images are signed and attested with cosign 3** (2.6.1 → 3.1.4, the estate's signing
+  version). The signature and the per-architecture SBOM attestation are now Sigstore
+  bundles stored as OCI referrers. To verify a 1.5.1 or later image, use cosign 2.6.5 or
+  later; cosign 2.6.1 and older report "no signatures found". The `cosign verify` and
+  `verify-attestation` commands in README §8.9 are unchanged, and cosign 3 still
+  verifies earlier releases.
+
+### Fixed
+
+- **Cockpit no longer labels the signed-in user "null null"** (ENGINE-COCKPIT-USER-LABEL-NULL-1).
+  With `plugin.identity.provider: token` the engine's one user carried no names. It now
+  takes `given_name` / `family_name` from the login token (the shared page's bearer login
+  or the server-side OIDC login); without them the label is `preferred_username`, then
+  `email`, then `sub`, then the user id - never "null".
+
+- **A signed-in user without the Cockpit (Admin, Tasklist) access grant gets a plain
+  no-access page, not Spring's Whitelabel Error Page** (ENGINE-COCKPIT-FORBIDDEN-PAGE-1).
+  The engine webapp's 403 under `/app/**` now renders a page that names the application,
+  the group(s) that may open it (the engine's administrator groups, i.e.
+  `administrator-group-name`) and a sign-out link to `/logout`. Every other error keeps
+  Boot's default page.
+
+- **Base image moved to `eclipse-temurin:25-jre-noble@sha256:a98128a5…` (25.0.5_8)**, which
+  moves the JRE from 25.0.4.1 to 25.0.5. The new base closes CVE-2026-111497 (libbrotli1
+  1.1.0-2ubuntu0.1, HIGH). It still ships apt/libapt-pkg6.0t64 2.8.3, so CVE-2026-109518
+  (HIGH) is closed **as an exception to the house rule (C-2037 b), for that CVE only**:
+  both Dockerfiles upgrade apt and libapt-pkg6.0t64 in place to 2.8.4ubuntu0.1
+  (`apt-get install --only-upgrade apt libapt-pkg6.0t64`), with no `.trivyignore` entry.
+  The line goes again with the next base digest that ships the fixed apt.
+
+- **A signed-in user unknown to the identity provider gets 401, not 500**
+  (OPENTMF-CADENZAFLOW-UNKNOWN-DIRECTORY-USER-401-1). The engine webapp's
+  ContainerBasedAuthenticationFilter looked the user up, got null and failed with an NPE
+  (upstream, cadenzaflow-webapp-jakarta 1.2.4). The wrapper's OAuth2AuthenticationProvider
+  now answers "not authenticated" for such a user, so the webapp responds 401. It asks the
+  directory once per session. This affects `plugin.identity.provider: keycloak` and
+  `entra`, for both the server-side login and the token login; `token` was never
+  affected.
+
+- **Four SonarCloud findings in the CF-3 code**: an identical `getName()` override was
+  removed, an eager WARN argument list is now guarded, an unused catch variable became
+  `_`, and a test assertion was put into expected/actual order.
 
 ## [1.5.0] - 2026-10-21
 

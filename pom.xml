@@ -61,7 +61,7 @@
          parent pins 4.0.7); the compatibility proof is this repo's full IT suite,
          which boots the engine, both identity plugins and the REST surface. -->
     <spring-boot.version>4.1.2</spring-boot.version>
-    <cadenzaflow.version>1.2.4</cadenzaflow.version>
+    <cadenzaflow.version>1.2.5</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
     <cadenzaflow-entra-identity.version>1.2.0</cadenzaflow-entra-identity.version>
@@ -70,7 +70,7 @@
          Jersey-served paths (/engine-rest/*) bypass it and keep answering 401/403
          exactly as before; see OpenTmfCadenzaFlowApplicationIT for what is measured. -->
     <openid-rbac-security.version>3.3.0</openid-rbac-security.version>
-    <graalvm.version>25.4.4.1.1</graalvm.version>
+    <graalvm.version>25.5.5.0.3</graalvm.version>
     <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
     <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
 
@@ -83,11 +83,11 @@
          allowlist) is plain public API, called programmatically from the Jersey
          resource - the -autoconfigure sibling is Spring-MVC-only and would never
          see a request under /engine-rest. -->
-    <tmf630-toolkit.version>3.5.1</tmf630-toolkit.version>
+    <tmf630-toolkit.version>3.5.2</tmf630-toolkit.version>
 
     <archunit.version>1.5.1</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
-    <pitest-maven.version>1.30.1</pitest-maven.version>
+    <pitest-maven.version>1.30.2</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
@@ -98,12 +98,12 @@
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <!-- pins the version the default lifecycle binding already resolves -->
     <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
-    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
-    <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
-    <maven-failsafe-plugin.version>3.6.0</maven-failsafe-plugin.version>
+    <maven-enforcer-plugin.version>3.7.0</maven-enforcer-plugin.version>
+    <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.6.1</maven-failsafe-plugin.version>
     <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
-    <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+    <jacoco-maven-plugin.version>0.8.16</jacoco-maven-plugin.version>
     <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
     <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
@@ -704,8 +704,8 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.3.9</aws-msk-iam-auth.version>
-        <awssdk.version>2.57.3</awssdk.version>
-        <aws-advanced-jdbc-wrapper.version>4.5.0</aws-advanced-jdbc-wrapper.version>
+        <awssdk.version>2.57.10</awssdk.version>
+        <aws-advanced-jdbc-wrapper.version>4.6.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
         <dependencies>
@@ -768,7 +768,7 @@
            An unprofiled run reports BUILD SUCCESS with no findings, which reads
            exactly like "everything is current". -->
       <properties>
-        <azure-identity-extensions.version>1.2.10</azure-identity-extensions.version>
+        <azure-identity-extensions.version>1.3.1</azure-identity-extensions.version>
       </properties>
       <dependencies>
         <dependency>
@@ -789,7 +789,7 @@
       <id>docker</id>
       <properties>
         <spring-boot.repackage.skip>false</spring-boot.repackage.skip>
-        <trivy-image.version>0.76.1</trivy-image.version>
+        <trivy-image.version>0.76.2</trivy-image.version>
         <!-- Stamped into the OCI provenance labels (DNMS template convention); pass
              -Dapp.commit=$(git rev-parse HEAD) for a provenance-labeled image. Pom
              properties rather than ${env.*} because Maven passes an UNSET env

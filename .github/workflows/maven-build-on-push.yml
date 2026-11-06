@@ -5,9 +5,16 @@ name: Maven build on push
 
 on:
   push:
-    branches: [develop]
+    branches:
+      - develop
+      # Train work rides ONE branch feature/train-<n> that is pushed but not merged until
+      # the cut. Without this line its pushes would run no build at all. The jobs are the
+      # same as for develop; SonarCloud picks the branch name up from the Actions env.
+      - 'feature/train-*'
   pull_request:
-    branches: [develop]
+    branches:
+      - develop
+      - 'feature/train-*'
 
 # Least privilege by default; each job below still declares its own block, which
 # REPLACES this one rather than adding to it. This is the floor for any job added
@@ -30,7 +37,7 @@ jobs:
           fetch-depth: 0   # Sonar blame data
 
       - name: Set up JDK 25
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: '25'

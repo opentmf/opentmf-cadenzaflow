@@ -21,6 +21,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.opentmf.cadenzaflow.ItContainers;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -41,7 +42,8 @@ class JobPriorityIndexPluginIT {
 
   @BeforeAll
   static void startPostgres() {
-    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine");
+    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")
+        .withStartupTimeout(ItContainers.STARTUP_TIMEOUT);
     postgres.start();
   }
 

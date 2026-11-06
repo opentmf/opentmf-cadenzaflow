@@ -27,6 +27,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
 import org.springframework.jdbc.core.namedparam.ParsedSql;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.opentmf.cadenzaflow.ItContainers;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -67,7 +68,8 @@ class IncidentGroupQueryPlanProbeIT {
 
   @Test
   void recordTheQueryPlansOnADnmsShapedDataset() throws Exception {
-    try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")) {
+    try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")
+        .withStartupTimeout(ItContainers.STARTUP_TIMEOUT)) {
       postgres.start();
       try (Connection connection = DriverManager.getConnection(
           postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {

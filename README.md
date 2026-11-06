@@ -176,6 +176,13 @@ identity provider, comes back with a code, and gets a session. There is no local
 username/password form and no local user table. Logging out of a UI also ends the
 provider session.
 
+With `cadenzaflow.sso.login-page-url` set, the browser goes to the UIs' shared sign-in
+page instead. That page signs in in the browser and hands the access token to
+`POST /cadenzaflow/v1/app/login-with-token`, which validates it like any REST bearer
+token and opens the session. On Entra, the whole estate then needs **one redirect URI per
+environment**, and Cockpit no longer needs its own Web-type URI
+([guide](docs/entra-azure-setup-and-testing-guide.md)).
+
 ### 3.2 Getting a token and calling the API
 
 Keycloak, client-credentials (how a worker or another service authenticates):
@@ -246,8 +253,11 @@ Inside the engine there is a **second** authorization layer: engine authorizatio
 (`cadenzaflow.bpm.authorization.enabled`, on by default) decides which users and
 groups may see and act on which process instances and tasks. Members of the group
 named by `administrator-group-name` (default `camunda-admin`) get full engine
-administrator rights. So an API caller passes the endpoint roles above *and* the
-engine's own checks.
+administrator rights. That layer applies to **people in the web consoles** only: the
+engine knows a user only on the webapp paths (`/app/*`, `/api/*`), so on
+`/engine-rest` the endpoint roles above are the **only** gate, and a service client
+needs no engine authorization or group. Providers, sign-in paths and worked examples:
+[docs/identity-and-access.md](docs/identity-and-access.md).
 
 ### 3.4 Role names are configurable
 
@@ -1549,6 +1559,11 @@ combination of cloud platform and Keycloak/Entra application identity is valid.
 Every published image is signed keylessly with cosign, and every architecture
 carries its own CycloneDX SBOM attestation. Both are worth checking before you run
 one in an environment you care about.
+
+**Use cosign 2.6.5 or later (cosign 3 recommended).** From 1.5.1 the images are signed
+with cosign 3, which stores the signature and the attestations as Sigstore bundles
+attached as OCI referrers. cosign 2.6.1 and older cannot find them and report "no
+signatures found". cosign 3 still verifies every earlier release.
 
 **Signature.** The signature is on the *index* — the multi-architecture manifest the
 tag points at — because that is the thing you pull. Substitute the version you are

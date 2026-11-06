@@ -2,7 +2,9 @@ package org.opentmf.cadenzaflow.config.identity.token;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.cadenzaflow.bpm.engine.identity.Group;
 import org.cadenzaflow.bpm.engine.identity.GroupQuery;
 import org.cadenzaflow.bpm.engine.identity.NativeUserQuery;
@@ -17,9 +19,11 @@ import org.cadenzaflow.bpm.engine.impl.identity.ReadOnlyIdentityProvider;
 import org.cadenzaflow.bpm.engine.impl.interceptor.CommandContext;
 import org.cadenzaflow.bpm.engine.impl.persistence.entity.GroupEntity;
 import org.cadenzaflow.bpm.engine.impl.persistence.entity.UserEntity;
+import org.opentmf.cadenzaflow.config.sso.BearerSessionAuthentication;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 
 /**
  * The token-backed identity session: the one known user is the current request's Spring
@@ -167,7 +171,38 @@ public class TokenIdentityProviderSession implements ReadOnlyIdentityProvider {
     UserEntity user = new UserEntity();
     user.setId(authentication.getName());
     user.setEmail(authentication.getName());
+    // Cockpit's header shows "firstName lastName" and renders a missing name as "null"
+    // (ENGINE-COCKPIT-USER-LABEL-NULL-1): the token's names, or a readable fallback.
+    Map<String, Object> claims = claims(authentication);
+    String firstName = claim(claims, "given_name");
+    String lastName = claim(claims, "family_name");
+    if (firstName == null && lastName == null) {
+      firstName = Stream.of("preferred_username", "email", "sub")
+          .map(name -> claim(claims, name))
+          .filter(Objects::nonNull)
+          .findFirst()
+          .orElse(authentication.getName());
+    }
+    user.setFirstName(firstName == null ? "" : firstName);
+    user.setLastName(lastName == null ? "" : lastName);
     return user;
+  }
+
+  /** The identity claims behind the authentication: the login token's, or none. */
+  private static Map<String, Object> claims(Authentication authentication) {
+    if (authentication instanceof BearerSessionAuthentication session) {
+      return session.getToken().getClaims();
+    }
+    if (authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal) {
+      return principal.getAttributes();
+    }
+    return Collections.emptyMap();
+  }
+
+  /** The claim as a non-blank string, or null. */
+  private static String claim(Map<String, Object> claims, String name) {
+    Object value = claims.get(name);
+    return value instanceof String text && !text.isBlank() ? text : null;
   }
 
   /** The token's authorities as engine group ids, the configured prefix stripped. */

@@ -13,11 +13,14 @@ import static org.mockito.Mockito.when;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
@@ -25,6 +28,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 class AuthorizeTokenFilterTests {
 
@@ -107,6 +111,64 @@ class AuthorizeTokenFilterTests {
             Instant.now().minusSeconds(60),
             Instant.now().plusSeconds(300));
     assertFalse(filter.hasTokenExpired(valid));
+  }
+
+  /**
+   * CF-SHARED-CALLBACK-3 (D-455): a bearer session is an ordinary webapp session, capped
+   * at bearer-session-max from its opening; the access token's own expiry does not end it.
+   */
+  @Test
+  void endsABearerSessionOlderThanItsMaximum() throws ServletException, IOException {
+    MockHttpSession session = new MockHttpSession();
+    request.setSession(session);
+    // 8 h + 1 s: the filter's clock is the engine's ClockUtil (a Date, millisecond
+    // precision); an exact 8 h would race Instant.now()'s nanoseconds.
+    authenticateBearer(Instant.now().plus(Duration.ofHours(8)).minusSeconds(1),
+        Instant.now().minus(Duration.ofHours(8)).minusSeconds(1));
+
+    filter.doFilterInternal(request, response, chain);
+
+    verify(chain).doFilter(request, response);
+    assertNull(SecurityContextHolder.getContext().getAuthentication());
+    assertTrue(session.isInvalid());
+    verifyNoInteractions(clientManager);
+  }
+
+  @Test
+  void keepsABearerSessionAfterItsTokenExpiredWithinItsMaximum()
+      throws ServletException, IOException {
+    MockHttpSession session = new MockHttpSession();
+    request.setSession(session);
+    authenticateBearer(Instant.now().minusSeconds(60), Instant.now().minus(Duration.ofHours(1)));
+
+    filter.doFilterInternal(request, response, chain);
+
+    verify(chain).doFilter(request, response);
+    assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+    assertFalse(session.isInvalid());
+    verifyNoInteractions(clientManager);
+  }
+
+  @Test
+  void theMaximumIsConfigurable() throws ServletException, IOException {
+    AuthorizeTokenFilter shortLived =
+        new AuthorizeTokenFilter(clientManager, Duration.ofMinutes(5));
+    authenticateBearer(Instant.now().plusSeconds(300), Instant.now().minusSeconds(301));
+
+    shortLived.doFilterInternal(request, response, chain);
+
+    assertNull(SecurityContextHolder.getContext().getAuthentication());
+  }
+
+  private void authenticateBearer(Instant tokenExpiresAt, Instant openedAt) {
+    Jwt jwt = Jwt.withTokenValue("token")
+        .header("alg", "RS256")
+        .claim("email", "gokhan@example.test")
+        .issuedAt(tokenExpiresAt.minusSeconds(600))
+        .expiresAt(tokenExpiresAt)
+        .build();
+    SecurityContextHolder.getContext().setAuthentication(new BearerSessionAuthentication(
+        jwt, "gokhan@example.test", List.of(), new BearerSessionDetails(null, openedAt)));
   }
 
   private void authenticate() {

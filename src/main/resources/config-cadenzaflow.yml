@@ -168,6 +168,38 @@ plugin.identity.keycloak:
   administrator-group-name: camunda-admin
   cache-enabled: true
 
+# The UIs' shared browser callback (env CADENZAFLOW_SSO_SHARED_CALLBACK_URL). When set, the
+# webapp sign-out returns there with the end-session state cf.so:<path>. Empty = today's
+# sign-out return.
+# shared-callback-sign-in (env CADENZAFLOW_SSO_SHARED_CALLBACK_SIGN_IN) also routes the
+# SIGN-IN through it: the URL replaces the template redirect-uri below and the state gets
+# the cf. prefix. Keep it false on Entra, which binds a redirect URI to one platform type
+# (Cockpit = Web, the UIs = SPA). Set it true only where the IdP has no platform types,
+# e.g. Keycloak.
+# login-page-url (env CADENZAFLOW_SSO_LOGIN_PAGE_URL): the shared page's Cockpit sign-in
+# route. When set, an unauthenticated webapp request is redirected there with
+# ?returnTo=<path>; the page signs in in the browser (SPA, PKCE) and posts the access
+# token to POST /cadenzaflow/v1/app/login-with-token, validated like an engine-rest bearer.
+# That gives one SPA-type redirect URI per environment on Entra. Empty = the server-side
+# login, and the endpoint answers 404.
+# bearer-session-max: such a session is an ordinary webapp session (idle timeout as usual),
+# capped at this age from its opening; the token's own expiry does not end it.
+cadenzaflow.sso:
+  shared-callback-url: ""
+  shared-callback-sign-in: false
+  login-page-url: ""
+  bearer-session-max: PT8H
+  # Only a delegated USER token opens a session; client-credentials tokens of services and
+  # workers (which engine-rest also accepts) are refused with 401.
+  bearer-login:
+    user-token-only: true
+    # The token claim that names the Cockpit session's engine user (env
+    # CADENZAFLOW_SSO_BEARERLOGIN_USERCLAIM). Empty = the principal engine-rest derives with
+    # the issuer's user-claim. Only for projects on a directory provider (entra/keycloak)
+    # whose directory keys users on another claim than engine-rest does, e.g. `email` with
+    # the Entra plugin (engine-rest: oid; the plugin: mail). Not needed with provider: token.
+    user-claim: ""
+
 # Webapp SSO client. The registration id is deliberately provider-NEUTRAL ('oidc'):
 # it is user-visible in /oauth2/authorization/{id} and on Spring's generated login
 # page, so a provider-specific id would advertise "keycloak" on an Entra deployment.

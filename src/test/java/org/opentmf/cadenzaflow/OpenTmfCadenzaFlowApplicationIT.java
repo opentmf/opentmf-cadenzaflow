@@ -2,10 +2,11 @@ package org.opentmf.cadenzaflow;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
 import org.cadenzaflow.bpm.engine.repository.Deployment;
@@ -22,6 +23,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -48,7 +50,7 @@ class OpenTmfCadenzaFlowApplicationIT {
           .waitingFor(
               Wait.forHttp("/realms/dsync/.well-known/openid-configuration")
                   .forPort(8080)
-                  .withStartupTimeout(Duration.ofMinutes(5)));
+                  .withStartupTimeout(ItContainers.STARTUP_TIMEOUT));
 
   @DynamicPropertySource
   static void registerProps(DynamicPropertyRegistry r) {
@@ -60,6 +62,9 @@ class OpenTmfCadenzaFlowApplicationIT {
     // Resource Server (JWT) and/or client config – adapt to your app:
     r.add("plugin.identity.keycloak.keycloak-issuer-url", () -> issuer);
     r.add("plugin.identity.keycloak.keycloak-admin-url", () -> admin);
+    // The Entra shape of CF-SHARED-CALLBACK-2: the shared URL is set for the sign-out only;
+    // shared-callback-sign-in stays at its default false.
+    r.add("cadenzaflow.sso.shared-callback-url", () -> "https://ui.example.test/auth/callback");
   }
 
   /**
@@ -207,6 +212,44 @@ class OpenTmfCadenzaFlowApplicationIT {
     // nothing serves, so its removal changed 404 into 401 there and nothing else.
     Assertions.assertEquals(302, get("/app/cockpit", null).statusCode());
     Assertions.assertEquals(302, get("/api/admin/auth/user/default", null).statusCode());
+  }
+
+  @Test
+  void withoutSharedSignInTheAuthorizeRedirectKeepsTheTemplateRedirectUri() throws Exception {
+    // CF-SHARED-CALLBACK-2, the Entra shape (shared URL set, sign-in through it off): the
+    // redirect URI stays Spring's template, the per-app Web-type URI Entra requires, and
+    // the state carries no cf. prefix. PKCE applies either way.
+    HttpResponse<String> response = get("/oauth2/authorization/oidc", null);
+    Assertions.assertEquals(302, response.statusCode());
+    var authorize = UriComponentsBuilder
+        .fromUriString(response.headers().firstValue("Location").orElseThrow())
+        .build()
+        .getQueryParams();
+    Assertions.assertEquals(
+        "http://localhost:" + port + "/cadenzaflow/v1/login/oauth2/code/oidc",
+        URLDecoder.decode(authorize.getFirst("redirect_uri"), StandardCharsets.UTF_8));
+    Assertions.assertFalse(
+        URLDecoder.decode(authorize.getFirst("state"), StandardCharsets.UTF_8).startsWith("cf."));
+    Assertions.assertEquals("S256", authorize.getFirst("code_challenge_method"));
+  }
+
+  @Test
+  void withoutALoginPageTheTokenLoginEndpointDoesNotExist() throws Exception {
+    // CF-SHARED-CALLBACK-3: POST /app/login-with-token exists only with
+    // cadenzaflow.sso.login-page-url set (LoginWithTokenIT); here it is unset.
+    HttpRequest request = HttpRequest.newBuilder()
+        .uri(URI.create("http://localhost:" + port + "/cadenzaflow/v1/app/login-with-token"))
+        .header("Authorization", "Bearer not-even-a-jwt")
+        .POST(HttpRequest.BodyPublishers.noBody())
+        .build();
+    HttpResponse<String> response =
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    Assertions.assertEquals(404, response.statusCode());
+    Assertions.assertTrue(response.headers().allValues("Set-Cookie").stream()
+        .noneMatch(c -> c.startsWith("JSESSIONID=")));
+    // ...and an unauthenticated webapp request still starts the server-side login.
+    Assertions.assertTrue(get("/app/cockpit/", null).headers().firstValue("Location")
+        .orElseThrow().endsWith("/cadenzaflow/v1/oauth2/authorization/oidc"));
   }
 
   @Test
