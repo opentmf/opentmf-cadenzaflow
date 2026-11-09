@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.3] - 2026-11-09
+
+### Fixed
+
+- **Cockpit's token sign-in works again where the shared page signs in with its own
+  client** (CF-ID-TOKEN-AUDIENCES-1). 1.5.2 accepted an `X-ID-Token` only when its `aud`
+  was the webapp registration's `client-id`. On Keycloak stacks the shared page signs in
+  with the console's own client (e.g. `dnms-config-ui`), so its ID token names that client
+  and 1.5.2 refused every such sign-in with 401 ("The aud claim is not valid").
+  The default now accepts every ID token that 1.5.1 or 1.5.2 accepted, with no config
+  change. The rule is per issuer: the API audiences `/engine-rest` accepts from it plus the
+  registration's `client-id`. An issuer that declares no `audiences` gets no audience check
+  here either, as on `/engine-rest`. Signature, issuer and expiry are checked as before.
+  This widens nothing on `/engine-rest`: its own token check is unchanged, the session's
+  identity comes from the access token, and the ID token is kept only as the logout's
+  `id_token_hint`. A deployment that wants the check narrow can set the new
+  `cadenzaflow.sso.id-token-audiences` (e.g. only its console client). A set list replaces
+  the default on every issuer.
+
+- **A token login behind an OIDC load balancer is no longer refused with 400**
+  (CF-SSO-ENTRA-SHAPED-TESTS-1). The image's `server.max-http-request-header-size` is now
+  `32KB`, up from `8KB`. The login request carries two JWTs. Behind an AWS ALB with OIDC it
+  also carries the ALB's session-cookie shards: about 20 KB of headers in all, which Tomcat
+  refused before the application saw it. The setting costs about 6 MB of header buffers at
+  200 request threads (README 8.1); `SERVER_MAX_HTTP_REQUEST_HEADER_SIZE` overrides it.
+
 ## [1.5.2] - 2026-11-09
 
 ### Fixed

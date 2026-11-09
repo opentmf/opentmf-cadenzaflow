@@ -63,7 +63,10 @@ server:
     enabled: false
   tomcat:
     max-http-form-post-size: 10MB
-  max-http-request-header-size: 8KB
+  # 32KB, not Spring's 8KB (CF-SSO-ENTRA-SHAPED-TESTS-1): a Cockpit token login carries
+  # two JWTs plus, behind an AWS ALB with OIDC, the ALB's 4 KB session-cookie shards.
+  # See README 8.1 for the per-connection cost.
+  max-http-request-header-size: 32KB
 
 management:
   endpoints:

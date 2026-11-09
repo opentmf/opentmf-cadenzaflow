@@ -36,7 +36,7 @@ class WebappClientIdTests {
         failure.getMessage());
   }
 
-  private static ClientRegistration registration(String id, String clientId) {
+  static ClientRegistration registration(String id, String clientId) {
     return ClientRegistration.withRegistrationId(id)
         .clientId(clientId)
         .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
