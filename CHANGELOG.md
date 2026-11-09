@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.2] - 2026-11-09
+
+### Fixed
+
+- **Cockpit's token sign-in accepts a real Entra ID token as `X-ID-Token`**
+  (CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1). Since 1.5.1, `POST /app/login-with-token` checked the
+  ID token with the REST API's decoder, so it demanded the API audience from
+  `opentmf.security.issuers[].audiences`. An Entra ID token's `aud` is the console's client
+  id only, so every Entra sign-in was refused with 401 ("The aud claim is not valid"). The
+  ID token now has its own check: the same issuers, keys, signature and expiry, with the
+  webapp registration's `client-id` (`spring.security.oauth2.client.registration.oidc`) as
+  its audience. A deployment that added that client id to `issuers[].audiences` as a
+  workaround should remove it: it is no longer needed, and it lets the REST API accept
+  tokens issued to the console. `/engine-rest` still refuses an ID token.
+
+### Changed
+
+- **AWS SDK BOM 2.57.10 → 2.57.11** (aws flavour only).
+
 ## [1.5.1] - 2026-11-06
 
 ### Added

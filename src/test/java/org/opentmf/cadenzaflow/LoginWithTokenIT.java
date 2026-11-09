@@ -52,6 +52,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class LoginWithTokenIT {
 
   private static final String AUDIENCE = "it-client";
+  // The webapp's OIDC client registration (application-it.yml): the aud of its ID tokens.
+  private static final String CLIENT_ID = "camunda-identity-service";
   // A user the IT's Keycloak directory knows (dsync realm import): the webapp looks the
   // signed-in user up in the identity provider and cannot authenticate an unknown one.
   private static final String EMAIL = "camunda@dnext-technology.com";
@@ -91,6 +93,16 @@ class LoginWithTokenIT {
     }
 
     String mint(String audience, Instant expiresAt, Map<String, Object> userClaims) {
+      return mint(List.of(audience), expiresAt, userClaims);
+    }
+
+    /** An ID token: issued to the OIDC client, so {@code aud} names the client id(s). */
+    String idToken(String... audience) {
+      return mint(List.of(audience), Instant.now().plusSeconds(300),
+          Map.of("email", EMAIL, "preferred_username", "cockpit-user", "nonce", "n-0S6_WzA2Mj"));
+    }
+
+    String mint(List<String> audience, Instant expiresAt, Map<String, Object> userClaims) {
       try {
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
             .issuer(issuer)
@@ -262,9 +274,50 @@ class LoginWithTokenIT {
     assertEquals(Optional.empty(), sessionCookie(login));
   }
 
+  /**
+   * CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1 (V209): an Entra ID token's {@code aud} is the console's
+   * client id alone, never the API audience. It must open the session, and it must still be
+   * refused as a bearer token by the REST API.
+   */
+  @Test
+  void anEntraShapedIdTokenSignsInAndIsStillRefusedByTheRestApi() throws Exception {
+    String idToken = ISSUER.idToken(CLIENT_ID);
+
+    HttpResponse<String> login = login(ISSUER.valid(), null, idToken);
+
+    assertEquals(204, login.statusCode(), login.body());
+    assertTrue(sessionCookie(login).isPresent());
+    HttpResponse<String> rest = send(HttpRequest.newBuilder(app("/engine-rest/version"))
+        .header("Authorization", "Bearer " + idToken).GET());
+    assertEquals(401, rest.statusCode(), rest.body());
+  }
+
+  /** The Keycloak shape: the ID token names the client id beside the API audience. */
+  @Test
+  void aKeycloakShapedIdTokenCarryingBothAudiencesSignsIn() throws Exception {
+    HttpResponse<String> login =
+        login(ISSUER.valid(), null, ISSUER.idToken(AUDIENCE, CLIENT_ID));
+
+    assertEquals(204, login.statusCode(), login.body());
+    assertTrue(sessionCookie(login).isPresent());
+  }
+
+  @Test
+  void anIdTokenForAForeignAudienceRefusesTheLoginAndOpensNothing() throws Exception {
+    HttpResponse<String> login =
+        login(ISSUER.valid(), null, ISSUER.idToken("some-other-client"));
+
+    assertEquals(401, login.statusCode());
+    assertEquals(Optional.empty(), sessionCookie(login));
+  }
+
+  // A login request carrying ~20 KB of headers (the ALB's OIDC session cookies) is NOT a cell
+  // here: the image keeps server.max-http-request-header-size at 8KB, so whether it passes is
+  // the deployment's setting (the chart default, a dnms-deploy row), not this application's.
+
   @Test
   void signOutReturnsToTheSharedUrlWithThePagesIdTokenAsHint() throws Exception {
-    String idToken = ISSUER.valid();
+    String idToken = ISSUER.idToken(CLIENT_ID);
     String session = sessionCookie(login(ISSUER.valid(), null, idToken)).orElseThrow();
 
     HttpResponse<String> logout = get("/logout", session);
