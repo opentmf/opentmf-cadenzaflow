@@ -120,7 +120,12 @@ final class IdTokenDecoders {
           audience -> audience != null && !Collections.disjoint(audience, accepted);
       validators.add(new JwtClaimValidator<>(JwtClaimNames.AUD, namesAnAcceptedClient));
     }
-    decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(validators));
+    // Nothing to add (single-issuer mode, no audiences): keep the stock validators, as the
+    // API decoder does. createDefaultWithValidators refuses an empty list, which is how
+    // 1.5.3 failed to boot on that shape (CF-ID-TOKEN-DECODER-BOOT-1).
+    if (!validators.isEmpty()) {
+      decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(validators));
+    }
     return new KeyOutageAwareJwtDecoder(decoder, issuerKeys);
   }
 }
