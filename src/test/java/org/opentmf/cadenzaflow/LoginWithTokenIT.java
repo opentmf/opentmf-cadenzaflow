@@ -330,9 +330,35 @@ class LoginWithTokenIT {
     assertEquals(Optional.empty(), sessionCookie(login));
   }
 
-  // A login request carrying ~20 KB of headers (the ALB's OIDC session cookies) is NOT a cell
-  // here: the image keeps server.max-http-request-header-size at 8KB, so whether it passes is
-  // the deployment's setting (the chart default, a dnms-deploy row), not this application's.
+  /**
+   * CF-SSO-ENTRA-SHAPED-TESTS-1: behind an AWS ALB with OIDC, the login request carries two
+   * JWTs (Bearer + X-ID-Token) PLUS the ALB's session cookies, which it splits into 4 KB
+   * shards. ~20 KB of headers in all; the image's 8KB limit answered 400 before the
+   * application saw the request.
+   */
+  @Test
+  void aLoginBehindAnOidcLoadBalancerWithTwentyKilobytesOfHeadersSignsIn() throws Exception {
+    StringBuilder cookies = new StringBuilder();
+    for (int shard = 0; shard < 4; shard++) {
+      if (shard > 0) {
+        cookies.append("; ");
+      }
+      cookies.append("AWSELBAuthSessionCookie-").append(shard).append('=')
+          .append("x".repeat(4000));
+    }
+    HttpRequest.Builder request = HttpRequest.newBuilder(app("/app/login-with-token"))
+        .header("Authorization", "Bearer " + ISSUER.valid())
+        .header("X-ID-Token", ISSUER.idToken(CLIENT_ID))
+        .header("Cookie", cookies.toString())
+        .header("Origin", "http://localhost:" + port)
+        .header("Sec-Fetch-Site", "same-origin")
+        .POST(HttpRequest.BodyPublishers.noBody());
+
+    HttpResponse<String> login = send(request);
+
+    assertEquals(204, login.statusCode(), login.body());
+    assertTrue(sessionCookie(login).isPresent());
+  }
 
   @Test
   void signOutReturnsToTheSharedUrlWithThePagesIdTokenAsHint() throws Exception {

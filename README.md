@@ -1315,6 +1315,16 @@ knowing; the shipped defaults live in
 | `SPRING_PROFILES_ACTIVE` | Active Spring profiles | — |
 | `LOGGING_CONFIG` | Path to your own Logback file | built-in |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | Set to `framework` behind a reverse proxy or Ingress, so redirect URLs use the external host | `none` |
+| `SERVER_MAX_HTTP_REQUEST_HEADER_SIZE` | Largest request header block Tomcat accepts; a larger one answers `400` before the application sees it | `32KB` |
+
+**Why the header limit is 32KB, not Spring's 8KB.** The engine is the one component that
+receives two JWTs and the load balancer's OIDC cookies in a single request. `POST
+/app/login-with-token` carries the access token (`Authorization: Bearer`) and the ID token
+(`X-ID-Token`). Behind an AWS ALB with OIDC authentication, the browser also sends the ALB's
+`AWSELBAuthSessionCookie-0..n` shards of up to 4 KB each. That totals around 20 KB, which
+8KB refused with a 400. The cost is memory: Tomcat holds a header buffer of this size for
+each connection it is processing. At 200 request threads that is about 6 MB, against about
+1.6 MB at 8KB. Lower it only where no such proxy sits in front.
 
 ### 8.2 Database
 

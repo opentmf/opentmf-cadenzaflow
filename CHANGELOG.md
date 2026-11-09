@@ -23,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `cadenzaflow.sso.id-token-audiences` (e.g. only its console client). A set list replaces
   the default on every issuer.
 
+- **A token login behind an OIDC load balancer is no longer refused with 400**
+  (CF-SSO-ENTRA-SHAPED-TESTS-1). The image's `server.max-http-request-header-size` is now
+  `32KB`, up from `8KB`. The login request carries two JWTs. Behind an AWS ALB with OIDC it
+  also carries the ALB's session-cookie shards: about 20 KB of headers in all, which Tomcat
+  refused before the application saw it. The setting costs about 6 MB of header buffers at
+  200 request threads (README 8.1); `SERVER_MAX_HTTP_REQUEST_HEADER_SIZE` overrides it.
+
 ## [1.5.2] - 2026-11-09
 
 ### Fixed
