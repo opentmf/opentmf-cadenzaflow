@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exactly as `/engine-rest` does for that issuer. Deployments that pin issuers, such as
   VFDE, were not affected.
 
+### Changed
+
+- **exec-maven-plugin 3.6.4 → 3.7.0** (build only; it runs the CHANGELOG date guard and
+  the image build helpers, and nothing it produces ships in the image).
+
 ## [1.5.3] - 2026-11-09
 
 ### Fixed
