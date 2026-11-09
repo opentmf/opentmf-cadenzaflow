@@ -88,6 +88,7 @@ This lets the consoles and single-page UIs of a project use **one** SPA-type red
 - The token is validated **exactly as on `/engine-rest`**: the same `ServletJwtSupport`, so the same keys, issuer, audience, expiry, user claim and authorities claim.
   - A refused token answers `401` and nothing is stored.
   - A cross-origin call (`Sec-Fetch-Site` other than `same-origin`, or another `Origin` host) answers `403`.
+- The optional `X-ID-Token` is checked against the same issuers and keys (signature, issuer, expiry), with the webapp registration's `client-id` as its audience: an ID token's `aud` is the client, not the API (`IdTokenDecoders`). An invalid one answers `401`. It is kept only as the logout's `id_token_hint`.
   - Success invalidates any earlier session, opens a new one and answers `204` with `Location` = the Cockpit URL (`LoginWithTokenFilter`).
 - `cadenzaflow.sso.bearer-login.user-token-only` (default `true`) admits only a **delegated user** token (`UserTokenPolicy`). The issuer's user claim must be present. Client-credentials tokens are refused with `401`: Entra `idtyp=app` or no `scp`, and Keycloak `service-account-*`.
 - The session is an ordinary webapp session. The token's expiry does not end it; the idle timeout and `cadenzaflow.sso.bearer-session-max` (default `PT8H`) do.

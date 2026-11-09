@@ -251,6 +251,14 @@ class SsoLogoutSuccessHandlerTests {
     assertFalse(redirect.contains("id_token_hint"), redirect);
   }
 
+  @Test
+  void aBearerSessionWithoutDetailsSignsOutWithoutHint() throws ServletException, IOException {
+    String redirect = bearerLogout(null);
+
+    assertTrue(redirect.startsWith("https://login.microsoftonline.com/tenant-id/"), redirect);
+    assertFalse(redirect.contains("id_token_hint"), redirect);
+  }
+
   private static String bearerLogout(BearerSessionDetails details)
       throws ServletException, IOException {
     ClientRegistration registration =

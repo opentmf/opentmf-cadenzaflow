@@ -36,7 +36,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *       must be {@code same-origin}, and {@code Origin}, when sent, must name this host;</li>
  *   <li>unless {@code bearer-login.user-token-only} is off, only a delegated user token is
  *       accepted ({@link UserTokenPolicy}); any other is refused with 401 and one WARN;</li>
- *   <li>an {@code X-ID-Token}, when sent, is validated by the same decoder and kept ONLY as
+ *   <li>an {@code X-ID-Token}, when sent, is validated against the same issuers and keys,
+ *       with the OIDC client id as its audience (an ID token's {@code aud}), and kept ONLY as
  *       the logout's {@code id_token_hint}. An invalid one refuses the login (401);</li>
  *   <li>any session the browser already had is invalidated and a NEW one is created
  *       (session-fixation protection), holding a {@link BearerSessionAuthentication} copied
@@ -67,8 +68,8 @@ public class LoginWithTokenFilter extends OncePerRequestFilter {
   private final String userClaim;
 
   /**
-   * @param idTokenDecoder the decoder {@code /engine-rest} trusts (it routes by {@code iss}
-   *     when several issuers are configured), for the optional {@code X-ID-Token}
+   * @param idTokenDecoder the decoder for the optional {@code X-ID-Token}: the issuers
+   *     {@code /engine-rest} trusts, the OIDC client id as audience ({@link IdTokenDecoders})
    * @param userTokenPolicy refuses non-user tokens, or {@code null} to accept every token
    *     {@code /engine-rest} accepts ({@code bearer-login.user-token-only: false})
    */

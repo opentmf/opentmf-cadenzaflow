@@ -120,7 +120,8 @@ public class SsoLogoutSuccessHandler extends OidcClientInitiatedLogoutSuccessHan
       // A session opened by POST /app/login-with-token (CF-SHARED-CALLBACK-3): the hint is
       // the ID token the page sent at login, if any. Without one the end-session request
       // goes without id_token_hint (the provider may then ask which account to sign out).
-      String idTokenHint = bearer.getDetails().idToken();
+      BearerSessionDetails details = bearer.getDetails();
+      String idTokenHint = details != null ? details.idToken() : null;
       String target = endSessionUrl(soleRegistration(), idTokenHint, request);
       if (target != null) {
         return target;

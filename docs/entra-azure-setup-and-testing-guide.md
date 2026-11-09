@@ -50,8 +50,12 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
     `Authorization: Bearer <access token>` and, optionally, `X-ID-Token: <ID token>`. The
     access token is validated exactly as an `/engine-rest` bearer: same keys, issuer,
     audience (on Entra the bare client id, via the registration's API scope the page
-    requests), expiry, user and roles claims. The ID token is validated by the same decoder
-    and kept only as the logout's `id_token_hint`. A new session is opened (any previous
+    requests), expiry, user and roles claims. The ID token is checked against the same
+    issuers and keys, signature and expiry, but its `aud` must be the registration's
+    `client-id` (an ID token is issued to the client, not to the API), and it is kept only
+    as the logout's `id_token_hint`. Do not add the client id to
+    `opentmf.security.issuers[].audiences` for it: that would widen what `/engine-rest`
+    accepts, and the ID token does not need it since 1.5.2. A new session is opened (any previous
     session is invalidated), and the answer is `204` with `Location` = the Cockpit app URL.
     **Which claim names the user (OPENTMF-CADENZAFLOW-BEARER-LOGIN-USER-CLAIM-1).** With
     `plugin.identity.provider: token` there is nothing to set: the engine user is the

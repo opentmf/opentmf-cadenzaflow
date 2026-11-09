@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 import org.springframework.boot.webmvc.autoconfigure.error.ErrorViewResolver;
 import org.springframework.http.HttpStatus;
@@ -89,7 +90,7 @@ public class WebappAccessDeniedPage implements ErrorViewResolver {
 
   /** The page for the failed request named by the error dispatch's attributes. */
   String html(HttpServletRequest request) {
-    String application = application(request);
+    String application = Objects.requireNonNullElse(application(request), "");
     String title = APP_TITLES.getOrDefault(application, HtmlUtils.htmlEscape(application));
     List<String> groups = adminGroups.get();
     String sentence = groups.isEmpty()

@@ -21,6 +21,7 @@ import org.cadenzaflow.bpm.spring.boot.starter.property.CamundaBpmProperties;
 import org.cadenzaflow.bpm.spring.boot.starter.property.WebappProperty;
 import org.cadenzaflow.bpm.webapp.impl.security.auth.ContainerBasedAuthenticationFilter;
 import org.opentmf.security.config.ServletJwtSupport;
+import org.opentmf.security.jwks.TrustedIssuerKeys;
 import org.opentmf.security.model.OpenTmfSecurityProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +40,6 @@ import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
@@ -59,6 +59,9 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 @EnableConfigurationProperties({OAuth2Properties.class, SsoProperties.class})
 @Configuration
 public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
+
+  /** The image's webapp registration id ({@code config-cadenzaflow.yml}). */
+  static final String WEBAPP_REGISTRATION_ID = "oidc";
 
   private static final Logger log =
       LoggerFactory.getLogger(CadenzaFlowSpringSecurityOAuth2AutoConfiguration.class);
@@ -150,6 +153,21 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   protected AuthorizeTokenFilter authorizeTokenFilter(OAuth2AuthorizedClientManager clientManager) {
     log.debug("Registering AuthorizeTokenFilter");
     return new AuthorizeTokenFilter(clientManager, bearerSessionMax);
+  }
+
+  /**
+   * The {@code client-id} of the webapp's OIDC registration ({@value #WEBAPP_REGISTRATION_ID},
+   * or the only registration when there is just one): the audience of its ID tokens.
+   */
+  static String webappClientId(ClientRegistrationRepository repository) {
+    String registrationId = soleRegistrationId(repository).orElse(WEBAPP_REGISTRATION_ID);
+    ClientRegistration registration = repository.findByRegistrationId(registrationId);
+    if (registration == null) {
+      throw new IllegalStateException("cadenzaflow.sso.login-page-url needs the OIDC client"
+          + " registration '" + WEBAPP_REGISTRATION_ID + "' (spring.security.oauth2.client"
+          + ".registration." + WEBAPP_REGISTRATION_ID + ".client-id): the X-ID-Token's audience");
+    }
+    return registration.getClientId();
   }
 
   /**
@@ -246,6 +264,11 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
    * {@link LoginWithTokenFilter}, which opens a new webapp session. Unset, the path answers
    * 404: the endpoint exists only for the shared page's login.</p>
    *
+   * <p>The optional {@code X-ID-Token} is an ID token, issued to the OIDC client: it is
+   * checked against the same issuers and keys, but its audience must be the webapp
+   * registration's {@code client-id} (CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1), not the API audience
+   * {@code /engine-rest} accepts.</p>
+   *
    * <p>CSRF protection is off on purpose (java:S4502): the credential is the
    * {@code Authorization} header, which a cross-site page cannot send, and the filter also
    * refuses another {@code Origin}.</p>
@@ -254,7 +277,9 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   @Bean
   @Order(0)
   public SecurityFilterChain loginWithTokenFilterChain(
-      HttpSecurity http, ServletJwtSupport servletJwtSupport, JwtDecoder jwtDecoder,
+      HttpSecurity http, ServletJwtSupport servletJwtSupport,
+      TrustedIssuerKeys trustedIssuerKeys,
+      ClientRegistrationRepository clientRegistrationRepository,
       OpenTmfSecurityProperties openTmfSecurityProperties) {
     http.securityMatcher(PathPatternRequestMatcher.withDefaults()
             .matcher(HttpMethod.POST, LoginWithTokenFilter.PATH))
@@ -269,7 +294,9 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     } else {
       http.authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
           .oauth2ResourceServer(servletJwtSupport::apply)
-          .addFilterAfter(new LoginWithTokenFilter(jwtDecoder,
+          .addFilterAfter(new LoginWithTokenFilter(
+                  IdTokenDecoders.forClient(openTmfSecurityProperties, trustedIssuerKeys,
+                      webappClientId(clientRegistrationRepository)),
                   userTokenOnly
                       ? new UserTokenPolicy(openTmfSecurityProperties, bearerLoginUserClaim)
                       : null,

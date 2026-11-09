@@ -59,11 +59,10 @@ class OpenTmfCadenzaFlowApplicationIT {
     var admin = String.format("http://%s:%d/admin/realms/dsync",
         KEYCLOAK.getHost(), KEYCLOAK.getMappedPort(8080));
 
-    // Resource Server (JWT) and/or client config – adapt to your app:
     r.add("plugin.identity.keycloak.keycloak-issuer-url", () -> issuer);
     r.add("plugin.identity.keycloak.keycloak-admin-url", () -> admin);
-    // The Entra shape of CF-SHARED-CALLBACK-2: the shared URL is set for the sign-out only;
-    // shared-callback-sign-in stays at its default false.
+    // The Entra shape of CF-SHARED-CALLBACK-2: the shared URL serves the sign-out only, and
+    // signing in through it is left switched off, as by default.
     r.add("cadenzaflow.sso.shared-callback-url", () -> "https://ui.example.test/auth/callback");
   }
 

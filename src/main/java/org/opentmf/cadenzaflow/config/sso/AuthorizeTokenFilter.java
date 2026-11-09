@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow.config.sso;
 
 import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -77,16 +78,22 @@ public class AuthorizeTokenFilter extends OncePerRequestFilter {
     if (authentication instanceof OAuth2AuthenticationToken token) {
       authorizeToken(token, request, response);
     } else if (authentication instanceof BearerSessionAuthentication bearer
-        && !ClockUtil.now().toInstant()
-            .isBefore(bearer.getDetails().openedAt().plus(bearerSessionMax))) {
-      BearerSessionDetails details = bearer.getDetails();
+        && bearerSessionEnded(bearer.getDetails())) {
       // A session opened by POST /app/login-with-token is an ordinary webapp session (the
       // token only proved the identity at login), capped at bearer-session-max.
-      log.debug("Bearer session of '{}' ended: opened at {}, max {}",
-          bearer.getName(), details.openedAt(), bearerSessionMax);
+      // Never log the details themselves: they hold the ID token.
+      BearerSessionDetails details = bearer.getDetails();
+      log.debug("Bearer session of '{}' ended: opened at {}, max {}", bearer.getName(),
+          details != null ? details.openedAt() : "<unknown>", bearerSessionMax);
       clearContext(request);
     }
     filterChain.doFilter(request, response);
+  }
+
+  /** Ended at bearer-session-max; a session without its details is ended too (fail closed). */
+  private boolean bearerSessionEnded(@Nullable BearerSessionDetails details) {
+    return details == null
+        || !ClockUtil.now().toInstant().isBefore(details.openedAt().plus(bearerSessionMax));
   }
 
   protected boolean hasTokenExpired(OAuth2Token token) {
