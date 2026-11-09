@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.4] - 2026-11-10
+
+### Fixed
+
+- **1.5.3 no longer fails to start in single-issuer mode with the shared sign-in on**
+  (CF-ID-TOKEN-DECODER-BOOT-1). With `opentmf.security.jwk-set-uri` (one issuer, nothing
+  pinned, no `audiences`) and `cadenzaflow.sso.login-page-url` set, the 1.5.3 default left
+  the `X-ID-Token` check with no validator of its own. Spring refused that empty list, so
+  `loginWithTokenFilterChain` could not be created and the pod crash-looped at startup.
+  The check now keeps Spring's standard validation in that case (signature and expiry),
+  exactly as `/engine-rest` does for that issuer. Deployments that pin issuers, such as
+  VFDE, were not affected.
+
 ## [1.5.3] - 2026-11-09
 
 ### Fixed

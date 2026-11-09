@@ -221,6 +221,26 @@ class IdTokenDecodersTests {
         () -> IdTokenDecoders.forClients(properties, keys, none));
   }
 
+  /**
+   * CF-ID-TOKEN-DECODER-BOOT-1 (1.5.3 crash-looped on this): single-issuer mode pins no
+   * issuer and declares no audiences, so the default adds no validator of its own. The
+   * decoder must keep Spring's stock validation (expiry), not fail to build.
+   */
+  @Test
+  void byDefaultSingleIssuerModeBuildsAndChecksOnlyKeysAndExpiry() {
+    OpenTmfSecurityProperties properties = new OpenTmfSecurityProperties();
+    properties.setJwkSetUri(jwks(key));
+    JwtDecoder decoder =
+        IdTokenDecoders.byDefault(properties, new TrustedIssuerKeys(properties), CLIENT_ID);
+    String console = mint(key, ISSUER, List.of("dnms-config-ui"), Instant.now().plusSeconds(300));
+    String expired = mint(key, ISSUER, List.of(CLIENT_ID), Instant.now().minusSeconds(300));
+    String forged = mint(otherKey, ISSUER, List.of(CLIENT_ID), Instant.now().plusSeconds(300));
+
+    assertEquals(List.of("dnms-config-ui"), decoder.decode(console).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(expired));
+    assertThrows(JwtException.class, () -> decoder.decode(forged));
+  }
+
   @Test
   void singleIssuerModeChecksTheClientIdToo() {
     OpenTmfSecurityProperties properties = new OpenTmfSecurityProperties();
