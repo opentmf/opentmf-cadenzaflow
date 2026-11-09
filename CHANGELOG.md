@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.3] - 2026-11-09
+
+### Fixed
+
+- **Cockpit's token sign-in works again where the shared page signs in with its own
+  client** (CF-ID-TOKEN-AUDIENCES-1). 1.5.2 accepted an `X-ID-Token` only when its `aud`
+  was the webapp registration's `client-id`. On Keycloak stacks the shared page signs in
+  with the console's own client (e.g. `dnms-config-ui`), so its ID token names that client
+  and 1.5.2 refused every such sign-in with 401 ("The aud claim is not valid"). The new
+  property `cadenzaflow.sso.id-token-audiences` lists the clients an ID token may be issued
+  to; a token naming any of them passes. Empty, the default, it is the registration's
+  `client-id`, exactly as in 1.5.2, which fits Entra, where page and webapp are one app.
+  A set list replaces the default, so include the registration's client id if its ID
+  tokens should still pass. The REST API's audiences are not involved.
+
 ## [1.5.2] - 2026-11-09
 
 ### Fixed

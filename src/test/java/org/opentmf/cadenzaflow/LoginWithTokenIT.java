@@ -54,6 +54,9 @@ class LoginWithTokenIT {
   private static final String AUDIENCE = "it-client";
   // The webapp's OIDC client registration (application-it.yml): the aud of its ID tokens.
   private static final String CLIENT_ID = "camunda-identity-service";
+  // The UIs' shared console client (DNMS: dnms-config-ui): on Keycloak stacks the shared
+  // page signs in with it, so ITS id is the ID token's aud (CF-ID-TOKEN-AUDIENCES-1).
+  private static final String CONSOLE_CLIENT_ID = "shared-console";
   // A user the IT's Keycloak directory knows (dsync realm import): the webapp looks the
   // signed-in user up in the identity provider and cannot authenticate an unknown one.
   private static final String EMAIL = "camunda@dnext-technology.com";
@@ -155,6 +158,10 @@ class LoginWithTokenIT {
     r.add("cadenzaflow.sso.shared-callback-url", () -> SHARED_CALLBACK);
     r.add("cadenzaflow.sso.login-page-url", () -> LOGIN_PAGE);
     r.add("cadenzaflow.sso.bearer-login.user-claim", () -> "email");
+    // The two-client topology of a Keycloak stack: the engine's registration and the
+    // shared page's console client differ; both are accepted as the ID token's audience.
+    r.add("cadenzaflow.sso.id-token-audiences[0]", () -> CLIENT_ID);
+    r.add("cadenzaflow.sso.id-token-audiences[1]", () -> CONSOLE_CLIENT_ID);
   }
 
   @LocalServerPort
@@ -290,6 +297,18 @@ class LoginWithTokenIT {
     HttpResponse<String> rest = send(HttpRequest.newBuilder(app("/engine-rest/version"))
         .header("Authorization", "Bearer " + idToken).GET());
     assertEquals(401, rest.statusCode(), rest.body());
+  }
+
+  /**
+   * CF-ID-TOKEN-AUDIENCES-1 (1.5.2 on Gökhan's stack): the shared page signs in with the
+   * console's own client, not the engine's registration, so the ID token names only it.
+   */
+  @Test
+  void anIdTokenOfTheSharedConsoleClientSignsIn() throws Exception {
+    HttpResponse<String> login = login(ISSUER.valid(), null, ISSUER.idToken(CONSOLE_CLIENT_ID));
+
+    assertEquals(204, login.statusCode(), login.body());
+    assertTrue(sessionCookie(login).isPresent());
   }
 
   /** The Keycloak shape: the ID token names the client id beside the API audience. */

@@ -2,6 +2,8 @@ package org.opentmf.cadenzaflow.config.sso;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -54,6 +56,17 @@ public class SsoProperties {
    */
   private Duration bearerSessionMax = DEFAULT_BEARER_SESSION_MAX;
 
+  /**
+   * The audiences an {@code X-ID-Token} of {@code POST /app/login-with-token} may carry
+   * (CF-ID-TOKEN-AUDIENCES-1): an ID token whose {@code aud} names any of them passes. An ID
+   * token is issued to the client that signed the user in, which is the shared page's
+   * console client. On Entra that is usually the same app as the webapp registration; on a
+   * Keycloak stack it is a client of its own (e.g. {@code dnms-config-ui}). Set, the list
+   * REPLACES the default, so name the registration's client id too if it should still pass.
+   * Empty (the default) = the webapp registration's {@code client-id}.
+   */
+  private List<String> idTokenAudiences = new ArrayList<>();
+
   /** {@code POST /app/login-with-token} settings. */
   private final BearerLogin bearerLogin = new BearerLogin();
 
@@ -98,6 +111,25 @@ public class SsoProperties {
           ? Optional.empty()
           : Optional.of(userClaim.trim());
     }
+  }
+
+  public List<String> getIdTokenAudiences() {
+    return idTokenAudiences;
+  }
+
+  public void setIdTokenAudiences(List<String> idTokenAudiences) {
+    this.idTokenAudiences = idTokenAudiences;
+  }
+
+  /** The configured ID-token audiences without blank entries, or empty for the default. */
+  public List<String> idTokenAudienceOverride() {
+    return idTokenAudiences == null
+        ? List.of()
+        : idTokenAudiences.stream()
+            .filter(audience -> audience != null && !audience.isBlank())
+            .map(String::trim)
+            .distinct()
+            .toList();
   }
 
   public BearerLogin getBearerLogin() {

@@ -1,6 +1,7 @@
 package org.opentmf.cadenzaflow.config.sso;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
  * that client's id, not the API audience {@code /engine-rest} accepts (on Entra ID the two
  * differ; the API decoder refused every real Entra ID token). This decoder trusts exactly the
  * issuers {@code /engine-rest} trusts, over the same cached keys, with the same signature,
- * expiry and issuer checks, but its audience check is the client id. The API decoder is left
+ * expiry and issuer checks, but its audience check is the client id(s) the ID token may be
+ * issued to ({@code cadenzaflow.sso.id-token-audiences}). The API decoder is left
  * untouched, so an ID token is still refused as a bearer token.</p>
  *
  * @author Gokhan Demir
@@ -40,35 +42,39 @@ final class IdTokenDecoders {
   }
 
   /**
-   * @param clientId the OIDC client registration's {@code client-id}: the {@code aud} an ID
-   *     token must carry
+   * @param audiences the client ids an ID token may be issued to: its {@code aud} must name
+   *     at least one of them
    */
-  static JwtDecoder forClient(
-      OpenTmfSecurityProperties properties, TrustedIssuerKeys keys, String clientId) {
+  static JwtDecoder forClients(
+      OpenTmfSecurityProperties properties, TrustedIssuerKeys keys, List<String> audiences) {
+    if (audiences.isEmpty()) {
+      throw new IllegalArgumentException("No ID-token audience to check against");
+    }
+    List<String> accepted = List.copyOf(audiences);
     List<ResolvedIssuer> issuers = CommonConfig.resolveIssuers(properties);
     if (issuers.size() == 1 && !issuers.get(0).pinsIssuer()) {
       ResolvedIssuer single = issuers.get(0);
-      return decoder(single, keys, 0, clientId);
+      return decoder(single, keys, 0, accepted);
     }
     Map<String, JwtDecoder> decoders = new LinkedHashMap<>();
     for (int i = 0; i < issuers.size(); i++) {
       ResolvedIssuer issuer = issuers.get(i);
-      decoders.put(issuer.issuer(), decoder(issuer, keys, i, clientId));
+      decoders.put(issuer.issuer(), decoder(issuer, keys, i, accepted));
     }
     return new CompositeJwtDecoder(decoders);
   }
 
   private static JwtDecoder decoder(
-      ResolvedIssuer issuer, TrustedIssuerKeys keys, int index, String clientId) {
+      ResolvedIssuer issuer, TrustedIssuerKeys keys, int index, List<String> accepted) {
     IssuerKeys issuerKeys = keys.forIssuer(index, issuer);
     NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSource(issuerKeys.source()).build();
     List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
     if (issuer.pinsIssuer()) {
       validators.add(new JwtIssuerValidator(issuer.issuer()));
     }
-    Predicate<List<String>> namesTheClient =
-        audience -> audience != null && audience.contains(clientId);
-    validators.add(new JwtClaimValidator<>(JwtClaimNames.AUD, namesTheClient));
+    Predicate<List<String>> namesAnAcceptedClient =
+        audience -> audience != null && !Collections.disjoint(audience, accepted);
+    validators.add(new JwtClaimValidator<>(JwtClaimNames.AUD, namesAnAcceptedClient));
     decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(validators));
     return new KeyOutageAwareJwtDecoder(decoder, issuerKeys);
   }

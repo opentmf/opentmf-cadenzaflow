@@ -179,7 +179,10 @@ provider session.
 With `cadenzaflow.sso.login-page-url` set, the browser goes to the UIs' shared sign-in
 page instead. That page signs in in the browser and hands the access token to
 `POST /cadenzaflow/v1/app/login-with-token`, which validates it like any REST bearer
-token and opens the session. On Entra, the whole estate then needs **one redirect URI per
+token and opens the session. The page's optional ID token must be issued to a client listed
+in `cadenzaflow.sso.id-token-audiences`. Empty, the default, that list holds the webapp
+registration's `client-id`; list the shared page's own client where it differs, e.g. on
+Keycloak stacks. On Entra, the whole estate then needs **one redirect URI per
 environment**, and Cockpit no longer needs its own Web-type URI
 ([guide](docs/entra-azure-setup-and-testing-guide.md)).
 

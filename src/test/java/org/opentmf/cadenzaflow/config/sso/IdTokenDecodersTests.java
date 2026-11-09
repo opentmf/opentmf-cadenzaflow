@@ -116,6 +116,35 @@ class IdTokenDecodersTests {
     assertThrows(JwtException.class, () -> decoder.decode(stranger));
   }
 
+  /**
+   * CF-ID-TOKEN-AUDIENCES-1: a Keycloak stack where the shared page's console client
+   * (dnms-config-ui) differs from the engine's registration (cadenzaflow). Both listed.
+   */
+  @Test
+  void withTwoClientsListedAnIdTokenOfEitherIsAccepted() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
+    JwtDecoder decoder = IdTokenDecoders.forClients(properties,
+        new TrustedIssuerKeys(properties), List.of("cadenzaflow", "dnms-config-ui"));
+    Instant exp = Instant.now().plusSeconds(300);
+    String console = mint(key, ISSUER, List.of("dnms-config-ui"), exp);
+    String engine = mint(key, ISSUER, List.of("cadenzaflow"), exp);
+    String foreign = mint(key, ISSUER, List.of(CLIENT_ID), exp);
+
+    assertEquals(List.of("dnms-config-ui"), decoder.decode(console).getAudience());
+    assertEquals(List.of("cadenzaflow"), decoder.decode(engine).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(foreign));
+  }
+
+  @Test
+  void anEmptyAudienceListIsRefusedAtConstruction() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
+    TrustedIssuerKeys keys = new TrustedIssuerKeys(properties);
+    List<String> none = List.of();
+
+    assertThrows(IllegalArgumentException.class,
+        () -> IdTokenDecoders.forClients(properties, keys, none));
+  }
+
   @Test
   void singleIssuerModeChecksTheClientIdToo() {
     OpenTmfSecurityProperties properties = new OpenTmfSecurityProperties();
@@ -131,8 +160,8 @@ class IdTokenDecodersTests {
   }
 
   private static JwtDecoder idTokenDecoder(OpenTmfSecurityProperties properties) {
-    return IdTokenDecoders.forClient(
-        properties, new TrustedIssuerKeys(properties), CLIENT_ID);
+    return IdTokenDecoders.forClients(
+        properties, new TrustedIssuerKeys(properties), List.of(CLIENT_ID));
   }
 
   private static OpenTmfSecurityProperties issuers(IssuerProperties... entries) {

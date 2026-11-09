@@ -72,6 +72,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   private final Duration bearerSessionMax;
   private final boolean userTokenOnly;
   private final String bearerLoginUserClaim;
+  private final List<String> idTokenAudiences;
   private final String webappPath;
 
   public CadenzaFlowSpringSecurityOAuth2AutoConfiguration(
@@ -85,6 +86,7 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
     this.bearerSessionMax = ssoProperties.getBearerSessionMax();
     this.userTokenOnly = ssoProperties.getBearerLogin().isUserTokenOnly();
     this.bearerLoginUserClaim = ssoProperties.getBearerLogin().userClaimOverride().orElse(null);
+    this.idTokenAudiences = ssoProperties.idTokenAudienceOverride();
     WebappProperty webapp = properties.getWebapp();
     this.webappPath = webapp.getApplicationPath();
   }
@@ -153,6 +155,18 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   protected AuthorizeTokenFilter authorizeTokenFilter(OAuth2AuthorizedClientManager clientManager) {
     log.debug("Registering AuthorizeTokenFilter");
     return new AuthorizeTokenFilter(clientManager, bearerSessionMax);
+  }
+
+  /**
+   * The audiences an {@code X-ID-Token} may carry: {@code cadenzaflow.sso.id-token-audiences}
+   * when set, else the webapp registration's {@code client-id} (CF-ID-TOKEN-AUDIENCES-1).
+   */
+  static List<String> idTokenAudiences(
+      List<String> configured, ClientRegistrationRepository repository) {
+    List<String> audiences =
+        configured.isEmpty() ? List.of(webappClientId(repository)) : configured;
+    log.info("Token login accepts an X-ID-Token issued to {}", audiences);
+    return audiences;
   }
 
   /**
@@ -265,9 +279,10 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
    * 404: the endpoint exists only for the shared page's login.</p>
    *
    * <p>The optional {@code X-ID-Token} is an ID token, issued to the OIDC client: it is
-   * checked against the same issuers and keys, but its audience must be the webapp
-   * registration's {@code client-id} (CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1), not the API audience
-   * {@code /engine-rest} accepts.</p>
+   * checked against the same issuers and keys, but its audience must be a client it may be
+   * issued to: {@code cadenzaflow.sso.id-token-audiences}, by default the webapp
+   * registration's {@code client-id} (CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1, CF-ID-TOKEN-AUDIENCES-1),
+   * not the API audience {@code /engine-rest} accepts.</p>
    *
    * <p>CSRF protection is off on purpose (java:S4502): the credential is the
    * {@code Authorization} header, which a cross-site page cannot send, and the filter also
@@ -295,8 +310,8 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
       http.authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
           .oauth2ResourceServer(servletJwtSupport::apply)
           .addFilterAfter(new LoginWithTokenFilter(
-                  IdTokenDecoders.forClient(openTmfSecurityProperties, trustedIssuerKeys,
-                      webappClientId(clientRegistrationRepository)),
+                  IdTokenDecoders.forClients(openTmfSecurityProperties, trustedIssuerKeys,
+                      idTokenAudiences(idTokenAudiences, clientRegistrationRepository)),
                   userTokenOnly
                       ? new UserTokenPolicy(openTmfSecurityProperties, bearerLoginUserClaim)
                       : null,

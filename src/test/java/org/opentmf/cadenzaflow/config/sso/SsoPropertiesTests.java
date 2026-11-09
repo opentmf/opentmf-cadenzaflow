@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -116,5 +118,28 @@ class SsoPropertiesTests {
   @ValueSource(strings = {" https://ui.example.com/auth/callback "})
   void surroundingWhitespaceIsTrimmed(String value) {
     assertEquals(Optional.of("https://ui.example.com/auth/callback"), with(value).sharedCallback());
+  }
+
+  @Test
+  void idTokenAudiencesDefaultToEmptyWhichMeansTheRegistrationsClientId() {
+    assertEquals(List.of(), new SsoProperties().idTokenAudienceOverride());
+  }
+
+  @Test
+  void idTokenAudiencesAreTrimmedWithoutBlanksOrDuplicates() {
+    SsoProperties properties = new SsoProperties();
+    properties.setIdTokenAudiences(
+        Arrays.asList(" cadenzaflow ", "", null, "dnms-config-ui", "cadenzaflow"));
+
+    assertEquals(List.of("cadenzaflow", "dnms-config-ui"), properties.idTokenAudienceOverride());
+    assertEquals(5, properties.getIdTokenAudiences().size());
+  }
+
+  @Test
+  void aNullIdTokenAudienceListMeansTheDefault() {
+    SsoProperties properties = new SsoProperties();
+    properties.setIdTokenAudiences(null);
+
+    assertEquals(List.of(), properties.idTokenAudienceOverride());
   }
 }
