@@ -57,8 +57,10 @@ class IdTokenDecodersTests {
   void aKeycloakShapedIdTokenCarryingBothAudiencesIsAccepted() {
     OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
 
-    idTokenDecoder(properties).decode(
-        mint(key, ISSUER, List.of(API_AUDIENCE, CLIENT_ID), Instant.now().plusSeconds(300)));
+    String idToken =
+        mint(key, ISSUER, List.of(API_AUDIENCE, CLIENT_ID), Instant.now().plusSeconds(300));
+
+    assertTrue(idTokenDecoder(properties).decode(idToken).getAudience().contains(CLIENT_ID));
   }
 
   @Test
@@ -73,9 +75,9 @@ class IdTokenDecodersTests {
   @Test
   void anIdTokenCarryingOnlyTheApiAudienceIsRefused() {
     JwtDecoder decoder = idTokenDecoder(issuers(entry(ISSUER, key, API_AUDIENCE)));
+    String apiOnly = mint(key, ISSUER, List.of(API_AUDIENCE), Instant.now().plusSeconds(300));
 
-    assertThrows(JwtException.class, () -> decoder.decode(
-        mint(key, ISSUER, List.of(API_AUDIENCE), Instant.now().plusSeconds(300))));
+    assertThrows(JwtException.class, () -> decoder.decode(apiOnly));
   }
 
   @Test
@@ -83,16 +85,18 @@ class IdTokenDecodersTests {
     JwtDecoder decoder = idTokenDecoder(issuers(entry(ISSUER, key, API_AUDIENCE)));
 
     // Past Spring's 60 s clock-skew allowance.
-    assertThrows(JwtException.class, () -> decoder.decode(
-        mint(key, ISSUER, List.of(CLIENT_ID), Instant.now().minusSeconds(300))));
+    String expired = mint(key, ISSUER, List.of(CLIENT_ID), Instant.now().minusSeconds(300));
+
+    assertThrows(JwtException.class, () -> decoder.decode(expired));
   }
 
   @Test
   void anIdTokenSignedByAnotherKeyIsRefused() {
     JwtDecoder decoder = idTokenDecoder(issuers(entry(ISSUER, key, API_AUDIENCE)));
 
-    assertThrows(JwtException.class, () -> decoder.decode(
-        mint(otherKey, ISSUER, List.of(CLIENT_ID), Instant.now().plusSeconds(300))));
+    String forged = mint(otherKey, ISSUER, List.of(CLIENT_ID), Instant.now().plusSeconds(300));
+
+    assertThrows(JwtException.class, () -> decoder.decode(forged));
   }
 
   @Test
@@ -101,12 +105,15 @@ class IdTokenDecodersTests {
         entry(ISSUER, key, API_AUDIENCE), entry(OTHER_ISSUER, otherKey, API_AUDIENCE)));
     Instant exp = Instant.now().plusSeconds(300);
 
-    decoder.decode(mint(key, ISSUER, List.of(CLIENT_ID), exp));
-    decoder.decode(mint(otherKey, OTHER_ISSUER, List.of(CLIENT_ID), exp));
-    assertThrows(JwtException.class,
-        () -> decoder.decode(mint(key, OTHER_ISSUER, List.of(CLIENT_ID), exp)));
-    assertThrows(JwtException.class, () -> decoder.decode(
-        mint(key, "https://stranger.example.test", List.of(CLIENT_ID), exp)));
+    String first = mint(key, ISSUER, List.of(CLIENT_ID), exp);
+    String second = mint(otherKey, OTHER_ISSUER, List.of(CLIENT_ID), exp);
+    String wrongKey = mint(key, OTHER_ISSUER, List.of(CLIENT_ID), exp);
+    String stranger = mint(key, "https://stranger.example.test", List.of(CLIENT_ID), exp);
+
+    assertEquals(ISSUER, decoder.decode(first).getIssuer().toString());
+    assertEquals(OTHER_ISSUER, decoder.decode(second).getIssuer().toString());
+    assertThrows(JwtException.class, () -> decoder.decode(wrongKey));
+    assertThrows(JwtException.class, () -> decoder.decode(stranger));
   }
 
   @Test
@@ -116,9 +123,11 @@ class IdTokenDecodersTests {
     JwtDecoder decoder = idTokenDecoder(properties);
     Instant exp = Instant.now().plusSeconds(300);
 
-    decoder.decode(mint(key, ISSUER, List.of(CLIENT_ID), exp));
-    assertThrows(JwtException.class,
-        () -> decoder.decode(mint(key, ISSUER, List.of("someone-else"), exp)));
+    String idToken = mint(key, ISSUER, List.of(CLIENT_ID), exp);
+    String foreign = mint(key, ISSUER, List.of("someone-else"), exp);
+
+    assertEquals("subject-id", decoder.decode(idToken).getSubject());
+    assertThrows(JwtException.class, () -> decoder.decode(foreign));
   }
 
   private static JwtDecoder idTokenDecoder(OpenTmfSecurityProperties properties) {

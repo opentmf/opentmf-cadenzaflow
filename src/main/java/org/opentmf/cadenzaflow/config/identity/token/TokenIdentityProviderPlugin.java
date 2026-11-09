@@ -87,10 +87,10 @@ public class TokenIdentityProviderPlugin extends AbstractProcessEnginePlugin {
         grant.setResourceId(ANY);
         grant.addPermission(ALL);
         authorizationService.saveAuthorization(grant);
-        log.info(
-            "Granted ALL on {} to administrator group '{}'",
-            resource.resourceName(),
-            administratorGroupName);
+        if (log.isInfoEnabled()) {
+          log.info("Granted ALL on {} to administrator group '{}'",
+              resource.resourceName(), administratorGroupName);
+        }
       }
     }
   }

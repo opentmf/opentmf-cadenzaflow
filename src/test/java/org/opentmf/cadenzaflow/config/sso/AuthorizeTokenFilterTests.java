@@ -160,6 +160,20 @@ class AuthorizeTokenFilterTests {
     assertNull(SecurityContextHolder.getContext().getAuthentication());
   }
 
+  /** A bearer session that lost its details cannot be dated, so it ends (fail closed). */
+  @Test
+  void endsABearerSessionWithoutDetails() throws ServletException, IOException {
+    Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256").claim("email", "x@y.test")
+        .build();
+    SecurityContextHolder.getContext().setAuthentication(
+        new BearerSessionAuthentication(jwt, "x@y.test", List.of(), null));
+
+    filter.doFilterInternal(request, response, chain);
+
+    verify(chain).doFilter(request, response);
+    assertNull(SecurityContextHolder.getContext().getAuthentication());
+  }
+
   private void authenticateBearer(Instant tokenExpiresAt, Instant openedAt) {
     Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "RS256")

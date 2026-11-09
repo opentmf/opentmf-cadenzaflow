@@ -213,7 +213,8 @@ class AdminAuthorizationGuardPluginTests {
           .isInstanceOf(AuthorizationException.class)
           .hasMessageContaining("administrator group's own authorizations are protected");
 
-      assertThatThrownBy(() -> authorizationService.deleteAuthorization(grant.getId()))
+      String grantId = grant.getId();
+      assertThatThrownBy(() -> authorizationService.deleteAuthorization(grantId))
           .isInstanceOf(AuthorizationException.class);
 
       Authorization survived = authorizationService.createAuthorizationQuery()

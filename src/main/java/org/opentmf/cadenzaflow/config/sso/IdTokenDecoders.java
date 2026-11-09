@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import org.opentmf.security.config.CommonConfig;
 import org.opentmf.security.config.ResolvedIssuer;
 import org.opentmf.security.jwks.IssuerKeys;
@@ -65,8 +66,9 @@ final class IdTokenDecoders {
     if (issuer.pinsIssuer()) {
       validators.add(new JwtIssuerValidator(issuer.issuer()));
     }
-    validators.add(new JwtClaimValidator<List<String>>(
-        JwtClaimNames.AUD, audience -> audience != null && audience.contains(clientId)));
+    Predicate<List<String>> namesTheClient =
+        audience -> audience != null && audience.contains(clientId);
+    validators.add(new JwtClaimValidator<>(JwtClaimNames.AUD, namesTheClient));
     decoder.setJwtValidator(JwtValidators.createDefaultWithValidators(validators));
     return new KeyOutageAwareJwtDecoder(decoder, issuerKeys);
   }
