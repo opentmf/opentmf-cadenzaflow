@@ -61,9 +61,11 @@ public class SsoProperties {
    * (CF-ID-TOKEN-AUDIENCES-1): an ID token whose {@code aud} names any of them passes. An ID
    * token is issued to the client that signed the user in, which is the shared page's
    * console client. On Entra that is usually the same app as the webapp registration; on a
-   * Keycloak stack it is a client of its own (e.g. {@code dnms-config-ui}). Set, the list
-   * REPLACES the default, so name the registration's client id too if it should still pass.
-   * Empty (the default) = the webapp registration's {@code client-id}.
+   * Keycloak stack it is a client of its own (e.g. {@code dnms-config-ui}). Empty (the
+   * default): per issuer, the API audiences {@code /engine-rest} accepts from it plus the
+   * webapp registration's {@code client-id}, and no audience check for an issuer that
+   * declares none, as on {@code /engine-rest}. Set, the list REPLACES that default on every
+   * issuer, for a deployment that wants it narrow.
    */
   private List<String> idTokenAudiences = new ArrayList<>();
 

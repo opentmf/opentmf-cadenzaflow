@@ -51,10 +51,10 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
     access token is validated exactly as an `/engine-rest` bearer: same keys, issuer,
     audience (on Entra the bare client id, via the registration's API scope the page
     requests), expiry, user and roles claims. The ID token is checked against the same
-    issuers and keys, signature and expiry. Its `aud` must be a client it may be issued to:
-    by default the registration's `client-id`, which on Entra is the app the shared page
-    signs in with. If the page signs in with a different app, list it in
-    `cadenzaflow.sso.id-token-audiences` (since 1.5.3). An ID token is issued to the
+    issuers and keys, signature and expiry. By default its `aud` must be the registration's
+    `client-id` (on Entra, the app the shared page signs in with) or one of the issuer's
+    `audiences`. Since 1.5.3 you can set `cadenzaflow.sso.id-token-audiences` to narrow it
+    to named clients, for example only the console client. An ID token is issued to the
     client, not to the API. It is kept only as the logout's `id_token_hint`. Do not add the client id to
     `opentmf.security.issuers[].audiences` for it: that would widen what `/engine-rest`
     accepts, and the ID token does not need it since 1.5.2. A new session is opened (any previous

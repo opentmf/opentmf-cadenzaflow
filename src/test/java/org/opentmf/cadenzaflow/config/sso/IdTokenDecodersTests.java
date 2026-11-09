@@ -23,6 +23,7 @@ import org.opentmf.security.jwks.TrustedIssuerKeys;
 import org.opentmf.security.model.IssuerProperties;
 import org.opentmf.security.model.OpenTmfSecurityProperties;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 
@@ -135,6 +136,81 @@ class IdTokenDecodersTests {
     assertThrows(JwtException.class, () -> decoder.decode(foreign));
   }
 
+  /**
+   * CF-ID-TOKEN-AUDIENCES-1, the default: an issuer's API audiences plus the registration's
+   * client id. The VFDE shape: whatever 1.5.1 (API audience) or 1.5.2 (client id) accepted.
+   */
+  @Test
+  void byDefaultTheClientIdAndTheIssuersApiAudiencesPass() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
+    JwtDecoder decoder =
+        IdTokenDecoders.byDefault(properties, new TrustedIssuerKeys(properties), CLIENT_ID);
+    Instant exp = Instant.now().plusSeconds(300);
+    String client = mint(key, ISSUER, List.of(CLIENT_ID), exp);
+    String api = mint(key, ISSUER, List.of(API_AUDIENCE), exp);
+    String foreign = mint(key, ISSUER, List.of("someone-else"), exp);
+
+    assertEquals(List.of(CLIENT_ID), decoder.decode(client).getAudience());
+    assertEquals(List.of(API_AUDIENCE), decoder.decode(api).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(foreign));
+  }
+
+  /**
+   * The Keycloak stack shape (Gökhan's stack after the 1.5.2 roll): the realm's issuer entry
+   * declares no audiences, so /engine-rest checks none, and the shared page's ID token names
+   * its own console client. By default it passes, as in 1.5.1; keys and expiry still apply.
+   */
+  @Test
+  void byDefaultAnIssuerWithoutAudiencesIsNotAudienceCheckedAsOnTheRestApi() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, null));
+    JwtDecoder decoder =
+        IdTokenDecoders.byDefault(properties, new TrustedIssuerKeys(properties), "cadenzaflow");
+    String console = mint(key, ISSUER, List.of("dnms-config-ui"), Instant.now().plusSeconds(300));
+    String forged =
+        mint(otherKey, ISSUER, List.of("dnms-config-ui"), Instant.now().plusSeconds(300));
+    String expired =
+        mint(key, ISSUER, List.of("dnms-config-ui"), Instant.now().minusSeconds(300));
+
+    assertEquals(List.of("dnms-config-ui"), decoder.decode(console).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(forged));
+    assertThrows(JwtException.class, () -> decoder.decode(expired));
+  }
+
+  /** A set cadenzaflow.sso.id-token-audiences replaces the default, on every issuer. */
+  @Test
+  void aConfiguredListNarrowsEvenAnIssuerWithoutAudiences() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, null));
+    JwtDecoder decoder = CadenzaFlowSpringSecurityOAuth2AutoConfiguration.idTokenDecoder(
+        List.of("cadenzaflow"), properties, new TrustedIssuerKeys(properties),
+        // No oidc registration among several: a set list never needs one.
+        new InMemoryClientRegistrationRepository(
+            WebappClientIdTests.registration("a", "a-client"),
+            WebappClientIdTests.registration("b", "b-client")));
+    Instant exp = Instant.now().plusSeconds(300);
+    String engine = mint(key, ISSUER, List.of("cadenzaflow"), exp);
+    String console = mint(key, ISSUER, List.of("dnms-config-ui"), exp);
+
+    assertEquals(List.of("cadenzaflow"), decoder.decode(engine).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(console));
+  }
+
+  @Test
+  void unsetTheWiringUsesTheDefaultWithTheRegistrationsClientId() {
+    OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
+    JwtDecoder decoder = CadenzaFlowSpringSecurityOAuth2AutoConfiguration.idTokenDecoder(
+        List.of(), properties, new TrustedIssuerKeys(properties),
+        new InMemoryClientRegistrationRepository(
+            WebappClientIdTests.registration("oidc", "cadenzaflow")));
+    Instant exp = Instant.now().plusSeconds(300);
+    String engine = mint(key, ISSUER, List.of("cadenzaflow"), exp);
+    String api = mint(key, ISSUER, List.of(API_AUDIENCE), exp);
+    String console = mint(key, ISSUER, List.of("dnms-config-ui"), exp);
+
+    assertEquals(List.of("cadenzaflow"), decoder.decode(engine).getAudience());
+    assertEquals(List.of(API_AUDIENCE), decoder.decode(api).getAudience());
+    assertThrows(JwtException.class, () -> decoder.decode(console));
+  }
+
   @Test
   void anEmptyAudienceListIsRefusedAtConstruction() {
     OpenTmfSecurityProperties properties = issuers(entry(ISSUER, key, API_AUDIENCE));
@@ -174,7 +250,7 @@ class IdTokenDecodersTests {
     IssuerProperties entry = new IssuerProperties();
     entry.setIssuer(issuer);
     entry.setJwkSetUri(jwks(key));
-    entry.setAudiences(List.of(audience));
+    entry.setAudiences(audience == null ? List.of() : List.of(audience));
     return entry;
   }
 

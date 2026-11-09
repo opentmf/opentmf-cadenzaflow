@@ -42,6 +42,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -158,15 +159,21 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
   }
 
   /**
-   * The audiences an {@code X-ID-Token} may carry: {@code cadenzaflow.sso.id-token-audiences}
-   * when set, else the webapp registration's {@code client-id} (CF-ID-TOKEN-AUDIENCES-1).
+   * The {@code X-ID-Token} decoder (CF-ID-TOKEN-AUDIENCES-1):
+   * {@code cadenzaflow.sso.id-token-audiences} when set, else per issuer its API audiences
+   * plus the webapp registration's {@code client-id} ({@link IdTokenDecoders#byDefault}).
    */
-  static List<String> idTokenAudiences(
-      List<String> configured, ClientRegistrationRepository repository) {
-    List<String> audiences =
-        configured.isEmpty() ? List.of(webappClientId(repository)) : configured;
-    log.info("Token login accepts an X-ID-Token issued to {}", audiences);
-    return audiences;
+  static JwtDecoder idTokenDecoder(List<String> configured,
+      OpenTmfSecurityProperties security, TrustedIssuerKeys keys,
+      ClientRegistrationRepository repository) {
+    if (!configured.isEmpty()) {
+      log.info("Token login accepts an X-ID-Token issued to {}", configured);
+      return IdTokenDecoders.forClients(security, keys, configured);
+    }
+    String clientId = webappClientId(repository);
+    log.info("Token login accepts an X-ID-Token issued to '{}' or to an issuer's API"
+        + " audiences (cadenzaflow.sso.id-token-audiences unset)", clientId);
+    return IdTokenDecoders.byDefault(security, keys, clientId);
   }
 
   /**
@@ -279,10 +286,9 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
    * 404: the endpoint exists only for the shared page's login.</p>
    *
    * <p>The optional {@code X-ID-Token} is an ID token, issued to the OIDC client: it is
-   * checked against the same issuers and keys, but its audience must be a client it may be
-   * issued to: {@code cadenzaflow.sso.id-token-audiences}, by default the webapp
-   * registration's {@code client-id} (CF-ID-TOKEN-AUDIENCE-CLIENT-ID-1, CF-ID-TOKEN-AUDIENCES-1),
-   * not the API audience {@code /engine-rest} accepts.</p>
+   * checked against the same issuers and keys; its audience rule is
+   * {@code cadenzaflow.sso.id-token-audiences} when set, else the API audiences plus the
+   * webapp registration's {@code client-id} ({@link #idTokenDecoder}).</p>
    *
    * <p>CSRF protection is off on purpose (java:S4502): the credential is the
    * {@code Authorization} header, which a cross-site page cannot send, and the filter also
@@ -310,8 +316,8 @@ public class CadenzaFlowSpringSecurityOAuth2AutoConfiguration {
       http.authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
           .oauth2ResourceServer(servletJwtSupport::apply)
           .addFilterAfter(new LoginWithTokenFilter(
-                  IdTokenDecoders.forClients(openTmfSecurityProperties, trustedIssuerKeys,
-                      idTokenAudiences(idTokenAudiences, clientRegistrationRepository)),
+                  idTokenDecoder(idTokenAudiences, openTmfSecurityProperties,
+                      trustedIssuerKeys, clientRegistrationRepository),
                   userTokenOnly
                       ? new UserTokenPolicy(openTmfSecurityProperties, bearerLoginUserClaim)
                       : null,
