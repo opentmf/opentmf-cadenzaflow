@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer reads as commented-out code (S125), and a test lambda makes one throwing call
   (S5778). No behaviour change.
 
+- **Tests run on Testcontainers 2 throughout** (CF-TESTCONTAINERS-2-MODULES-1). The pom used the
+  pre-2.0 artifact ids `postgresql` and `junit-jupiter` pinned at 1.21.4, which both versions
+  goals report as newest, while the core `testcontainers` came in at 2.0.5 through the Spring
+  Boot BOM and `testcontainers-keycloak`: a mixed major line. Now `testcontainers-postgresql`
+  and `testcontainers-junit-jupiter`, versioned by the imported Spring Boot BOM (the
+  `testcontainers.version` property is gone), and the ITs use
+  `org.testcontainers.postgresql.PostgreSQLContainer` instead of the deprecated class. Test
+  scope only; the image is unchanged.
+
 ### Fixed
 
 - **The CHANGELOG release-date guard reads the date in UTC** (CF-CHANGELOG-DATE-GUARD-UTC-1).
