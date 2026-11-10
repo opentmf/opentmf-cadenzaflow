@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer reads as commented-out code (S125), and a test lambda makes one throwing call
   (S5778). No behaviour change.
 
+### Fixed
+
+- **The CHANGELOG release-date guard reads the date in UTC** (CF-CHANGELOG-DATE-GUARD-UTC-1).
+  `ci/changelog-release-date.sh` compared the heading with the machine's local date, so a
+  cut prepared after local midnight east of UTC (1.5.4, 01:3x TRT) passed locally and failed
+  the CI push build of the tag commit on its UTC runner. Release dates are UTC from now on.
+
 ## [1.5.4] - 2026-11-10
 
 ### Fixed
