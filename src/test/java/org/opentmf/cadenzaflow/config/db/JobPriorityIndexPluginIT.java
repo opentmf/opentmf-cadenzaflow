@@ -22,7 +22,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.opentmf.cadenzaflow.ItContainers;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * The real-database contract of {@link JobPriorityIndexPlugin} on PostgreSQL (the pattern
@@ -38,11 +38,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 class JobPriorityIndexPluginIT {
 
-  private static PostgreSQLContainer<?> postgres;
+  private static PostgreSQLContainer postgres;
 
   @BeforeAll
   static void startPostgres() {
-    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")
+    postgres = new PostgreSQLContainer("postgres:18.0-alpine")
         .withStartupTimeout(ItContainers.STARTUP_TIMEOUT);
     postgres.start();
   }
