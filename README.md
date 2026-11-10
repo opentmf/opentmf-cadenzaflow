@@ -2256,4 +2256,6 @@ docker build -f Dockerfile_release --build-arg MAVEN_PROFILES=repackage,aws \
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md). Its release dates are **UTC**: the release-time guard
+(`ci/changelog-release-date.sh`) expects `## [<version>] - <today in UTC>`, whatever the
+zone of the machine that cuts.

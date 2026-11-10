@@ -20,7 +20,9 @@ case "$version" in
   *-SNAPSHOT) exit 0 ;;
 esac
 
-today=$(date +%F)
+# The date is UTC, never the machine's local zone: a local cut after midnight east of
+# UTC and the CI runner (UTC) must agree on "today" (the 1.5.4 tag build failed on it).
+today=$(TZ=UTC date +%F)
 expected="## [${version}] - ${today}"
 if ! grep -qxF "$expected" "$changelog"; then
   echo "CHANGELOG guard: releasing ${version} needs the heading line" >&2
