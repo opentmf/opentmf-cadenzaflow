@@ -17,7 +17,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.opentmf.cadenzaflow.ItContainers;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * The CF-SCHEMA-FROM-URL-1 contract: the engine boots with its schema STATED once
@@ -36,11 +36,11 @@ class SchemaFromUrlBootIT {
   private static final String ROLE = "svc_runner";
   private static final String ROLE_PASSWORD = "svc";
 
-  private static PostgreSQLContainer<?> postgres;
+  private static PostgreSQLContainer postgres;
 
   @BeforeAll
   static void startPostgresAndCreateRoleAndSchema() throws SQLException {
-    postgres = new PostgreSQLContainer<>("postgres:18.0-alpine")
+    postgres = new PostgreSQLContainer("postgres:18.0-alpine")
         .withStartupTimeout(ItContainers.STARTUP_TIMEOUT);
     postgres.start();
     try (Connection connection = superuserConnection();
