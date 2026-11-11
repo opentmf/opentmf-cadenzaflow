@@ -79,7 +79,7 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
   static final String TABLE_NAME = "act_ru_job";
 
   /** Matches the identifier shape we will interpolate into DDL; anything else is skipped. */
-  private static final String PLAIN_IDENTIFIER = "[A-Za-z_][A-Za-z0-9_]*";
+  private static final String PLAIN_IDENTIFIER = "[A-Za-z_]\\w*";
 
   private static final String VALIDITY_SQL =
       """
@@ -138,16 +138,15 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
   // the injection-shaped "bad.name; drop table act_ru_job".
   @SuppressWarnings("java:S2077")
   private void ensureIndex(Connection connection, String schema) throws SQLException {
+    String index = qualified(schema, INDEX_NAME);
     Optional<Boolean> validity = indexValidity(connection, schema);
     if (validity.isPresent() && Boolean.FALSE.equals(validity.get())) {
       // An interrupted CREATE INDEX CONCURRENTLY leaves an INVALID index behind, and an
       // invalid index satisfies IF NOT EXISTS - so it must be dropped before the create.
       try (Statement statement = connection.createStatement()) {
-        statement.execute("drop index " + qualified(schema, INDEX_NAME));
+        statement.execute("drop index " + index);
       }
-      log.info(
-          "Dropped invalid {} left behind by an interrupted concurrent build",
-          qualified(schema, INDEX_NAME));
+      log.info("Dropped invalid {} left behind by an interrupted concurrent build", index);
       validity = Optional.empty();
     }
     if (validity.isEmpty()) {
@@ -161,12 +160,12 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
       }
     }
     if (indexValidity(connection, schema).orElse(false)) {
-      log.info("Index {} is present and valid", qualified(schema, INDEX_NAME));
+      log.info("Index {} is present and valid", index);
     } else {
       log.warn(
           "Index {} is missing or invalid after creation attempt - priority-ordered job"
               + " acquisition will sort without index support",
-          qualified(schema, INDEX_NAME));
+          index);
     }
   }
 
@@ -241,17 +240,8 @@ public class JobPriorityIndexPlugin extends AbstractProcessEnginePlugin {
    * transaction-scoped advisory lock rides the command's own connection and releases
    * itself at commit or rollback.
    */
-  static final class AdvisoryLockedSchemaOperations implements SchemaOperationsCommand {
-
-    private final SchemaOperationsCommand delegate;
-
-    AdvisoryLockedSchemaOperations(SchemaOperationsCommand delegate) {
-      this.delegate = delegate;
-    }
-
-    SchemaOperationsCommand delegate() {
-      return delegate;
-    }
+  record AdvisoryLockedSchemaOperations(SchemaOperationsCommand delegate)
+      implements SchemaOperationsCommand {
 
     @Override
     public Void execute(CommandContext commandContext) {

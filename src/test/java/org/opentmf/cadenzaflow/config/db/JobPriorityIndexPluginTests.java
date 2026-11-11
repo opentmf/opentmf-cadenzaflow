@@ -293,11 +293,10 @@ class JobPriorityIndexPluginTests {
         .thenReturn("cadenzaflow");
     stubLockStatement(commandContext);
     stubCurrentSchema(commandContext, "public");
+    JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations wrapper =
+        new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate);
 
-    assertThatThrownBy(
-            () ->
-                new JobPriorityIndexPlugin.AdvisoryLockedSchemaOperations(delegate)
-                    .execute(commandContext))
+    assertThatThrownBy(() -> wrapper.execute(commandContext))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Engine schema mismatch")
         .hasMessageContaining("'cadenzaflow'")

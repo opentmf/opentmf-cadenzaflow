@@ -6,6 +6,7 @@ import jakarta.ws.rs.Produces;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +34,7 @@ public class OpenApiResource {
 
   private final byte[] document;
 
+  @Autowired
   public OpenApiResource() {
     this(new ClassPathResource(LOCATION));
   }
