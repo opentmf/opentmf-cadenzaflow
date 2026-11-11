@@ -380,8 +380,8 @@ class IncidentOperationsIT {
         "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
             + "&incidentTimestampBefore=" + oldest, READER_TOKEN).body())).isEmpty();
 
-    // Same half-open contract on the list (the stock engine filter is strict-after;
-    // the service bridges with a millisecond shift).
+    // Same half-open contract on the list: the stock engine filter is strict-after,
+    // and the service bridges the gap with a millisecond shift.
     HttpResponse<String> listFromNewest = get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow"
             + "&incidentTimestampAfter=" + newest, READER_TOKEN);

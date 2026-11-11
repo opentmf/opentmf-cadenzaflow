@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.5] - unreleased
+
+### Changed
+
+- **The local Sonar floor is zero on develop again** (CF-SONAR-DEVELOP-ZERO-1). Eight code
+  smells open on develop are fixed in code, each a minimal change with no suppression:
+  the index-name string is built once instead of inside three log calls (S2629), the
+  identifier pattern uses `\w` (S6353), the advisory-lock wrapper is a record (S6206), the
+  OpenAPI resource marks its Spring constructor with `@Autowired` (S6829), a prose comment
+  no longer reads as commented-out code (S125), and a test lambda makes one throwing call
+  (S5778). No behaviour change.
+
 ## [1.5.4] - 2026-11-10
 
 ### Fixed
