@@ -89,7 +89,6 @@
     <wiremock.version>3.13.2</wiremock.version>
     <pitest-maven.version>1.30.2</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
-    <testcontainers.version>1.21.4</testcontainers.version>
     <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
@@ -272,8 +271,7 @@
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>postgresql</artifactId>
-      <version>${testcontainers.version}</version>
+      <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -291,8 +289,7 @@
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>${testcontainers.version}</version>
+      <artifactId>testcontainers-junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
