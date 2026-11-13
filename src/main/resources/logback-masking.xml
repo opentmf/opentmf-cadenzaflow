@@ -181,6 +181,16 @@
           <mask>****</mask>
         </valueMask>
 
+        <!-- A separated 15- or 14-digit card: American Express 4-6-5, Diners 4-6-4
+             (CF-MASKING-SHAPE-GAPS-1). The rule above is 4-4-4-2..4 only, so
+             `3782 822463 10005` stayed in clear in every context. The shape is
+             dnms-commons-masking's own (its `pan` rule after the boundary fix), with
+             this file's guards on both sides. -->
+        <valueMask>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{4}(?:[ -]|%(?:25)?20)\d{6}(?:[ -]|%(?:25)?20)\d{4,5}(?![A-Za-z0-9])</value>
+          <mask>****</mask>
+        </valueMask>
+
         <!-- ===== PII-CLASS VALUE MASKS ================================
              Unlike the credential floor, these are this service's own and
              DIVERGE from the template on purpose. Each divergence is pinned by a
@@ -194,6 +204,29 @@
              ("DE44****") for payment triage. This service never reconciles
              payments, so the whole value goes. -->
         <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))[A-Z]{2}\d{2}[A-Z0-9]{11,30}(?![A-Za-z0-9])</value>
+
+        <!-- An international phone number SPACED or GROUPED, as a person or a CRM
+             writes it (CF-MASKING-SHAPE-GAPS-1): `+49 151 12345678`, `0049 151-1234 5678`,
+             `+49 (0)151 12345678` stayed in clear in every context, because the rule
+             below wants the digits contiguous. The body is dnms-commons-masking's spaced
+             `msisdn` rule (CMN-MASK-SPACED-MSISDN-1) byte for byte, so the two fragments
+             match the same shapes: the same 8 to 15 digits, ONE separator allowed between
+             two of them (blank, hyphen, slash, `%20`, the German trunk `(0)`), at least one
+             separator, any country code. Not a dot. The LEADING guard is the rule below's
+             union with `\b`, wider than the commons one, for the same `tel+49…` reason.
+             It must stay AHEAD of the rule below, which would otherwise mask the first
+             group of `+491512738 4950` alone and leave the rest. -->
+        <value>(?:\b|(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:\+|%(?:25)?2[Bb]|00)[1-9](?=\d{0,13}+(?:\h?\(0\)\h?|[-/\h]|%(?:25)?20)\d)(?:(?:\h?\(0\)\h?|[-/\h]|%(?:25)?20)?+\d){7,14}+\d*+</value>
+
+        <!-- The German MOBILE number in the national form SPACED or GROUPED: `0151 2738 4950`,
+             `0151/27384950`, `0170-2738-4954` (CF-MASKING-SHAPE-GAPS-1, joined by [C-3216]).
+             dnms-commons-masking's spaced national msisdn rule (CMN-MASK-SPACED-MSISDN-1)
+             byte for byte, its guard included: the 015x/016x/017x prefix, 10 to 12 digits,
+             one blank, hyphen, slash or %20 between two digits after the prefix, at least
+             one of them. Its leading guard `(?&lt;!\d)` is the WIDER of the two files' here
+             (it also masks after a letter), so it is kept. Ahead of the rule below, which
+             would take `01512738` of `01512738 4950` alone. -->
+        <value>(?:(?&lt;!\d)|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))01[5-7]\d(?=\d{0,7}+(?:[-/\h]|%(?:25)?20)\d)(?:(?:[-/\h]|%(?:25)?20)?+\d){6,8}+\d*+</value>
 
         <!-- German phone numbers in the +49… / 0049… / 0… shapes, with the `+`
              also accepted encoded (`%2B`, `%252B`, either case) - the platform
