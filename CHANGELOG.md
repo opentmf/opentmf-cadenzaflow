@@ -32,6 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **An IBAN written in groups of four is masked whole** (CF-MASKING-GROUPED-IBAN-1).
+  `DE89 3704 0044 0532 0130 00`, `NO93 8601 1117 947` and the same with an encoded blank (`%20`,
+  `%2520`) had no rule: the card rule took four groups out of the middle and left `DE89` and the last
+  group in clear, and shorter IBANs stayed in clear whole. The regex is dnms-commons-masking's grouped
+  IBAN rule byte for byte; the mask is this file's own, the whole value, as for the compact form. It
+  runs ahead of the card rules. Look-alikes (`PR42 adds more code`, `TS01 1234 5678 9012 order`) stay
+  readable.
+
 - **The CHANGELOG release-date guard reads the date in UTC** (CF-CHANGELOG-DATE-GUARD-UTC-1).
   `ci/changelog-release-date.sh` compared the heading with the machine's local date, so a
   cut prepared after local midnight east of UTC (1.5.4, 01:3x TRT) passed locally and failed

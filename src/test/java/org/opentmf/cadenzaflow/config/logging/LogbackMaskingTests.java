@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 
@@ -442,6 +443,52 @@ class LogbackMaskingTests {
   }
 
   /**
+   * CF-MASKING-GROUPED-IBAN-1: an IBAN written in groups of four, with the commons cells
+   * mirrored. The regex is dnms-commons-masking's (4735b86) byte for byte; the
+   * expected outputs carry this fragment's whole-value mask instead of "DE89****".
+   */
+  @Nested
+  @DisplayName("grouped IBAN")
+  class GroupedIban {
+
+    @ParameterizedTest(name = "[{0}]")
+    @CsvSource(delimiter = '|', value = {
+        "pay to DE89 3704 0044 0532 0130 00.|pay to ****.",
+        "NO93 8601 1117 947|****",
+        "NL91 ABNA 0417 1643 00|****",
+        "MT84 MALT 0110 0001 2345 MTLC AST0 01S|****",
+        "GB82 WEST 1234 5698 7654 32|****",
+        "FR14 2004 1010 0505 0001 3M02 606|****",
+        "IE29 AIBK 9311 5212 3456 78|****",
+        "note=DE89%203704%200044%200532%200130%2000&next=1|note=****&next=1",
+        "note=DE89%25203704%25200044%25200532%25200130%252000&next=1|note=****&next=1",
+        "DE89 3704 0044 0532 0130 00 12 more|**** 12 more",
+        "DE58 XXXX XXXX XXXX XXXX 00|****"})
+    void maskTheWholeGroupedIban(String text, String masked) {
+      assertThat(encode(text, Map.of())).contains("\"message\":\"" + masked + "\"");
+    }
+
+    @Test
+    void maskAGroupedIbanInsideAJsonDocumentInTheMessage() {
+      assertThat(encode("{\"note\":\"DE89 3704 0044 0532 0130 00\",\"n\":1}", Map.of()))
+          .doesNotContain("3704").contains("note\\\":\\\"" + MASK + "\\\"");
+    }
+
+    @Test
+    void leaveTheCompactIbanToItsOwnRule() {
+      assertThat(encode("DE89370400440532013000", Map.of()))
+          .contains("\"message\":\"" + MASK + "\"");
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"PR42 adds more code", "TS01 1234 5678 9012 order", "KD12 ABCD EFGH IJKL x",
+        "DE89 1234 5678 9 short", "order 0012 3456 shipped"})
+    void leaveLookAlikesReadable(String text) {
+      assertThat(encode(text, Map.of())).contains("\"message\":\"" + text + "\"");
+    }
+  }
+
+  /**
    * CF-MASKING-SHAPE-GAPS-1: two value shapes no rule matched in ANY context, before the row -
    * a card written 4-6-5 / 4-6-4 (American Express, Diners), an international phone number
    * with separators, and a German mobile number in the national form with separators. Each shape is measured with an underscore, a space and a dot on either
@@ -561,6 +608,16 @@ class LogbackMaskingTests {
       String json = encode("payment for DE89370400440532013000 accepted", Map.of());
 
       assertThat(json).doesNotContain("DE89370400440532013000").doesNotContain("DE89").contains(MASK);
+    }
+
+    @Test
+    void maskTheWholeGroupedIbanToo() {
+      // CF-MASKING-GROUPED-IBAN-1: the grouped form follows the compact form of this
+      // fragment, never the commons mask "DE89****", so one IBAN is never treated
+      // differently by how it is written.
+      String json = encode("payment for DE89 3704 0044 0532 0130 00 accepted", Map.of());
+
+      assertThat(json).doesNotContain("DE89").doesNotContain("3704").contains("payment for " + MASK + " accepted");
     }
 
     @Test
