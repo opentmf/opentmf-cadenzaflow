@@ -3,7 +3,7 @@ info:
   title: opentmf-cadenzaflow — complete API surface
   version: 1.0.0
   description: 'GENERATED FILE — regenerate with ci/merge-openapi.py, do not edit. The union of the embedded
-    CadenzaFlow engine''s REST API (1.2.3, from org.cadenzaflow.bpm:cadenzaflow-engine-rest-openapi) rebased
+    CadenzaFlow engine''s REST API (1.2.5, from org.cadenzaflow.bpm:cadenzaflow-engine-rest-openapi) rebased
     under /engine-rest, and this service''s own additions (incident operations, management endpoints)
     from the hand-maintained source fragment ci/openapi-service.yaml. Security reflects the deployed edge:
     bearer JWT on everything except the documented whitelist (/engine-rest/external-task/** by default)
@@ -26291,6 +26291,7 @@ paths:
           - definitionId
           - tenantId
           - businessKey
+          - startTime
           type: string
         description: 'Sort the results lexicographically by a given criterion.
 
@@ -26318,6 +26319,18 @@ paths:
         description: 'Pagination of results. Specifies the maximum number of results to return.
 
           Will return less results if there are no more results left.'
+      - name: withStartTimeInReturn
+        in: query
+        schema:
+          default: false
+          type: boolean
+        description: 'If set to `true`, each process instance in the result carries its `startTime`.
+
+          The start time is read from the history, so it is only returned when the history level
+
+          is not `none` (and, with authorization enabled, when the user has `READ_HISTORY`
+
+          permission on the process definition).'
       - name: processInstanceIds
         in: query
         schema:
@@ -45336,6 +45349,18 @@ components:
             - string
             - 'null'
             description: The tenant id of the process instance.
+          startTime:
+            type:
+            - string
+            - 'null'
+            format: date-time
+            description: 'The time the process instance was started.
+
+              Only present in the results of the process instance query when `withStartTimeInReturn` is
+              `true`.
+
+              Default [format](https://docs.cadenzaflow.org/manual/1.2/reference/rest/overview/date-format/)
+              `yyyy-MM-dd''T''HH:mm:ss.SSSZ`.'
       - $ref: '#/components/schemas/LinkableDto'
     ProcessInstanceModificationDto:
       type: object
@@ -45652,6 +45677,19 @@ components:
           description: 'Match all variable values in this query case-insensitively.
 
             If set to true variableValue and variablevalue are treated as equal.'
+        withStartTimeInReturn:
+          type:
+          - boolean
+          - 'null'
+          description: 'Only applies to the list endpoint `POST /process-instance`.
+
+            If set to `true`, each process instance in the result carries its `startTime`.
+
+            The start time is read from the history, so it is only returned when the history level
+
+            is not `none` (and, with authorization enabled, when the user has `READ_HISTORY`
+
+            permission on the process definition).'
         orQueries:
           type:
           - array
@@ -45687,6 +45725,7 @@ components:
                 - definitionKey
                 - businessKey
                 - tenantId
+                - startTime
                 description: 'Sort the results lexicographically by a given criterion.
 
                   Must be used in conjunction with the sortOrder parameter.'
