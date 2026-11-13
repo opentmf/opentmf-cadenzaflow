@@ -54,7 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   scope only; the image is unchanged.
 
 - **The aws flavour takes the current AWS libraries** (CF-AWS-PROFILE-BUMPS-T9-1).
-  `aws-msk-iam-auth` 2.3.9 → 2.4.0 and the AWS SDK v2 BOM (`awssdk.version`) 2.57.11 → 2.59.0,
+  `aws-msk-iam-auth` 2.3.9 → 2.4.0 and the AWS SDK v2 BOM (`awssdk.version`) 2.57.11 → 2.59.1,
   in the `aws` profile only. The BOM keeps every `software.amazon.awssdk` module on that one
   version in the -aws image. The base and -azure images are unchanged.
 
