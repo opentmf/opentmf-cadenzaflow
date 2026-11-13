@@ -69,11 +69,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **An IBAN written in groups of four is masked whole** (CF-MASKING-GROUPED-IBAN-1).
   `DE89 3704 0044 0532 0130 00`, `NO93 8601 1117 947` and the same with an encoded blank (`%20`,
-  `%2520`) had no rule: the card rule took four groups out of the middle and left `DE89` and the last
-  group in clear, and shorter IBANs stayed in clear whole. The regex is dnms-commons-masking's grouped
-  IBAN rule byte for byte; the mask is this file's own, the whole value, as for the compact form. It
-  runs ahead of the card rules. Look-alikes (`PR42 adds more code`, `TS01 1234 5678 9012 order`) stay
-  readable.
+  `%2520`) had no rule of their own: other rules masked only some of the groups, and shorter IBANs
+  stayed in clear whole. The regex is dnms-commons-masking's grouped IBAN rule byte for byte. The rule
+  sits right after the compact IBAN rule, ahead of the phone and card rules, so neither can take part
+  of an IBAN first (a German IBAN's `0044 0532 0130 00` reads like a phone number). The mask is the
+  whole value, as for the compact form. Look-alikes (`PR42 adds more code`,
+  `TS01 1234 5678 9012 order`) stay readable.
 
 - **The published API document describes the embedded engine 1.2.5** (CF-OPENAPI-GENERATED-IN-STEP-1).
   `openapi.yaml` was not regenerated when the engine moved to 1.2.5: it still named 1.2.3 and lacked the
