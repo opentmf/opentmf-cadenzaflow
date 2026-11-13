@@ -443,8 +443,8 @@ class LogbackMaskingTests {
 
   /**
    * CF-MASKING-SHAPE-GAPS-1: two value shapes no rule matched in ANY context, before the row -
-   * a card written 4-6-5 / 4-6-4 (American Express, Diners) and an international phone number
-   * with separators. Each shape is measured with an underscore, a space and a dot on either
+   * a card written 4-6-5 / 4-6-4 (American Express, Diners), an international phone number
+   * with separators, and a German mobile number in the national form with separators. Each shape is measured with an underscore, a space and a dot on either
    * side. The shapes are dnms-commons-masking's own, so the two fragments match the same values.
    */
   @Nested
@@ -456,6 +456,9 @@ class LogbackMaskingTests {
     private static final String PHONE = "+49 151 12345678";
     private static final String PHONE_DOUBLE_ZERO = "0049 151-1234 5678";
     private static final String PHONE_TRUNK = "+49 (0)151 12345678";
+    private static final String NATIONAL = "0151 2738 4950";
+    private static final String NATIONAL_SLASH = "0151/27384950";
+    private static final String NATIONAL_HYPHENS = "0170-2738-4954";
 
     @ParameterizedTest(name = "[{0}]")
     @ValueSource(strings = {"x_" + AMEX, AMEX + "_x", "x " + AMEX, AMEX + " x", "x." + AMEX, AMEX + ".x"})
@@ -493,6 +496,36 @@ class LogbackMaskingTests {
     void maskAPhoneNumberWithTheGermanTrunkPrefix(String text) {
       assertThat(encode("notifying " + text + " ok", Map.of()))
           .doesNotContain("(0)151").doesNotContain("12345678").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"x_" + NATIONAL, NATIONAL + "_x", "x " + NATIONAL, NATIONAL + " x", "x." + NATIONAL,
+        NATIONAL + ".x"})
+    void maskAGermanMobileNumberInTheNationalFormWithBlanks(String text) {
+      assertThat(encode("notifying " + text + " ok", Map.of()))
+          .doesNotContain(NATIONAL).doesNotContain("2738 4950").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"x_" + NATIONAL_SLASH, NATIONAL_SLASH + "_x", "x " + NATIONAL_SLASH,
+        NATIONAL_SLASH + " x", "x." + NATIONAL_SLASH, NATIONAL_SLASH + ".x"})
+    void maskAGermanMobileNumberInTheNationalFormWithASlash(String text) {
+      assertThat(encode("notifying " + text + " ok", Map.of()))
+          .doesNotContain(NATIONAL_SLASH).doesNotContain("27384950").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"x_" + NATIONAL_HYPHENS, NATIONAL_HYPHENS + "_x", "x " + NATIONAL_HYPHENS,
+        NATIONAL_HYPHENS + " x", "x." + NATIONAL_HYPHENS, NATIONAL_HYPHENS + ".x"})
+    void maskAGermanMobileNumberInTheNationalFormWithHyphens(String text) {
+      assertThat(encode("notifying " + text + " ok", Map.of()))
+          .doesNotContain(NATIONAL_HYPHENS).doesNotContain("2738-4954").contains(MASK);
+    }
+
+    @Test
+    void maskTheWholeNationalNumberWhenOnlyItsLastGroupIsSeparated() {
+      // Before, the contiguous national rule took "01512738" alone and left "4950".
+      assertThat(encode("notifying 01512738 4950 ok", Map.of())).contains("notifying " + MASK + " ok");
     }
 
     @Test

@@ -48,8 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A card written 4-6-5 or 4-6-4 and a phone number with separators are masked**
   (CF-MASKING-SHAPE-GAPS-1). No rule of `logback-masking.xml` matched them in any context:
   `3782 822463 10005` (American Express), `3056 930902 5904` (Diners), `+49 151 12345678`,
-  `0049 151-1234 5678`, `+49 (0)151 12345678`; and `+491512738 4950` lost only its first group.
-  Both shapes are dnms-commons-masking's own (its `pan` and spaced `msisdn` rules), so the two
+  `0049 151-1234 5678`, `+49 (0)151 12345678`, the national `0151 2738 4950`, `0151/27384950`,
+  `0170-2738-4954`; and `+491512738 4950` / `01512738 4950` lost only their first group.
+  Both shapes are dnms-commons-masking's own (its `pan` rule and its two spaced `msisdn` rules), so the two
   fragments match the same values; the phone rule keeps this file's wider leading guard. Over
   the masking tests' 119 strings the new rules change nothing else; a bare 4-6-5 digit group
   (`count 1234 567890 12345`) is masked too, as in commons.

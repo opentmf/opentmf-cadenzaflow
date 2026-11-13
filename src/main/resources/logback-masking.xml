@@ -218,6 +218,16 @@
              group of `+491512738 4950` alone and leave the rest. -->
         <value>(?:\b|(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:\+|%(?:25)?2[Bb]|00)[1-9](?=\d{0,13}+(?:\h?\(0\)\h?|[-/\h]|%(?:25)?20)\d)(?:(?:\h?\(0\)\h?|[-/\h]|%(?:25)?20)?+\d){7,14}+\d*+</value>
 
+        <!-- The German MOBILE number in the national form SPACED or GROUPED: `0151 2738 4950`,
+             `0151/27384950`, `0170-2738-4954` (CF-MASKING-SHAPE-GAPS-1, joined by [C-3216]).
+             dnms-commons-masking's spaced national msisdn rule (CMN-MASK-SPACED-MSISDN-1)
+             byte for byte, its guard included: the 015x/016x/017x prefix, 10 to 12 digits,
+             one blank, hyphen, slash or %20 between two digits after the prefix, at least
+             one of them. Its leading guard `(?&lt;!\d)` is the WIDER of the two files' here
+             (it also masks after a letter), so it is kept. Ahead of the rule below, which
+             would take `01512738` of `01512738 4950` alone. -->
+        <value>(?:(?&lt;!\d)|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))01[5-7]\d(?=\d{0,7}+(?:[-/\h]|%(?:25)?20)\d)(?:(?:[-/\h]|%(?:25)?20)?+\d){6,8}+\d*+</value>
+
         <!-- German phone numbers in the +49… / 0049… / 0… shapes, with the `+`
              also accepted encoded (`%2B`, `%252B`, either case) - the platform
              fragment's alternation.
