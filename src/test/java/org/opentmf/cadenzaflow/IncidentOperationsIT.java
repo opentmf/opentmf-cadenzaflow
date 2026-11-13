@@ -189,12 +189,20 @@ class IncidentOperationsIT {
   private final HttpClient httpClient = HttpClient.newHttpClient();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
-  private static final String READER_TOKEN =
-      ISSUER.mint("reader@it.test", List.of("ebu-federation-reader"));
-  private static final String WRITER_TOKEN =
-      ISSUER.mint("writer@it.test", List.of("ebu-federation-writer"));
-  private static final String ROLELESS_TOKEN =
-      ISSUER.mint("nobody@it.test", List.of("nobody"));
+  // Minted per request, never once per class: a token lives 300 s, and on a loaded build
+  // machine the Keycloak container alone has taken longer than that to start, so a
+  // class-load token can already be expired (401) when the first test runs.
+  private static String readerToken() {
+    return ISSUER.mint("reader@it.test", List.of("ebu-federation-reader"));
+  }
+
+  private static String writerToken() {
+    return ISSUER.mint("writer@it.test", List.of("ebu-federation-writer"));
+  }
+
+  private static String rolelessToken() {
+    return ISSUER.mint("nobody@it.test", List.of("nobody"));
+  }
 
   private static String batchId;
 
@@ -227,7 +235,7 @@ class IncidentOperationsIT {
   @Order(2)
   void groupedReportCollapsesThePropagationAndNamesTheGroup() throws Exception {
     HttpResponse<String> response =
-        get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow", READER_TOKEN);
+        get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow", readerToken());
     assertThat(response.statusCode()).isEqualTo(200);
 
     JsonNode groups = objectMapper.readTree(response.body());
@@ -266,21 +274,21 @@ class IncidentOperationsIT {
   void reportFiltersAndGuardsItsDoor() throws Exception {
     HttpResponse<String> filtered = get(
         "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow&minIncidents=4",
-        READER_TOKEN);
+        readerToken());
     assertThat(filtered.statusCode()).isEqualTo(200);
     assertThat(objectMapper.readTree(filtered.body())).isEmpty();
 
-    assertThat(get("/engine-rest/extensions/incident/groups", READER_TOKEN).statusCode())
+    assertThat(get("/engine-rest/extensions/incident/groups", readerToken()).statusCode())
         .as("rootProcessDefinitionKey is required")
         .isEqualTo(400);
     assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
-        + "&minIncidents=abc", READER_TOKEN).statusCode())
+        + "&minIncidents=abc", readerToken()).statusCode())
         .as("a malformed minIncidents is a 400, not JAX-RS's 404")
         .isEqualTo(400);
     assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow", null)
         .statusCode()).isEqualTo(401);
     assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow",
-        ROLELESS_TOKEN).statusCode()).isEqualTo(403);
+        rolelessToken()).statusCode()).isEqualTo(403);
   }
 
   @Test
@@ -289,7 +297,7 @@ class IncidentOperationsIT {
     // Page 1 of 2: TMF-630 semantics - 206, range headers, a next link.
     HttpResponse<String> firstPage = get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow"
-            + "&limit=2&sort=-incidentTimestamp", READER_TOKEN);
+            + "&limit=2&sort=-incidentTimestamp", readerToken());
     assertThat(firstPage.statusCode()).isEqualTo(206);
     assertThat(firstPage.headers().firstValue("X-Total-Count")).contains("3");
     assertThat(firstPage.headers().firstValue("Content-Range")).contains("items 1-2/3");
@@ -312,7 +320,7 @@ class IncidentOperationsIT {
     // actual estate-wide semantics win).
     HttpResponse<String> lastPage = get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow&limit=2&offset=2",
-        READER_TOKEN);
+        readerToken());
     assertThat(lastPage.statusCode()).isEqualTo(206);
     assertThat(lastPage.headers().firstValue("Content-Range")).contains("items 3-3/3");
     assertThat(lastPage.headers().firstValue("Link").orElseThrow())
@@ -321,13 +329,13 @@ class IncidentOperationsIT {
 
     // Out-of-range offset, unknown sort field, field selection.
     assertThat(get("/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow&offset=10",
-        READER_TOKEN).statusCode()).isEqualTo(416);
-    assertThat(get("/engine-rest/extensions/incident?sort=bogus", READER_TOKEN).statusCode())
+        readerToken()).statusCode()).isEqualTo(416);
+    assertThat(get("/engine-rest/extensions/incident?sort=bogus", readerToken()).statusCode())
         .isEqualTo(400);
 
     HttpResponse<String> selected = get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow"
-            + "&fields=id,activityName", READER_TOKEN);
+            + "&fields=id,activityName", readerToken());
     assertThat(selected.statusCode()).isEqualTo(200);
     JsonNode selectedRow = objectMapper.readTree(selected.body()).get(0);
     assertThat(selectedRow.has("id")).isTrue();
@@ -337,14 +345,14 @@ class IncidentOperationsIT {
     // Unlike the grouped report's counts, the list hides nothing: querying the
     // parent definition surfaces the propagated copies, flagged as non-originating.
     HttpResponse<String> parentRows = get(
-        "/engine-rest/extensions/incident?processDefinitionKeyIn=parentFlow", READER_TOKEN);
+        "/engine-rest/extensions/incident?processDefinitionKeyIn=parentFlow", readerToken());
     JsonNode copies = objectMapper.readTree(parentRows.body());
     assertThat(copies).hasSize(3);
     assertThat(copies.get(0).get("originating").asBoolean()).isFalse();
 
     // Same inherited RBAC as the rest of /engine-rest.
     assertThat(get("/engine-rest/extensions/incident", null).statusCode()).isEqualTo(401);
-    assertThat(get("/engine-rest/extensions/incident", ROLELESS_TOKEN).statusCode())
+    assertThat(get("/engine-rest/extensions/incident", rolelessToken()).statusCode())
         .isEqualTo(403);
   }
 
@@ -355,7 +363,7 @@ class IncidentOperationsIT {
     // fed back in verbatim - the endpoints must accept their own output.
     JsonNode group = objectMapper.readTree(
         get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow",
-            READER_TOKEN).body()).get(0);
+            readerToken()).body()).get(0);
     String newest = URLEncoder.encode(group.get("newestIncident").asText(),
         StandardCharsets.UTF_8);
     String oldest = URLEncoder.encode(group.get("oldestIncident").asText(),
@@ -364,7 +372,7 @@ class IncidentOperationsIT {
     // after is INCLUSIVE: the boundary incident itself stays in.
     JsonNode fromNewest = objectMapper.readTree(get(
         "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
-            + "&incidentTimestampAfter=" + newest, READER_TOKEN).body());
+            + "&incidentTimestampAfter=" + newest, readerToken()).body());
     assertThat(fromNewest).hasSize(1);
     assertThat(fromNewest.get(0).get("incidentCount").asLong()).isPositive();
     // A windowed report echoes its window into every selector, verbatim - so a
@@ -378,21 +386,21 @@ class IncidentOperationsIT {
     // and the oldest itself must NOT match its own timestamp as an upper bound.
     assertThat(objectMapper.readTree(get(
         "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
-            + "&incidentTimestampBefore=" + oldest, READER_TOKEN).body())).isEmpty();
+            + "&incidentTimestampBefore=" + oldest, readerToken()).body())).isEmpty();
 
     // Same half-open contract on the list: the stock engine filter is strict-after,
     // and the service bridges the gap with a millisecond shift.
     HttpResponse<String> listFromNewest = get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow"
-            + "&incidentTimestampAfter=" + newest, READER_TOKEN);
+            + "&incidentTimestampAfter=" + newest, readerToken());
     assertThat(objectMapper.readTree(listFromNewest.body()).size()).isPositive();
     assertThat(objectMapper.readTree(get(
         "/engine-rest/extensions/incident?processDefinitionKeyIn=childFlow"
-            + "&incidentTimestampBefore=" + oldest, READER_TOKEN).body())).isEmpty();
+            + "&incidentTimestampBefore=" + oldest, readerToken()).body())).isEmpty();
 
     // Unparseable values are engine-style 400s.
     assertThat(get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
-        + "&incidentTimestampAfter=yesterday", READER_TOKEN).statusCode()).isEqualTo(400);
+        + "&incidentTimestampAfter=yesterday", readerToken()).statusCode()).isEqualTo(400);
   }
 
   @Test
@@ -403,7 +411,7 @@ class IncidentOperationsIT {
     // six incident rows for the full retry that follows.
     JsonNode group = objectMapper.readTree(
         get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow",
-            READER_TOKEN).body()).get(0);
+            readerToken()).body()).get(0);
     String body = """
         {
           "rootProcessDefinitionKey": "parentFlow",
@@ -416,7 +424,7 @@ class IncidentOperationsIT {
         """.formatted(group.get("oldestIncident").asText());
 
     HttpResponse<String> response =
-        post("/engine-rest/extensions/incident/retry", body, WRITER_TOKEN);
+        post("/engine-rest/extensions/incident/retry", body, writerToken());
     assertThat(response.statusCode()).isEqualTo(200);
     JsonNode result = objectMapper.readTree(response.body());
     assertThat(result.get("incidentCount").asLong()).isZero();
@@ -436,7 +444,7 @@ class IncidentOperationsIT {
           "calledFrom": { "processDefinitionKey": "parentFlow", "callActivityId": "otherReserve" },
           "retries": 1
         }
-        """, WRITER_TOKEN);
+        """, writerToken());
     assertThat(otherCaller.statusCode()).isEqualTo(200);
     assertThat(objectMapper.readTree(otherCaller.body()).get("incidentCount").asLong()).isZero();
     assertThat(processEngine.getRuntimeService().createIncidentQuery().count()).isEqualTo(6);
@@ -451,14 +459,14 @@ class IncidentOperationsIT {
           "incidentTimestampAfter": "yesterday",
           "retries": 1
         }
-        """, WRITER_TOKEN).statusCode()).isEqualTo(400);
+        """, writerToken()).statusCode()).isEqualTo(400);
   }
 
   @Test
   @Order(7)
   void groupRetryResolvesTheWholeGroupThroughEngineBatches() throws Exception {
     HttpResponse<String> response = post("/engine-rest/extensions/incident/retry",
-        retryBody(1), WRITER_TOKEN);
+        retryBody(1), writerToken());
     assertThat(response.statusCode()).isEqualTo(200);
 
     JsonNode result = objectMapper.readTree(response.body());
@@ -481,7 +489,7 @@ class IncidentOperationsIT {
         .allSatisfy(task -> assertThat(task.getRetries()).isEqualTo(1));
 
     Awaitility.await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500))
-        .until(() -> get("/engine-rest/history/batch/" + batchId, READER_TOKEN)
+        .until(() -> get("/engine-rest/history/batch/" + batchId, readerToken())
             .statusCode() == 200);
   }
 
@@ -489,7 +497,7 @@ class IncidentOperationsIT {
   @Order(8)
   void secondRetryOfTheSameGroupIsAnEmptyOutcomeNotAnError() throws Exception {
     HttpResponse<String> response = post("/engine-rest/extensions/incident/retry",
-        retryBody(1), WRITER_TOKEN);
+        retryBody(1), writerToken());
     assertThat(response.statusCode()).isEqualTo(200);
     JsonNode result = objectMapper.readTree(response.body());
     assertThat(result.get("incidentCount").asLong()).isZero();
@@ -499,9 +507,9 @@ class IncidentOperationsIT {
   @Test
   @Order(9)
   void retryGuardsItsDoor() throws Exception {
-    assertThat(post("/engine-rest/extensions/incident/retry", retryBody(0), WRITER_TOKEN)
+    assertThat(post("/engine-rest/extensions/incident/retry", retryBody(0), writerToken())
         .statusCode()).as("retries below 1 are refused").isEqualTo(400);
-    assertThat(post("/engine-rest/extensions/incident/retry", retryBody(1), READER_TOKEN)
+    assertThat(post("/engine-rest/extensions/incident/retry", retryBody(1), readerToken())
         .statusCode()).as("reader may look but not retry").isEqualTo(403);
     assertThat(post("/engine-rest/extensions/incident/retry", retryBody(1), null)
         .statusCode()).isEqualTo(401);
@@ -529,7 +537,7 @@ class IncidentOperationsIT {
 
     JsonNode groups = objectMapper.readTree(
         get("/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow",
-            READER_TOKEN).body());
+            readerToken()).body());
     assertThat(groups).hasSize(2);
     assertThat(groups.get(0).get("processDefinitionVersion").asInt()).isEqualTo(1);
     assertThat(groups.get(0).get("incidentCount").asLong()).isEqualTo(3);
@@ -541,7 +549,7 @@ class IncidentOperationsIT {
     // minIncidents applies to exactly the groups the report returns - per version.
     JsonNode atLeastThree = objectMapper.readTree(get(
         "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=parentFlow"
-            + "&minIncidents=3", READER_TOKEN).body());
+            + "&minIncidents=3", readerToken()).body());
     assertThat(atLeastThree).hasSize(1);
     assertThat(atLeastThree.get(0).get("processDefinitionVersion").asInt()).isEqualTo(1);
 
@@ -549,7 +557,7 @@ class IncidentOperationsIT {
     // copies) stay.
     ObjectNode retry = ((ObjectNode) groups.get(1).get("selector")).put("retries", 1);
     JsonNode result = objectMapper.readTree(post("/engine-rest/extensions/incident/retry",
-        objectMapper.writeValueAsString(retry), WRITER_TOKEN).body());
+        objectMapper.writeValueAsString(retry), writerToken()).body());
     assertThat(result.get("incidentCount").asLong()).isEqualTo(2);
     Awaitility.await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500))
         .until(() -> processEngine.getRuntimeService().createIncidentQuery().count() == 6);
@@ -609,7 +617,7 @@ class IncidentOperationsIT {
           "resourceId": "*",
           "permissions": ["ALL"]
         }
-        """.formatted(adminGroup), WRITER_TOKEN);
+        """.formatted(adminGroup), writerToken());
 
     assertThat(response.statusCode()).isEqualTo(403);
     Authorization survived = authorizationService.createAuthorizationQuery()
