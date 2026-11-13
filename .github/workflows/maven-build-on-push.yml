@@ -84,6 +84,33 @@ jobs:
           python3 .github/scripts/sonar-report.py status.json measures.json \
             "${SONAR_PROJECT_KEY}" "${BRANCH}" >> "$GITHUB_STEP_SUMMARY"
 
+  # The published API document is GENERATED: ci/merge-openapi.py merges the engine's own
+  # spec artifact (at <cadenzaflow.version>) with the hand-maintained ci/openapi-service.yaml.
+  # This fails when the committed file is not exactly the generator's output - after an
+  # engine bump without a regeneration, or after a hand edit of the generated file
+  # (CF-OPENAPI-GENERATED-IN-STEP-1). PyYAML is pinned: its dump IS the file's format.
+  openapi-generated:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: The committed openapi.yaml is the generator's output
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/openapi-venv"
+          "$RUNNER_TEMP/openapi-venv/bin/pip" install --quiet pyyaml==6.0.3
+          "$RUNNER_TEMP/openapi-venv/bin/python" ci/merge-openapi.py --check
+
   gitleaks:
     runs-on: ubuntu-24.04
     permissions:
