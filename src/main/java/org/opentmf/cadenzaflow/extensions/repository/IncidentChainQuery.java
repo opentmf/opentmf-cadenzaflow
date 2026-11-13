@@ -40,21 +40,28 @@ public class IncidentChainQuery {
   static final String PROCESS_DEFINITION = "ACT_RE_PROCDEF";
   private static final String NEXT_CONDITION = "and    RES.";
   private static final String ID_COLUMN = "ID_";
+  private static final String INCIDENT_TYPE = "INCIDENT_TYPE_";
+  private static final String ACTIVITY_ID = "ACTIVITY_ID_";
+  private static final String PROCESS_INSTANCE_ID = "PROC_INST_ID_";
+  private static final String PROCESS_DEFINITION_ID = "PROC_DEF_ID_";
+  private static final String EXECUTION_ID = "EXECUTION_ID_";
+  private static final String ROOT_CAUSE_INCIDENT_ID = "ROOT_CAUSE_INCIDENT_ID_";
+  private static final String TENANT_ID = "TENANT_ID_";
 
   /** The list's sort vocabulary ({@code IncidentRow} attribute names) to incident columns. */
   private static final Map<String, String> ORDER_COLUMN = Map.ofEntries(
       Map.entry("id", ID_COLUMN),
       Map.entry("incidentTimestamp", "INCIDENT_TIMESTAMP_"),
-      Map.entry("incidentType", "INCIDENT_TYPE_"),
+      Map.entry("incidentType", INCIDENT_TYPE),
       Map.entry("incidentMessage", "INCIDENT_MSG_"),
-      Map.entry("activityId", "ACTIVITY_ID_"),
-      Map.entry("processInstanceId", "PROC_INST_ID_"),
-      Map.entry("processDefinitionId", "PROC_DEF_ID_"),
-      Map.entry("executionId", "EXECUTION_ID_"),
+      Map.entry("activityId", ACTIVITY_ID),
+      Map.entry("processInstanceId", PROCESS_INSTANCE_ID),
+      Map.entry("processDefinitionId", PROCESS_DEFINITION_ID),
+      Map.entry("executionId", EXECUTION_ID),
       Map.entry("causeIncidentId", "CAUSE_INCIDENT_ID_"),
-      Map.entry("rootCauseIncidentId", "ROOT_CAUSE_INCIDENT_ID_"),
+      Map.entry("rootCauseIncidentId", ROOT_CAUSE_INCIDENT_ID),
       Map.entry("configuration", "CONFIGURATION_"),
-      Map.entry("tenantId", "TENANT_ID_"));
+      Map.entry("tenantId", TENANT_ID));
 
   private final NamedParameterJdbcTemplate jdbc;
   private final EngineSqlSupport sql;
@@ -93,16 +100,16 @@ public class IncidentChainQuery {
   Where where(IncidentListFilter filter) {
     StringBuilder text = new StringBuilder("where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n");
     Map<String, Object> params = new LinkedHashMap<>();
-    equal(text, params, "INCIDENT_TYPE_", "incidentType", filter.incidentType());
+    equal(text, params, INCIDENT_TYPE, "incidentType", filter.incidentType());
     if (has(filter.processDefinitionKeyIn())) {
       text.append("and    exists (select 1 from ").append(sql.table(PROCESS_DEFINITION))
           .append(" PD where PD.ID_ = RES.PROC_DEF_ID_ and PD.KEY_ in (:definitionKeys))\n");
       params.put("definitionKeys", filter.processDefinitionKeyIn());
     }
-    equal(text, params, "PROC_DEF_ID_", "processDefinitionId", filter.processDefinitionId());
-    equal(text, params, "PROC_INST_ID_", "processInstanceId", filter.processInstanceId());
-    equal(text, params, "EXECUTION_ID_", "executionId", filter.executionId());
-    equal(text, params, "ACTIVITY_ID_", "activityId", filter.activityId());
+    equal(text, params, PROCESS_DEFINITION_ID, "processDefinitionId", filter.processDefinitionId());
+    equal(text, params, PROCESS_INSTANCE_ID, "processInstanceId", filter.processInstanceId());
+    equal(text, params, EXECUTION_ID, "executionId", filter.executionId());
+    equal(text, params, ACTIVITY_ID, "activityId", filter.activityId());
     equal(text, params, "FAILED_ACTIVITY_ID_", "failedActivityId", filter.failedActivityId());
     if (filter.incidentMessageLike() != null) {
       text.append(NEXT_CONDITION).append("INCIDENT_MSG_ like :incidentMessageLike\n");
@@ -112,9 +119,9 @@ public class IncidentChainQuery {
     // with its strict '>' and after - 1 ms.
     time(text, params, ">=", "incidentTimestampAfter", filter.incidentTimestampAfter());
     time(text, params, "<", "incidentTimestampBefore", filter.incidentTimestampBefore());
-    in(text, params, "TENANT_ID_", "tenantIds", filter.tenantIdIn());
+    in(text, params, TENANT_ID, "tenantIds", filter.tenantIdIn());
     in(text, params, "JOB_DEF_ID_", "jobDefinitionIds", filter.jobDefinitionIdIn());
-    equal(text, params, "ROOT_CAUSE_INCIDENT_ID_", "rootCauseIncidentId",
+    equal(text, params, ROOT_CAUSE_INCIDENT_ID, "rootCauseIncidentId",
         filter.rootCauseIncidentId());
     return new Where(text.toString(), params);
   }
@@ -146,17 +153,17 @@ public class IncidentChainQuery {
     incident.setId(rs.getString(ID_COLUMN));
     incident.setRevision(rs.getInt("REV_"));
     incident.setIncidentTimestamp(rs.getTimestamp("INCIDENT_TIMESTAMP_"));
-    incident.setIncidentType(rs.getString("INCIDENT_TYPE_"));
+    incident.setIncidentType(rs.getString(INCIDENT_TYPE));
     incident.setIncidentMessage(rs.getString("INCIDENT_MSG_"));
-    incident.setExecutionId(rs.getString("EXECUTION_ID_"));
-    incident.setActivityId(rs.getString("ACTIVITY_ID_"));
+    incident.setExecutionId(rs.getString(EXECUTION_ID));
+    incident.setActivityId(rs.getString(ACTIVITY_ID));
     incident.setFailedActivityId(rs.getString("FAILED_ACTIVITY_ID_"));
-    incident.setProcessInstanceId(rs.getString("PROC_INST_ID_"));
-    incident.setProcessDefinitionId(rs.getString("PROC_DEF_ID_"));
+    incident.setProcessInstanceId(rs.getString(PROCESS_INSTANCE_ID));
+    incident.setProcessDefinitionId(rs.getString(PROCESS_DEFINITION_ID));
     incident.setCauseIncidentId(rs.getString("CAUSE_INCIDENT_ID_"));
-    incident.setRootCauseIncidentId(rs.getString("ROOT_CAUSE_INCIDENT_ID_"));
+    incident.setRootCauseIncidentId(rs.getString(ROOT_CAUSE_INCIDENT_ID));
     incident.setConfiguration(rs.getString("CONFIGURATION_"));
-    incident.setTenantId(rs.getString("TENANT_ID_"));
+    incident.setTenantId(rs.getString(TENANT_ID));
     incident.setJobDefinitionId(rs.getString("JOB_DEF_ID_"));
     incident.setAnnotation(rs.getString("ANNOTATION_"));
     return incident;
