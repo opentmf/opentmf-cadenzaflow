@@ -48237,8 +48237,8 @@ components:
           - object
           - 'null'
           description: 'The caller of the failing instance — part of the group key. The report always
-            echoes the group''s own value, so a selector posted back verbatim stays inside its group: the
-            same child BPMN called from another call activity under the same root is a different group.
+            echoes the group''s own value, so a selector posted back verbatim stays inside its group:
+            the same child BPMN called from another call activity under the same root is a different group.
             Omit it in a hand-written request to retry across every caller.
 
             '
