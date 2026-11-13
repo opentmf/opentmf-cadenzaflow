@@ -132,6 +132,14 @@ public class IncidentGroupRepository {
         and    i.CONFIGURATION_ is not null
         """);
     appendOptionalIncidentFilters(select, params, request.incidentType(), request.tenantId());
+    // The two "none" markers (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1): a null key
+    // alone does not filter, the marker says the group has no tenant / no caller.
+    if (Boolean.TRUE.equals(request.withoutTenant())) {
+      select.append("and    i.TENANT_ID_ is null\n");
+    }
+    if (Boolean.TRUE.equals(request.rootLevelOnly())) {
+      select.append("and    pi.SUPER_EXEC_ is null\n");
+    }
     if (request.calledFrom() != null) {
       // The caller is part of the group key: the same child BPMN called from two call
       // activities under one root is two report groups, and a retry posted from one

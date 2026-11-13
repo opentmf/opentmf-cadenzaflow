@@ -70,6 +70,12 @@ public class IncidentGroupAssembler {
         new IncidentGroupSelector(
             row.rootProcessDefinitionKey(), row.processDefinitionKey(),
             row.processDefinitionVersion(), row.activityId(), row.incidentType(),
-            row.tenantId(), calledFrom, incidentTimestampAfter, incidentTimestampBefore));
+            row.tenantId(), markerWhenAbsent(row.tenantId()), calledFrom,
+            markerWhenAbsent(calledFrom), incidentTimestampAfter, incidentTimestampBefore));
+  }
+
+  /** TRUE for a group without that key, null (no marker) for one that has a value. */
+  private static Boolean markerWhenAbsent(Object groupKey) {
+    return groupKey == null ? Boolean.TRUE : null;
   }
 }

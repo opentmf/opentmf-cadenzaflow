@@ -88,8 +88,9 @@ public class IncidentGroupRetryService {
     return new IncidentGroupSelector(
         request.rootProcessDefinitionKey(), request.processDefinitionKey(),
         request.processDefinitionVersion(), request.activityId(), request.incidentType(),
-        request.tenantId(),
-        request.calledFrom(), request.incidentTimestampAfter(), request.incidentTimestampBefore());
+        request.tenantId(), request.withoutTenant(),
+        request.calledFrom(), request.rootLevelOnly(),
+        request.incidentTimestampAfter(), request.incidentTimestampBefore());
   }
 
   private static String principal() {
