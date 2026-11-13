@@ -79,9 +79,11 @@ public class IncidentChainQuery {
   /** How many chains match the filter. */
   public long count(IncidentListFilter filter) {
     Where where = where(filter);
-    Long count = jdbc.queryForObject(
-        "select count(*) from " + sql.table(INCIDENT) + " RES\n" + where.sql(),
-        where.params(), Long.class);
+    // Built like IncidentGroupRepository's statements: constant text, the validated table
+    // prefix and the allowlisted sort columns only; every value is a named parameter.
+    StringBuilder select = new StringBuilder("select count(*) from ")
+        .append(sql.table(INCIDENT)).append(" RES\n").append(where.sql());
+    Long count = jdbc.queryForObject(select.toString(), where.params(), Long.class);
     return count == null ? 0 : count;
   }
 
@@ -91,26 +93,27 @@ public class IncidentChainQuery {
     Map<String, Object> params = new LinkedHashMap<>(where.params());
     params.put("offset", offset);
     params.put("limit", limit);
-    return jdbc.query("select RES.* from " + sql.table(INCIDENT) + " RES\n" + where.sql()
-            + orderBy(sort) + "\noffset :offset rows fetch next :limit rows only",
-        params, IncidentChainQuery::toIncident);
+    StringBuilder select = new StringBuilder("select RES.* from ")
+        .append(sql.table(INCIDENT)).append(" RES\n").append(where.sql()).append(orderBy(sort))
+        .append("\noffset :offset rows fetch next :limit rows only");
+    return jdbc.query(select.toString(), params, IncidentChainQuery::toIncident);
   }
 
   /** The WHERE clause and its parameters; each filter with the stock query's semantics. */
   Where where(IncidentListFilter filter) {
     StringBuilder text = new StringBuilder("where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n");
     Map<String, Object> params = new LinkedHashMap<>();
-    equal(text, params, INCIDENT_TYPE, "incidentType", filter.incidentType());
+    equalTo(text, params, INCIDENT_TYPE, "incidentType", filter.incidentType());
     if (has(filter.processDefinitionKeyIn())) {
       text.append("and    exists (select 1 from ").append(sql.table(PROCESS_DEFINITION))
           .append(" PD where PD.ID_ = RES.PROC_DEF_ID_ and PD.KEY_ in (:definitionKeys))\n");
       params.put("definitionKeys", filter.processDefinitionKeyIn());
     }
-    equal(text, params, PROCESS_DEFINITION_ID, "processDefinitionId", filter.processDefinitionId());
-    equal(text, params, PROCESS_INSTANCE_ID, "processInstanceId", filter.processInstanceId());
-    equal(text, params, EXECUTION_ID, "executionId", filter.executionId());
-    equal(text, params, ACTIVITY_ID, "activityId", filter.activityId());
-    equal(text, params, "FAILED_ACTIVITY_ID_", "failedActivityId", filter.failedActivityId());
+    equalTo(text, params, PROCESS_DEFINITION_ID, "processDefinitionId", filter.processDefinitionId());
+    equalTo(text, params, PROCESS_INSTANCE_ID, "processInstanceId", filter.processInstanceId());
+    equalTo(text, params, EXECUTION_ID, "executionId", filter.executionId());
+    equalTo(text, params, ACTIVITY_ID, "activityId", filter.activityId());
+    equalTo(text, params, "FAILED_ACTIVITY_ID_", "failedActivityId", filter.failedActivityId());
     if (filter.incidentMessageLike() != null) {
       text.append(NEXT_CONDITION).append("INCIDENT_MSG_ like :incidentMessageLike\n");
       params.put("incidentMessageLike", filter.incidentMessageLike());
@@ -121,7 +124,7 @@ public class IncidentChainQuery {
     time(text, params, "<", "incidentTimestampBefore", filter.incidentTimestampBefore());
     in(text, params, TENANT_ID, "tenantIds", filter.tenantIdIn());
     in(text, params, "JOB_DEF_ID_", "jobDefinitionIds", filter.jobDefinitionIdIn());
-    equal(text, params, ROOT_CAUSE_INCIDENT_ID, "rootCauseIncidentId",
+    equalTo(text, params, ROOT_CAUSE_INCIDENT_ID, "rootCauseIncidentId",
         filter.rootCauseIncidentId());
     return new Where(text.toString(), params);
   }
@@ -169,7 +172,7 @@ public class IncidentChainQuery {
     return incident;
   }
 
-  private static void equal(StringBuilder text, Map<String, Object> params, String column,
+  private static void equalTo(StringBuilder text, Map<String, Object> params, String column,
       String name, String value) {
     if (value != null) {
       text.append(NEXT_CONDITION).append(column).append(" = :").append(name).append('\n');

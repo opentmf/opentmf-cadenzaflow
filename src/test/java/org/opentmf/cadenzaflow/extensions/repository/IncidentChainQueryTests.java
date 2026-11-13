@@ -122,12 +122,17 @@ class IncidentChainQueryTests {
     ArgumentCaptor<Map<String, Object>> params = ArgumentCaptor.forClass(Map.class);
     verify(jdbc).query(sql.capture(), params.capture(), any(RowMapper.class));
     assertThat(sql.getValue())
-        .startsWith("select RES.* from cadenzaflow.ACT_RU_INCIDENT RES\n"
-            + "where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n")
-        .endsWith("order by RES.INCIDENT_TIMESTAMP_ desc, RES.ID_ asc\n"
-            + "offset :offset rows fetch next :limit rows only");
+        .startsWith("""
+            select RES.* from cadenzaflow.ACT_RU_INCIDENT RES
+            where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_
+            """)
+        .endsWith("""
+            order by RES.INCIDENT_TIMESTAMP_ desc, RES.ID_ asc
+            offset :offset rows fetch next :limit rows only""");
     assertThat(params.getValue()).containsEntry("offset", 40L).containsEntry("limit", 20);
-    verify(jdbc).queryForObject(eq("select count(*) from cadenzaflow.ACT_RU_INCIDENT RES\n"
-        + "where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n"), any(Map.class), eq(Long.class));
+    verify(jdbc).queryForObject(eq("""
+        select count(*) from cadenzaflow.ACT_RU_INCIDENT RES
+        where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_
+        """), any(Map.class), eq(Long.class));
   }
 }
