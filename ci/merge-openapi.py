@@ -9,7 +9,13 @@ spec artifact (org.cadenzaflow.bpm:cadenzaflow-engine-rest-openapi, version take
 from <cadenzaflow.version> in pom.xml), so the file is regenerated - not edited -
 whenever the engine version bumps:
 
-    python ci/merge-openapi.py        # requires: python3 + pyyaml, mvn on PATH
+    python ci/merge-openapi.py          # requires: python3 + pyyaml, mvn on PATH
+    python ci/merge-openapi.py --check  # CI: exit 1 when the committed file differs
+
+`--check` regenerates in memory and compares with the committed file (line endings
+normalised). It fails on both ways the file drifts (CF-OPENAPI-GENERATED-IN-STEP-1): an
+engine bump without a regeneration, and a hand edit of the generated file instead of
+ci/openapi-service.yaml.
 
 What the merge does, and why:
 - Upstream paths are rooted at the engine app ('/incident', ...); they are prefixed
@@ -31,6 +37,7 @@ What the merge does, and why:
   by this service's two real servers; the service embeds exactly one engine.
 """
 
+import difflib
 import json
 import pathlib
 import re
@@ -84,6 +91,9 @@ def up_convert_nullable(node):
 
 
 def main():
+    check = sys.argv[1:] == ["--check"]
+    if sys.argv[1:] and not check:
+        sys.exit("usage: merge-openapi.py [--check]")
     version = engine_version()
     upstream = up_convert_nullable(upstream_spec(version))
     service = yaml.safe_load(SERVICE_SPEC.read_text(encoding="utf-8"))
@@ -136,9 +146,21 @@ def main():
             sys.exit(f"components/{section} collision with upstream: {sorted(clash)}")
         merged["components"][section] = {**a, **b}
 
-    OUTPUT.write_text(
-        yaml.safe_dump(merged, sort_keys=False, allow_unicode=True, width=100),
-        encoding="utf-8")
+    generated = yaml.safe_dump(merged, sort_keys=False, allow_unicode=True, width=100)
+    if check:
+        committed = OUTPUT.read_text(encoding="utf-8").replace("\r\n", "\n")
+        if committed == generated:
+            print(f"{OUTPUT.relative_to(ROOT)} is the generator's output (engine {version})")
+            return
+        diff = list(difflib.unified_diff(
+            committed.splitlines(), generated.splitlines(),
+            "committed", "generated", lineterm="", n=1))
+        changed = sum(1 for line in diff if line[:1] in "+-" and line[:3] not in ("+++", "---"))
+        print("\n".join(diff[:200]))
+        sys.exit(f"{OUTPUT.relative_to(ROOT)} differs from the generator's output by {changed} "
+                 f"lines (engine {version}): edit ci/openapi-service.yaml, never the generated "
+                 "file, and run python ci/merge-openapi.py")
+    OUTPUT.write_text(generated, encoding="utf-8")
     print(f"wrote {OUTPUT.relative_to(ROOT)}: {len(merged['paths'])} paths, "
           f"{len(merged['components'].get('schemas', {}))} schemas "
           f"(engine {version} + service surface)")
