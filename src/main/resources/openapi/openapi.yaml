@@ -48222,14 +48222,24 @@ components:
           type:
           - string
           - 'null'
+          description: One tenant only. Omitted or null does not filter on the tenant (any tenant).
+        withoutTenant:
+          type:
+          - boolean
+          - 'null'
+          description: '`true`: only incidents WITHOUT a tenant. The report emits it on a group without
+            a tenant, so that group posted back verbatim stays inside it. Not together with `tenantId`
+            (400).
+
+            '
         calledFrom:
           type:
           - object
           - 'null'
           description: 'The caller of the failing instance — part of the group key. The report always
-            echoes the group''s own value (null for a root-level group), so a selector posted back verbatim
-            stays inside its group: the same child BPMN called from another call activity under the same
-            root is a different group. Omit it in a hand-written request to retry across every caller.
+            echoes the group''s own value, so a selector posted back verbatim stays inside its group: the
+            same child BPMN called from another call activity under the same root is a different group.
+            Omit it in a hand-written request to retry across every caller.
 
             '
           required:
@@ -48240,6 +48250,15 @@ components:
               type: string
             callActivityId:
               type: string
+        rootLevelOnly:
+          type:
+          - boolean
+          - 'null'
+          description: '`true`: only incidents in the root BPMN itself, not in a called instance. The
+            report emits it on a root-level group (calledFrom null), so that group posted back verbatim
+            stays inside it. Not together with `calledFrom` (400).
+
+            '
         incidentTimestampAfter:
           type:
           - string

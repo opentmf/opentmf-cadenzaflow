@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.5.5] - unreleased
 
+### Added
+
+- **Two retry markers for a group without a tenant or caller**
+  (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). `POST /engine-rest/extensions/incident/retry`
+  accepts `withoutTenant: true` (only incidents without a tenant) and `rootLevelOnly: true`
+  (only incidents in the root BPMN itself, not in a called instance). A marker together with
+  a value for the same key (`tenantId`, `calledFrom`) is a 400. An omitted key still means
+  "any", as before.
+
 ### Changed
 
 - **The local Sonar floor is zero on develop again** (CF-SONAR-DEVELOP-ZERO-1). Eight code
@@ -31,6 +40,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   version in the -aws image. The base and -azure images are unchanged.
 
 ### Fixed
+
+- **A report group without a tenant or caller, posted back verbatim, retries that group only**
+  (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). The report groups by tenant and caller, but a
+  null `tenantId` or `calledFrom` in the retry dropped that filter, so a null-tenant group's
+  selector also retried every tenant's incidents of that definition and activity, and a
+  root-level group's selector also retried the called instances. The report now emits
+  `withoutTenant: true` / `rootLevelOnly: true` on those groups, and the retry honours them.
 
 - **The CHANGELOG release-date guard reads the date in UTC** (CF-CHANGELOG-DATE-GUARD-UTC-1).
   `ci/changelog-release-date.sh` compared the heading with the machine's local date, so a

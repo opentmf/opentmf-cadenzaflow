@@ -54,6 +54,26 @@ class IncidentGroupRetryRequestTests {
   }
 
   @Test
+  void acceptEachMarkerOnItsOwn() {
+    assertThat(violationsOf(new IncidentGroupRetryRequest(
+        "orderFulfilment", "reserveStock", "callWms", "failedJob", null, true,
+        null, true, null, null, null, 3))).isEmpty();
+    assertThat(violationsOf(new IncidentGroupRetryRequest(
+        "orderFulfilment", "reserveStock", "callWms", "failedJob", "tenant-1", false,
+        new CalledFrom("orderFulfilment", "reserve"), false, null, null, null, 3)))
+        .as("a false marker is no marker").isEmpty();
+  }
+
+  @Test
+  void refuseAMarkerBesideAValueForTheSameKey() {
+    assertThat(violationsOf(new IncidentGroupRetryRequest(
+        "orderFulfilment", "reserveStock", "callWms", "failedJob", "tenant-1", true,
+        new CalledFrom("orderFulfilment", "reserve"), true, null, null, null, 3)))
+        .extracting(violation -> violation.getPropertyPath().toString())
+        .containsExactlyInAnyOrder("withoutTenantAlone", "rootLevelOnlyAlone");
+  }
+
+  @Test
   void refuseBlankKeyFields() {
     assertThat(violationsOf(new IncidentGroupRetryRequest(
         " ", "", null, "failedJob", null,

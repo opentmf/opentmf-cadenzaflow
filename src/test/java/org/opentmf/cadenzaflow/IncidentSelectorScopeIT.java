@@ -52,8 +52,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * originating incidents on ONE activity: {no tenant, tenant-a} x {root-level, called}.
  * The definition calls ITSELF once ({@code nested=true}), so a root-level and a called
  * group share root, definition, version and activity and differ only in the caller.
- * Every test posts one group's selector back verbatim and expects exactly that group's
- * one incident, the other three groups untouched.</p>
+ * The verbatim tests post one group's selector back and expect exactly that group's one
+ * incident, the other three groups untouched; the marker tests write the request by hand
+ * (Cezmi's ruling: an omitted key still means any, {@code withoutTenant} and
+ * {@code rootLevelOnly} say "none", and the report emits them).</p>
  *
  * <p>Boot as {@link IncidentOperationsIT}: Testcontainers PostgreSQL via the datasource
  * URL, Keycloak for the identity plugin, role-bearing tokens minted in-test.</p>
@@ -222,6 +224,76 @@ class IncidentSelectorScopeIT {
   void aSelectorWithBothKeysNullTouchesOnlyItsOwnIncident() throws Exception {
     // Both echoed as null: before the row this retries all four groups.
     assertVerbatimRetryTouchesOnlyItsGroup("scopeBothNull", null, false);
+  }
+
+  @Test
+  void theReportMarksTheGroupsWithoutTenantOrCaller() throws Exception {
+    List<JsonNode> groups = fourGroups("scopeMarkers");
+
+    assertThat(groups).allSatisfy(group -> {
+      JsonNode selector = group.get("selector");
+      assertThat(selector.path("withoutTenant").asBoolean())
+          .as("withoutTenant marks exactly the groups without a tenant")
+          .isEqualTo(!selector.hasNonNull("tenantId"));
+      assertThat(selector.path("rootLevelOnly").asBoolean())
+          .as("rootLevelOnly marks exactly the root-level groups")
+          .isEqualTo(!selector.hasNonNull("calledFrom"));
+    });
+  }
+
+  @Test
+  void anOmittedTenantAndCallerStillMeanAny() throws Exception {
+    fourGroups("scopeAny");
+
+    assertThat(handWrittenRetry("scopeAny", "")).as("no key, no marker: every group").isEqualTo(4);
+  }
+
+  @Test
+  void eachMarkerOnItsOwnNarrowsToTheGroupsItNames() throws Exception {
+    fourGroups("scopeEachMarker");
+
+    assertThat(handWrittenRetry("scopeEachMarker", "\"withoutTenant\": true,"))
+        .as("withoutTenant: the root-level and the called group without a tenant").isEqualTo(2);
+  }
+
+  @Test
+  void rootLevelOnlyOnItsOwnNarrowsToTheRootLevelGroups() throws Exception {
+    fourGroups("scopeRootOnly");
+
+    assertThat(handWrittenRetry("scopeRootOnly", "\"rootLevelOnly\": true,"))
+        .as("rootLevelOnly: the root-level group of each tenant").isEqualTo(2);
+  }
+
+  @Test
+  void aMarkerBesideAValueForTheSameKeyIsRefused() throws Exception {
+    assertThat(post("/engine-rest/extensions/incident/retry", retryBody("scopeRefused",
+        "\"tenantId\": \"tenant-a\", \"withoutTenant\": true,"), WRITER_TOKEN).statusCode())
+        .isEqualTo(400);
+    assertThat(post("/engine-rest/extensions/incident/retry", retryBody("scopeRefused",
+        "\"calledFrom\": {\"processDefinitionKey\": \"scopeRefused\", \"callActivityId\": \""
+            + CALL_ACTIVITY + "\"}, \"rootLevelOnly\": true,"), WRITER_TOKEN).statusCode())
+        .isEqualTo(400);
+  }
+
+  /** Posts a hand-written retry for {@code key} with the extra fields; the matched count. */
+  private long handWrittenRetry(String key, String extraFields) throws Exception {
+    HttpResponse<String> response = post("/engine-rest/extensions/incident/retry",
+        retryBody(key, extraFields), WRITER_TOKEN);
+    assertThat(response.statusCode()).isEqualTo(200);
+    return objectMapper.readTree(response.body()).get("incidentCount").asLong();
+  }
+
+  private static String retryBody(String key, String extraFields) {
+    return """
+        {
+          "rootProcessDefinitionKey": "%1$s",
+          "processDefinitionKey": "%1$s",
+          "activityId": "%2$s",
+          "incidentType": "failedExternalTask",
+          %3$s
+          "retries": 1
+        }
+        """.formatted(key, ACTIVITY, extraFields);
   }
 
   private void assertVerbatimRetryTouchesOnlyItsGroup(String key, String tenant, boolean called)

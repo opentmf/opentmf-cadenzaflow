@@ -185,9 +185,25 @@ class IncidentGroupRepositoryTests {
         .doesNotContain(":callActivityId")
         .doesNotContain("group by")
         .doesNotContain("TENANT_ID_ = :tenantId")
+        .doesNotContain("TENANT_ID_ is null")
         .doesNotContain("VERSION_ = :defVersion")
         .doesNotContain(":timestampAfter")
         .doesNotContain(":timestampBefore");
+  }
+
+  @Test
+  void retrySelectKeepsAGroupWithoutTenantAndCallerInsideItWhenTheMarkersSaySo() {
+    repository.retryConfigurations(new IncidentGroupRetryRequest(
+        "orderFulfilment", "reserveStock", "callWms", "failedExternalTask", null, true,
+        null, true, 8, null, null, 1));
+
+    String sql = capturedRetrySql(Map.of("defVersion", 8));
+    assertThat(sql)
+        .as("withoutTenant / rootLevelOnly are the group's null keys, said explicitly")
+        .contains("i.TENANT_ID_ is null")
+        .contains("pi.SUPER_EXEC_ is null")
+        .doesNotContain(":tenantId")
+        .doesNotContain("join cadenzaflow.ACT_RU_EXECUTION sup");
   }
 
   @Test
