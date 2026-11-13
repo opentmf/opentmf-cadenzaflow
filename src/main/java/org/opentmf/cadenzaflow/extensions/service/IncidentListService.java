@@ -12,6 +12,7 @@ import org.cadenzaflow.bpm.engine.runtime.IncidentQuery;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentListFilter;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentRow;
 import org.opentmf.cadenzaflow.extensions.repository.ActivityNameLookup;
+import org.opentmf.cadenzaflow.extensions.repository.IncidentChainQuery;
 import org.opentmf.cadenzaflow.extensions.repository.ProcessDefinitionLookup;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -36,14 +37,17 @@ public class IncidentListService {
   private final RuntimeService runtimeService;
   private final ProcessDefinitionLookup definitionLookup;
   private final ActivityNameLookup activityNameLookup;
+  private final IncidentChainQuery chainQuery;
 
   public IncidentListService(
       RuntimeService runtimeService,
       ProcessDefinitionLookup definitionLookup,
-      ActivityNameLookup activityNameLookup) {
+      ActivityNameLookup activityNameLookup,
+      IncidentChainQuery chainQuery) {
     this.runtimeService = runtimeService;
     this.definitionLookup = definitionLookup;
     this.activityNameLookup = activityNameLookup;
+    this.chainQuery = chainQuery;
   }
 
   /**
@@ -52,12 +56,19 @@ public class IncidentListService {
    */
   public Page<IncidentRow> page(
       IncidentListFilter filter, Pageable pageable, Sort sort, String hrefBasePath) {
-    IncidentQuery query = buildQuery(filter);
-    IncidentSortMapping.apply(query, sort);
-
-    long total = query.count();
-    List<Incident> incidents = query.listPage(
-        (int) Math.min(pageable.getOffset(), Integer.MAX_VALUE), pageable.getPageSize());
+    long total;
+    List<Incident> incidents;
+    if (filter.rootCauseOnly()) {
+      // One row per chain: the stock query cannot say "id = rootCauseIncidentId".
+      total = chainQuery.count(filter);
+      incidents = chainQuery.page(filter, sort, pageable.getOffset(), pageable.getPageSize());
+    } else {
+      IncidentQuery query = buildQuery(filter);
+      IncidentSortMapping.apply(query, sort);
+      total = query.count();
+      incidents = query.listPage(
+          (int) Math.min(pageable.getOffset(), Integer.MAX_VALUE), pageable.getPageSize());
+    }
     // Per-request memo: every definition lookup is an engine COMMAND (its own
     // transaction and pool checkout, even on a deployment-cache hit), so resolve
     // each DISTINCT definition once per page, not once per row.

@@ -85,6 +85,13 @@ class IncidentSortMappingTests {
   }
 
   @Test
+  void theChainListSortsByExactlyTheSameFields() {
+    // rootCauseOnly=true reads through IncidentChainQuery's own ORDER BY: one vocabulary.
+    assertThat(org.opentmf.cadenzaflow.extensions.repository.IncidentChainQuery.sortableFields())
+        .isEqualTo(IncidentSortMapping.sortableFields());
+  }
+
+  @Test
   void everySortKeyIsAnIncidentRowAttribute() {
     // TMF-630 sorts by the response resource's attribute names: the sort vocabulary's
     // single point of truth is OUR row model, never another library's constants.

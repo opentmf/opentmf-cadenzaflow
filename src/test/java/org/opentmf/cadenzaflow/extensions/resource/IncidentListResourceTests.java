@@ -2,6 +2,7 @@ package org.opentmf.cadenzaflow.extensions.resource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -66,7 +67,7 @@ class IncidentListResourceTests {
 
   private Response list(String keyIn, String after, String before) {
     return resource.list(uriInfo, "failedExternalTask", keyIn, null, null, null,
-        "callWms", null, null, after, before, null, null, null,
+        "callWms", null, null, after, before, null, null, null, null,
         "0", "2", List.of("-incidentTimestamp"), "id,activityName");
   }
 
@@ -89,11 +90,32 @@ class IncidentListResourceTests {
     verify(paging).respond(page, "id,activityName", uriInfo.getRequestUri());
 
     resource.list(uriInfo, null, "a,, b,", null, null, null, null, null, null,
-        null, null, null, null, null, null, null, List.of(), null);
+        null, null, null, null, null, null, null, null, List.of(), null);
     verify(service, times(2)).page(filter.capture(), any(), any(), anyString());
     assertThat(filter.getValue().processDefinitionKeyIn())
         .as("empty comma segments are dropped, not forwarded")
         .containsExactly("a", "b");
+  }
+
+  @Test
+  void readsRootCauseOnlyAsAStrictFlag() {
+    ArgumentCaptor<IncidentListFilter> filter = ArgumentCaptor.forClass(IncidentListFilter.class);
+    for (String value : new String[] {null, "false", "true"}) {
+      resource.list(uriInfo, null, null, null, null, null, null, null, null,
+          null, null, null, null, null, value, null, null, List.of(), null);
+    }
+    verify(service, times(3)).page(filter.capture(), any(), any(), anyString());
+    assertThat(filter.getAllValues()).extracting(IncidentListFilter::rootCauseOnly)
+        .containsExactly(false, false, true);
+  }
+
+  @Test
+  void refusesARootCauseOnlyThatIsNotABoolean() {
+    List<String> unsorted = List.of();
+    assertThatThrownBy(() -> resource.list(uriInfo, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, "yes", null, null, unsorted, null))
+        .isInstanceOf(InvalidRequestException.class)
+        .hasMessageContaining("rootCauseOnly");
   }
 
   @Test

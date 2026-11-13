@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a value for the same key (`tenantId`, `calledFrom`) is a 400. An omitted key still means
   "any", as before.
 
+- **The incident list can show one row per chain** (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).
+  `GET /engine-rest/extensions/incident?rootCauseOnly=true` returns only the originating incident of
+  each chain, so a failure inside a call activity is one row instead of one per level, and `offset`,
+  `limit`, `X-Total-Count` and `Content-Range` count chains. Every other filter still applies. Without
+  the parameter (or with `false`) the list is unchanged.
+
 ### Changed
 
 - **CI fails when the published API document is not the generator's output** (CF-OPENAPI-GENERATED-IN-STEP-1).
