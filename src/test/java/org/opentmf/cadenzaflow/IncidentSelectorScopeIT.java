@@ -236,7 +236,7 @@ class IncidentSelectorScopeIT {
   void theReportMarksTheGroupsWithoutTenantOrCaller() throws Exception {
     List<JsonNode> groups = fourGroups("scopeMarkers");
 
-    assertThat(groups).allSatisfy(group -> {
+    assertThat(groups).hasSize(4).allSatisfy(group -> {
       JsonNode selector = group.get("selector");
       assertThat(selector.path("withoutTenant").asBoolean())
           .as("withoutTenant marks exactly the groups without a tenant")
