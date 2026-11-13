@@ -184,10 +184,16 @@ class IncidentSelectorScopeIT {
   private final HttpClient httpClient = HttpClient.newHttpClient();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
-  private static final String READER_TOKEN =
-      ISSUER.mint("reader@it.test", List.of("ebu-federation-reader"));
-  private static final String WRITER_TOKEN =
-      ISSUER.mint("writer@it.test", List.of("ebu-federation-writer"));
+  // Minted per request, never once per class: a token lives 300 s, and on a loaded build
+  // machine the Keycloak container alone has taken longer than that to start, so a
+  // class-load token was already expired (401) when the first test ran.
+  private static String readerToken() {
+    return ISSUER.mint("reader@it.test", List.of("ebu-federation-reader"));
+  }
+
+  private static String writerToken() {
+    return ISSUER.mint("writer@it.test", List.of("ebu-federation-writer"));
+  }
 
   @Test
   void theFourGroupsAreReportedApart() throws Exception {
@@ -267,18 +273,18 @@ class IncidentSelectorScopeIT {
   @Test
   void aMarkerBesideAValueForTheSameKeyIsRefused() throws Exception {
     assertThat(post("/engine-rest/extensions/incident/retry", retryBody("scopeRefused",
-        "\"tenantId\": \"tenant-a\", \"withoutTenant\": true,"), WRITER_TOKEN).statusCode())
+        "\"tenantId\": \"tenant-a\", \"withoutTenant\": true,"), writerToken()).statusCode())
         .isEqualTo(400);
     assertThat(post("/engine-rest/extensions/incident/retry", retryBody("scopeRefused",
         "\"calledFrom\": {\"processDefinitionKey\": \"scopeRefused\", \"callActivityId\": \""
-            + CALL_ACTIVITY + "\"}, \"rootLevelOnly\": true,"), WRITER_TOKEN).statusCode())
+            + CALL_ACTIVITY + "\"}, \"rootLevelOnly\": true,"), writerToken()).statusCode())
         .isEqualTo(400);
   }
 
   /** Posts a hand-written retry for {@code key} with the extra fields; the matched count. */
   private long handWrittenRetry(String key, String extraFields) throws Exception {
     HttpResponse<String> response = post("/engine-rest/extensions/incident/retry",
-        retryBody(key, extraFields), WRITER_TOKEN);
+        retryBody(key, extraFields), writerToken());
     assertThat(response.statusCode()).isEqualTo(200);
     return objectMapper.readTree(response.body()).get("incidentCount").asLong();
   }
@@ -305,7 +311,7 @@ class IncidentSelectorScopeIT {
 
     ObjectNode retry = ((ObjectNode) target.get("selector").deepCopy()).put("retries", 1);
     HttpResponse<String> response = post("/engine-rest/extensions/incident/retry",
-        objectMapper.writeValueAsString(retry), WRITER_TOKEN);
+        objectMapper.writeValueAsString(retry), writerToken());
     assertThat(response.statusCode()).isEqualTo(200);
     assertThat(objectMapper.readTree(response.body()).get("incidentCount").asLong())
         .as("a selector posted back verbatim retries its own group's one incident only")
@@ -357,7 +363,7 @@ class IncidentSelectorScopeIT {
 
   private List<JsonNode> groups(String key) throws Exception {
     HttpResponse<String> response = get(
-        "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=" + key, READER_TOKEN);
+        "/engine-rest/extensions/incident/groups?rootProcessDefinitionKey=" + key, readerToken());
     assertThat(response.statusCode()).isEqualTo(200);
     List<JsonNode> groups = new ArrayList<>();
     objectMapper.readTree(response.body()).forEach(groups::add);
