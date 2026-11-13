@@ -169,13 +169,15 @@ class IncidentListServiceTests {
     IncidentListFilter chains = new IncidentListFilter(
         "failedJob", null, null, null, null, null, null, null, null, null, null, null, null, true);
     Incident origin = incident("inc-1", "inc-1");
-    when(chainQuery.count(chains)).thenReturn(7L);
+    // The page is offset 20, limit 10: a total below 30 would be corrected by PageImpl to
+    // offset + rows, so the fixture's chain count lies past the page.
+    when(chainQuery.count(chains)).thenReturn(37L);
     when(chainQuery.page(eq(chains), any(Sort.class), eq(20L), eq(10))).thenReturn(List.of(origin));
     when(definitionLookup.byId("childFlow:8:x")).thenReturn(Optional.empty());
 
     Page<IncidentRow> page = page(chains);
 
-    assertThat(page.getTotalElements()).as("the total counts chains").isEqualTo(7);
+    assertThat(page.getTotalElements()).as("the total counts chains").isEqualTo(37);
     assertThat(page.getContent()).singleElement()
         .satisfies(row -> assertThat(row.originating()).isTrue());
     verifyNoInteractions(query);
