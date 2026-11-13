@@ -385,6 +385,63 @@ class LogbackMaskingTests {
   }
 
   /**
+   * CF-MASKING-UNDERSCORE-BOUNDARY-1: an underscore glued to a value on either side. The underscore
+   * is a word character, so a trailing {@code \b} found no end between the value and a {@code _}
+   * after it and the WHOLE value was written in clear (a file name {@code kontoauszug_<IBAN>.pdf}
+   * read from the other side, a variable name, a key suffix). One case before and one after, per
+   * rule; the four AFTER cases were red before the fix.
+   */
+  @Nested
+  @DisplayName("an underscore beside the value")
+  class UnderscoreBesideTheValue {
+
+    private static final String IBAN = "DE89370400440532013000";
+    private static final String CARD = "4111 1111 1111 1111";
+    private static final String PHONE = "+4915112345678";
+    private static final String DIGITS = "123456789012";
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"kontoauszug_" + IBAN + ".pdf", IBAN + "_kontoauszug.pdf"})
+    void maskAnIbanWithAnUnderscoreBesideIt(String text) {
+      String json = encode("archived " + text + " ok", Map.of());
+
+      assertThat(json).doesNotContain(IBAN).doesNotContain("370400440532013000").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"card_" + CARD, CARD + "_card"})
+    void maskASeparatedCardNumberWithAnUnderscoreBesideIt(String text) {
+      String json = encode("declined " + text + " ok", Map.of());
+
+      assertThat(json).doesNotContain(CARD).doesNotContain("1111 1111").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"tel_" + PHONE, PHONE + "_tel"})
+    void maskAGermanPhoneNumberWithAnUnderscoreBesideIt(String text) {
+      String json = encode("notifying " + text + " ok", Map.of());
+
+      assertThat(json).doesNotContain("15112345678").contains(MASK);
+    }
+
+    @ParameterizedTest(name = "[{0}]")
+    @ValueSource(strings = {"acct_" + DIGITS, DIGITS + "_acct"})
+    void maskALongDigitRunWithAnUnderscoreBesideIt(String text) {
+      String json = encode("variable " + text + " ok", Map.of());
+
+      assertThat(json).doesNotContain(DIGITS).contains(MASK);
+    }
+
+    @Test
+    void keepTheUnderscoreNeighbourReadable() {
+      // Only the value goes: the word glued to it survives for triage.
+      String json = encode("archived " + IBAN + "_kontoauszug.pdf ok", Map.of());
+
+      assertThat(json).contains(MASK + "_kontoauszug.pdf");
+    }
+  }
+
+  /**
    * The three places this service's PII rules deliberately differ from the shared platform
    * fragment in {@code pia-team/dnms-service-template}. Each case exists so the difference is
    * provably a decision rather than drift: an edit that "aligns with the template" fails here and

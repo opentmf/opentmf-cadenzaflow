@@ -162,13 +162,22 @@
           <mask>****</mask>
         </valueMask>
 
+        <!-- THE TRAILING GUARD of the card, IBAN, phone and digit-run rules is
+             (?![A-Za-z0-9]), "not followed by a letter or digit", never `\b`
+             (CF-MASKING-UNDERSCORE-BOUNDARY-1). An underscore is a word character,
+             so `\b` found no end between the value and a `_` glued after it and the
+             whole value was written IN CLEAR: `DE89370400440532013000_kontoauszug.pdf`,
+             `4111 1111 1111 1111_card`, `+4915112345678_tel`, `123456789012_acct`.
+             The new guard is strictly wider than `\b` after a digit or letter: it
+             also ends the value at `_`. The LEADING guards are unchanged. -->
+
         <!-- Card PANs written in separated groups (4-4-4-2..4). The unseparated
              form is covered by the stricter digit-run rule below.
              The separator class carries the same `%20` alternation as the auth rule,
              for the same reason: a PAN arriving in a request line is encoded, and
              neither this rule nor the digit-run rule could see it otherwise. -->
         <valueMask>
-          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{2,4}\b</value>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{4}(?:[ -]|%(?:25)?20)\d{2,4}(?![A-Za-z0-9])</value>
           <mask>****</mask>
         </valueMask>
 
@@ -184,7 +193,7 @@
              DIVERGENCE (stricter): the template keeps country + check digits
              ("DE44****") for payment triage. This service never reconciles
              payments, so the whole value goes. -->
-        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b</value>
+        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))[A-Z]{2}\d{2}[A-Z0-9]{11,30}(?![A-Za-z0-9])</value>
 
         <!-- German phone numbers in the +49… / 0049… / 0… shapes, with the `+`
              also accepted encoded (`%2B`, `%252B`, either case) - the platform
@@ -210,7 +219,7 @@
              behind an encoded prefix too - so taking it would import known false
              positives for coverage this service already has. Revisit only if the
              digit-run rule is ever loosened. -->
-        <value>(?:\b|(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:(?:\+|%(?:25)?2[Bb]|00)49|0)[1-9]\d{6,13}\b</value>
+        <value>(?:\b|(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(?:(?:\+|%(?:25)?2[Bb]|00)49|0)[1-9]\d{6,13}(?![A-Za-z0-9])</value>
 
         <!-- Runs of 12+ digits (card numbers, long account refs).
              DIVERGENCE (stricter): the template deliberately leaves the
@@ -221,7 +230,7 @@
              Deliberately not shorter than 12: process-definition keys, job
              retries and incident counts are numeric too, and masking those
              would gut the operational logs. -->
-        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{12,}\b</value>
+        <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))\d{12,}(?![A-Za-z0-9])</value>
 
         <!-- DELIBERATELY ABSENT: an e-mail value regex.
              DIVERGENCE (looser): the template masks the local part and keeps the
