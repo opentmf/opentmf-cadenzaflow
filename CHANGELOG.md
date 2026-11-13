@@ -32,6 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cut prepared after local midnight east of UTC (1.5.4, 01:3x TRT) passed locally and failed
   the CI push build of the tag commit on its UTC runner. Release dates are UTC from now on.
 
+- **An underscore after a value no longer leaves it in clear in the log**
+  (CF-MASKING-UNDERSCORE-BOUNDARY-1). The card, IBAN, German phone and 12+-digit rules of
+  `logback-masking.xml` ended the value with `\b`, and an underscore is a word character, so
+  `DE89370400440532013000_kontoauszug.pdf`, `4111 1111 1111 1111_card`, `+4915112345678_tel`
+  and `123456789012_acct` were written whole. Every released fragment (1.5.0 to 1.5.4) has it.
+  The trailing guard is now "not followed by a letter or digit", strictly wider than `\b`; an
+  underscore before a value was already masked, and the leading guards are unchanged.
+
 ## [1.5.4] - 2026-11-10
 
 ### Fixed
