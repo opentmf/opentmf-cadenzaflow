@@ -349,6 +349,48 @@ class IncidentOperationsIT {
   }
 
   @Test
+  @Order(4)
+  void rootCauseOnlyListsOneRowPerChainAndCountsChains() throws Exception {
+    // CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1. Read-only, on step 1's state: three child
+    // failures inside a call activity = six raw rows (three originating + three parent
+    // copies) = three chains.
+    HttpResponse<String> raw = get("/engine-rest/extensions/incident?limit=2", READER_TOKEN);
+    assertThat(raw.headers().firstValue("X-Total-Count")).as("the default is unchanged").contains("6");
+    assertThat(raw.headers().firstValue("Content-Range")).contains("items 1-2/6");
+
+    HttpResponse<String> chains = get(
+        "/engine-rest/extensions/incident?rootCauseOnly=true&limit=2&sort=-incidentTimestamp",
+        READER_TOKEN);
+    assertThat(chains.statusCode()).isEqualTo(206);
+    assertThat(chains.headers().firstValue("X-Total-Count")).as("one per chain").contains("3");
+    assertThat(chains.headers().firstValue("Content-Range")).contains("items 1-2/3");
+    JsonNode rows = objectMapper.readTree(chains.body());
+    assertThat(rows).hasSize(2).allSatisfy(row -> {
+      assertThat(row.get("originating").asBoolean()).isTrue();
+      assertThat(row.get("id").asText()).isEqualTo(row.get("rootCauseIncidentId").asText());
+      assertThat(row.get("processDefinitionKey").asText()).isEqualTo("childFlow");
+      assertThat(row.get("activityName").asText()).isEqualTo("Call WMS");
+    });
+
+    HttpResponse<String> lastChain = get(
+        "/engine-rest/extensions/incident?rootCauseOnly=true&limit=2&offset=2", READER_TOKEN);
+    assertThat(lastChain.headers().firstValue("Content-Range")).contains("items 3-3/3");
+    assertThat(objectMapper.readTree(lastChain.body())).hasSize(1);
+
+    // Every other filter still applies: the parent definition holds only copies.
+    HttpResponse<String> parentChains = get(
+        "/engine-rest/extensions/incident?rootCauseOnly=true&processDefinitionKeyIn=parentFlow",
+        READER_TOKEN);
+    assertThat(parentChains.headers().firstValue("X-Total-Count")).contains("0");
+    assertThat(objectMapper.readTree(parentChains.body())).isEmpty();
+
+    assertThat(get("/engine-rest/extensions/incident?rootCauseOnly=false&limit=2", READER_TOKEN)
+        .headers().firstValue("X-Total-Count")).as("false is the default list").contains("6");
+    assertThat(get("/engine-rest/extensions/incident?rootCauseOnly=yes", READER_TOKEN)
+        .statusCode()).isEqualTo(400);
+  }
+
+  @Test
   @Order(5)
   void timeRangeIsHalfOpenOnBothEndpoints() throws Exception {
     // The group's own oldest/newest timestamps (engine date format, +0000 zone) are

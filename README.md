@@ -1876,6 +1876,7 @@ Query parameters of the list — paging and shaping:
 | `incidentTimestampAfter` / `incidentTimestampBefore` | half-open time window, as above |
 | `tenantIdIn`, `jobDefinitionIdIn` | comma-separated |
 | `rootCauseIncidentId` | all incidents propagated from one originating incident |
+| `rootCauseOnly` | `true`: ONE row per chain, the originating incident; a failure two call activities deep is one row, not one per level, and `offset`/`limit`/`X-Total-Count`/`Content-Range` count chains. Every other filter still applies. Absent or `false`: every row, as before |
 
 Drill into one report group with
 `processDefinitionKeyIn=<key>&activityId=<id>&incidentType=<type>` — the propagated

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.5.5] - unreleased
 
+### Added
+
+- **The incident list can show one row per chain** (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).
+  `GET /engine-rest/extensions/incident?rootCauseOnly=true` returns only the originating incident of
+  each chain, so a failure inside a call activity is one row instead of one per level, and `offset`,
+  `limit`, `X-Total-Count` and `Content-Range` count chains. Every other filter still applies. Without
+  the parameter (or with `false`) the list is unchanged.
+
 ### Changed
 
 - **The local Sonar floor is zero on develop again** (CF-SONAR-DEVELOP-ZERO-1). Eight code

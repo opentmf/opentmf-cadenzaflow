@@ -270,6 +270,15 @@ paths:
         - name: rootCauseIncidentId
           in: query
           schema: { type: string }
+        - name: rootCauseOnly
+          in: query
+          schema: { type: boolean, default: false }
+          description: >
+            `true`: ONE row per incident chain, the originating incident (its `id` is
+            its own `rootCauseIncidentId`); the copies the engine propagates into calling instances
+            are left out. `offset`, `limit`, `X-Total-Count` and `Content-Range` then count chains, and
+            every other filter still applies. Absent or `false`: every incident row, as before. Any
+            other value is a 400.
       responses:
         '200':
           description: The whole result fits the page (headers as on 206).
