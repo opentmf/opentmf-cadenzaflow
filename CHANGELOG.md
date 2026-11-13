@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The engine pool is measured for sessions left idle in transaction** (ENGINE-JOBS-IDLE-IN-TRANSACTION-1).
+  A Testcontainers stress IT runs a burst of engine jobs on the image's pool (auto-commit off, no Hikari
+  `schema`) and samples `pg_stat_activity` at rest, under the burst and in the drain; no session may stay
+  idle in transaction for 5 s or longer. Its control, with the 1.4.1 Hikari `schema` put back, must show
+  such sessions, so the clean run is a measurement and not a blind spot. The procedure for a reading on a
+  deployed stack is `docs/engine-idle-in-transaction-measurement.md`. Test and docs only.
+
 - **The local Sonar floor is zero on develop again** (CF-SONAR-DEVELOP-ZERO-1). Eight code
   smells open on develop are fixed in code, each a minimal change with no suppression:
   the index-name string is built once instead of inside three log calls (S2629), the
