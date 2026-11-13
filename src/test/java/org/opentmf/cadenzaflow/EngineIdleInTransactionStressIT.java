@@ -52,6 +52,7 @@ class EngineIdleInTransactionStressIT extends EngineIdleInTransactionStressScena
     assertThat(runPhases())
         .as("no session of the engine's role is idle in transaction for %d s or longer",
             FINDING_AGE_SECONDS)
+        .hasSize(3)
         .allSatisfy(phase -> assertThat(phase.findings).as(phase.name).isEmpty());
   }
 }
