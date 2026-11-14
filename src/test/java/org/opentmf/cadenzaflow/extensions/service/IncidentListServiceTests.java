@@ -1,11 +1,14 @@
 package org.opentmf.cadenzaflow.extensions.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentListFilter;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentRow;
 import org.opentmf.cadenzaflow.extensions.repository.ActivityNameLookup;
+import org.opentmf.cadenzaflow.extensions.repository.IncidentChainQuery;
 import org.opentmf.cadenzaflow.extensions.repository.ProcessDefinitionLookup;
 import org.opentmf.query.tmf630.paging.OffsetLimitPageRequest;
 import org.springframework.data.domain.Page;
@@ -32,11 +36,12 @@ import org.springframework.data.domain.Sort;
 class IncidentListServiceTests {
 
   private static final IncidentListFilter EMPTY_FILTER = new IncidentListFilter(
-      null, null, null, null, null, null, null, null, null, null, null, null, null);
+      null, null, null, null, null, null, null, null, null, null, null, null, null, false);
 
   private IncidentQuery query;
   private ProcessDefinitionLookup definitionLookup;
   private ActivityNameLookup activityNameLookup;
+  private IncidentChainQuery chainQuery;
   private IncidentListService service;
 
   @BeforeEach
@@ -48,7 +53,9 @@ class IncidentListServiceTests {
     when(runtimeService.createIncidentQuery()).thenReturn(query);
     definitionLookup = mock(ProcessDefinitionLookup.class);
     activityNameLookup = mock(ActivityNameLookup.class);
-    service = new IncidentListService(runtimeService, definitionLookup, activityNameLookup);
+    chainQuery = mock(IncidentChainQuery.class);
+    service = new IncidentListService(runtimeService, definitionLookup, activityNameLookup,
+        chainQuery);
   }
 
   private Page<IncidentRow> page(IncidentListFilter filter) {
@@ -62,7 +69,7 @@ class IncidentListServiceTests {
     Date before = new Date(2000);
     page(new IncidentListFilter("failedExternalTask", List.of("a", "b"), "def-1", "pi-1",
         "exec-1", "act-1", "failed-1", "%WMS%", after, before, List.of("t1"),
-        List.of("jd1"), "root-1"));
+        List.of("jd1"), "root-1", false));
 
     verify(query).incidentType("failedExternalTask");
     verify(query).processDefinitionKeyIn("a", "b");
@@ -155,6 +162,33 @@ class IncidentListServiceTests {
 
     assertThat(page(EMPTY_FILTER).getContent().get(0).activityName()).isNull();
     verifyNoMoreInteractions(activityNameLookup);
+  }
+
+  @Test
+  void rootCauseOnlyReadsTheChainsAndCountsThem() {
+    IncidentListFilter chains = new IncidentListFilter(
+        "failedJob", null, null, null, null, null, null, null, null, null, null, null, null, true);
+    Incident origin = incident("inc-1", "inc-1");
+    // The page is offset 20, limit 10: a total below 30 would be corrected by PageImpl to
+    // offset + rows, so the fixture's chain count lies past the page.
+    when(chainQuery.count(chains)).thenReturn(37L);
+    when(chainQuery.page(eq(chains), any(Sort.class), eq(20L), eq(10))).thenReturn(List.of(origin));
+    when(definitionLookup.byId("childFlow:8:x")).thenReturn(Optional.empty());
+
+    Page<IncidentRow> page = page(chains);
+
+    assertThat(page.getTotalElements()).as("the total counts chains").isEqualTo(37);
+    assertThat(page.getContent()).singleElement()
+        .satisfies(row -> assertThat(row.originating()).isTrue());
+    verifyNoInteractions(query);
+  }
+
+  @Test
+  void theDefaultListNeverReadsTheChains() {
+    page(EMPTY_FILTER);
+
+    verify(query).count();
+    verifyNoInteractions(chainQuery);
   }
 
   private static Incident incident(String id, String rootCauseId) {

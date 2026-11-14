@@ -9,7 +9,10 @@ package org.opentmf.cadenzaflow.extensions.model.incident.group;
  * never the whole group. {@code calledFrom} and {@code processDefinitionVersion} are
  * echoed for the same reason: both are part of the group key, and without them a retry
  * would also hit the sibling groups of the same activity — called from another call
- * activity, or running another version of the definition.
+ * activity, or running another version of the definition. A group WITHOUT a tenant or
+ * caller carries {@code withoutTenant: true} / {@code rootLevelOnly: true} instead of a value
+ * (null otherwise): a null key alone does not filter, so the marker is what keeps such a
+ * group's retry inside it.
  *
  * @author Cezmi Aslan
  */
@@ -20,6 +23,8 @@ public record IncidentGroupSelector(
     String activityId,
     String incidentType,
     String tenantId,
+    Boolean withoutTenant,
     CalledFrom calledFrom,
+    Boolean rootLevelOnly,
     String incidentTimestampAfter,
     String incidentTimestampBefore) {}

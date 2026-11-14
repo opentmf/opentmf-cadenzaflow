@@ -7,9 +7,11 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response.Status;
 import jakarta.ws.rs.core.UriInfo;
 import java.util.Arrays;
 import java.util.List;
+import org.cadenzaflow.bpm.engine.rest.exception.InvalidRequestException;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentListFilter;
 import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentRow;
 import org.opentmf.cadenzaflow.extensions.service.IncidentListService;
@@ -34,6 +36,10 @@ import org.springframework.stereotype.Component;
  * endpoint, whose {@code after} is exclusive; the service adapts by querying the
  * stock filter with {@code after - 1ms} (exact, because the engine writes
  * millisecond-precision timestamps). Formats per {@link EngineRestDateUtil}.</p>
+ *
+ * <p>{@code rootCauseOnly=true} lists ONE row per incident chain, the originating incident;
+ * offset, limit, {@code X-Total-Count} and {@code Content-Range} then count chains, and every
+ * other filter still applies (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).</p>
  *
  * @author Cezmi Aslan
  */
@@ -67,6 +73,7 @@ public class IncidentListResource {
       @QueryParam("tenantIdIn") String tenantIdIn,
       @QueryParam("jobDefinitionIdIn") String jobDefinitionIdIn,
       @QueryParam("rootCauseIncidentId") String rootCauseIncidentId,
+      @QueryParam("rootCauseOnly") String rootCauseOnly,
       @QueryParam("offset") String offset,
       @QueryParam("limit") String limit,
       @QueryParam("sort") List<String> sort,
@@ -84,12 +91,25 @@ public class IncidentListResource {
         EngineRestDateUtil.parse("incidentTimestampBefore", incidentTimestampBefore),
         commaList(tenantIdIn),
         commaList(jobDefinitionIdIn),
-        rootCauseIncidentId);
+        rootCauseIncidentId,
+        flag("rootCauseOnly", rootCauseOnly));
     Pageable pageable = paging.pageable(offset, limit, sort);
 
     Page<IncidentRow> page = service.page(
         filter, pageable, paging.sortOrDefault(pageable), uriInfo.getBaseUri().getPath());
     return paging.respond(page, fields, uriInfo.getRequestUri());
+  }
+
+  /** A boolean query parameter: absent is false; anything but true/false is a 400. */
+  private static boolean flag(String name, String raw) {
+    if (raw == null || "false".equals(raw)) {
+      return false;
+    }
+    if ("true".equals(raw)) {
+      return true;
+    }
+    throw new InvalidRequestException(Status.BAD_REQUEST,
+        "Query parameter '" + name + "' must be true or false, was '" + raw + "'");
   }
 
   private static List<String> commaList(String raw) {

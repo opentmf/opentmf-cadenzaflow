@@ -64,10 +64,11 @@ class IncidentGroupAssemblerTests {
     assertThat(v8.sampleMessage()).isEqualTo("newest message");
     assertThat(v8.calledFrom()).isEqualTo(new CalledFrom("orderFulfilment", "reserve"));
     // calledFrom and the version are part of the group key, so the selector must carry
-    // both: without them a retry would also hit the sibling groups.
+    // both: without them a retry would also hit the sibling groups. The group has no
+    // tenant, so it carries the withoutTenant marker instead of a value.
     assertThat(v8.selector()).isEqualTo(new IncidentGroupSelector(
-        "orderFulfilment", "reserveStock", 8, "callWms", "failedExternalTask", null,
-        new CalledFrom("orderFulfilment", "reserve"), null, null));
+        "orderFulfilment", "reserveStock", 8, "callWms", "failedExternalTask", null, true,
+        new CalledFrom("orderFulfilment", "reserve"), null, null, null));
 
     IncidentGroup v7 = groups.get(1);
     assertThat(v7.processDefinitionVersion()).isEqualTo(7);
@@ -116,6 +117,24 @@ class IncidentGroupAssemblerTests {
 
     assertThat(groups.get(0).calledFrom()).isNull();
     assertThat(groups.get(0).selector().calledFrom()).isNull();
+    assertThat(groups.get(0).selector().rootLevelOnly())
+        .as("a root-level group says so, or its retry would also take the called groups")
+        .isTrue();
+  }
+
+  @Test
+  void markNoKeyThatTheGroupHasAValueFor() {
+    when(activityNameLookup.activity("reserveStock:8:id", "callWms"))
+        .thenReturn(Optional.empty());
+    List<IncidentGroup> groups = assembler.assemble(List.of(new IncidentGroupRow(
+        "orderFulfilment", "reserveStock:8:id", "reserveStock", "Reserve stock", 8,
+        "callWms", "failedExternalTask", "tenant-1", "orderFulfilment", "reserve",
+        2, 2, EARLY, LATE, "boom")), null, null);
+
+    IncidentGroupSelector selector = groups.get(0).selector();
+    assertThat(selector.tenantId()).isEqualTo("tenant-1");
+    assertThat(selector.withoutTenant()).isNull();
+    assertThat(selector.rootLevelOnly()).isNull();
   }
 
   @Test

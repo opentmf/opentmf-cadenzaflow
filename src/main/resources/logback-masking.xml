@@ -205,6 +205,25 @@
              payments, so the whole value goes. -->
         <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))[A-Z]{2}\d{2}[A-Z0-9]{11,30}(?![A-Za-z0-9])</value>
 
+        <!-- The same IBAN written in GROUPS of four, as a statement prints it:
+             `DE89 3704 0044 0532 0130 00`, `NO93 8601 1117 947`, and with the blank
+             encoded (`%20`, `%2520`) in a request line (CF-MASKING-GROUPED-IBAN-1).
+             The regex is dnms-commons-masking's grouped IBAN rule BYTE FOR BYTE
+             (feature/train-9 4735b86), so the two fragments match the same values; its
+             leading lookahead keeps the country alternation off every other position
+             (measured there: 0.7 to 5.8 times linear on 1 MB of one punctuation
+             character, 20 to 32 times without it). The mask is this list's default
+             `****`: the whole value goes, exactly as for the compact form above, so one
+             IBAN is never treated differently by how it is written (the stricter
+             divergence, pinned by maskTheWholeIbanRatherThanKeepingCountryAndCheckDigits).
+             HERE, right after the compact form and AHEAD of the phone rules below, as in
+             commons: the spaced phone rule would otherwise read `0044 0532 0130 00` inside
+             a German IBAN as `0049`-style digits and leave `DE89 3704 ****`. This bare
+             <value> list is applied before the <valueMask> rules above (the card rules),
+             measured with the encoder in LogbackMaskingTests, so the card rule cannot take
+             the middle groups either. -->
+        <value>(?=[A-Z]{2}\d{2}(?: |%))(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))((?:A[DELTZ]|B[AEGHIRY]|C[HRYZ]|D[EJKO]|E[EGS]|F[IKOR]|G[BEILRT]|H[NRU]|I[ELQST]|JO|K[WZ]|L[BCITUVY]|M[CDEKNRTU]|N[ILO]|OM|P[KLST]|QA|R[OSU]|S[ACDEIKMOTV]|T[LNR]|UA|V[AG]|XK|YE)\d{2})(?:(?:(?: |%(?:25)?20)[A-Z0-9]{4}){3,7}+(?:(?: |%(?:25)?20)[A-Z0-9]{1,4})?|(?:(?: |%(?:25)?20)[A-Z0-9]{4}){2}(?: |%(?:25)?20)[A-Z0-9]{3,4})(?![A-Za-z0-9])</value>
+
         <!-- An international phone number SPACED or GROUPED, as a person or a CRM
              writes it (CF-MASKING-SHAPE-GAPS-1): `+49 151 12345678`, `0049 151-1234 5678`,
              `+49 (0)151 12345678` stayed in clear in every context, because the rule

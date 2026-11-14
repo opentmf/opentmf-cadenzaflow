@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.5.5] - unreleased
 
+### Added
+
+- **Two retry markers for a group without a tenant or caller**
+  (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). `POST /engine-rest/extensions/incident/retry`
+  accepts `withoutTenant: true` (only incidents without a tenant) and `rootLevelOnly: true`
+  (only incidents in the root BPMN itself, not in a called instance). A marker together with
+  a value for the same key (`tenantId`, `calledFrom`) is a 400. An omitted key still means
+  "any", as before.
+
+- **The incident list can show one row per chain** (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).
+  `GET /engine-rest/extensions/incident?rootCauseOnly=true` returns only the originating incident of
+  each chain, so a failure inside a call activity is one row instead of one per level, and `offset`,
+  `limit`, `X-Total-Count` and `Content-Range` count chains. Every other filter still applies. Without
+  the parameter (or with `false`) the list is unchanged.
+
 ### Changed
 
 - **CI fails when the published API document is not the generator's output** (CF-OPENAPI-GENERATED-IN-STEP-1).
@@ -13,6 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   artifact and `ci/openapi-service.yaml`. A new `openapi-generated` job runs `merge-openapi.py --check`
   on every push and PR and fails on either way the file drifts: an engine bump without a regeneration,
   or a hand edit of the generated file.
+
+- **The engine pool is measured for sessions left idle in transaction** (ENGINE-JOBS-IDLE-IN-TRANSACTION-1).
+  A Testcontainers stress IT runs a burst of engine jobs on the image's pool (auto-commit off, no Hikari
+  `schema`) and samples `pg_stat_activity` at rest, under the burst and in the drain; no session may stay
+  idle in transaction for 5 s or longer. Its control, with the 1.4.1 Hikari `schema` put back, must show
+  such sessions, so the clean run is a measurement and not a blind spot. The procedure for a reading on a
+  deployed stack is `docs/engine-idle-in-transaction-measurement.md`. Test and docs only.
 
 - **The local Sonar floor is zero on develop again** (CF-SONAR-DEVELOP-ZERO-1). Eight code
   smells open on develop are fixed in code, each a minimal change with no suppression:
@@ -32,11 +54,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   scope only; the image is unchanged.
 
 - **The aws flavour takes the current AWS libraries** (CF-AWS-PROFILE-BUMPS-T9-1).
-  `aws-msk-iam-auth` 2.3.9 → 2.4.0 and the AWS SDK v2 BOM (`awssdk.version`) 2.57.11 → 2.59.0,
+  `aws-msk-iam-auth` 2.3.9 → 2.4.0 and the AWS SDK v2 BOM (`awssdk.version`) 2.57.11 → 2.59.1,
   in the `aws` profile only. The BOM keeps every `software.amazon.awssdk` module on that one
   version in the -aws image. The base and -azure images are unchanged.
 
 ### Fixed
+
+- **A report group without a tenant or caller, posted back verbatim, retries that group only**
+  (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). The report groups by tenant and caller, but a
+  null `tenantId` or `calledFrom` in the retry dropped that filter, so a null-tenant group's
+  selector also retried every tenant's incidents of that definition and activity, and a
+  root-level group's selector also retried the called instances. The report now emits
+  `withoutTenant: true` / `rootLevelOnly: true` on those groups, and the retry honours them.
+
+- **An IBAN written in groups of four is masked whole** (CF-MASKING-GROUPED-IBAN-1).
+  `DE89 3704 0044 0532 0130 00`, `NO93 8601 1117 947` and the same with an encoded blank (`%20`,
+  `%2520`) had no rule of their own: other rules masked only some of the groups, and shorter IBANs
+  stayed in clear whole. The regex is dnms-commons-masking's grouped IBAN rule byte for byte. The rule
+  sits right after the compact IBAN rule, ahead of the phone and card rules, so neither can take part
+  of an IBAN first (a German IBAN's `0044 0532 0130 00` reads like a phone number). The mask is the
+  whole value, as for the compact form. Look-alikes (`PR42 adds more code`,
+  `TS01 1234 5678 9012 order`) stay readable.
 
 - **The published API document describes the embedded engine 1.2.5** (CF-OPENAPI-GENERATED-IN-STEP-1).
   `openapi.yaml` was not regenerated when the engine moved to 1.2.5: it still named 1.2.3 and lacked the

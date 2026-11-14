@@ -1876,6 +1876,7 @@ Query parameters of the list — paging and shaping:
 | `incidentTimestampAfter` / `incidentTimestampBefore` | half-open time window, as above |
 | `tenantIdIn`, `jobDefinitionIdIn` | comma-separated |
 | `rootCauseIncidentId` | all incidents propagated from one originating incident |
+| `rootCauseOnly` | `true`: ONE row per chain, the originating incident; a failure two call activities deep is one row, not one per level, and `offset`/`limit`/`X-Total-Count`/`Content-Range` count chains. Every other filter still applies. Absent or `false`: every row, as before |
 
 Drill into one report group with
 `processDefinitionKeyIn=<key>&activityId=<id>&incidentType=<type>` — the propagated
@@ -1902,10 +1903,13 @@ POST /cadenzaflow/v1/engine-rest/extensions/incident/retry
 }
 ```
 
-Body fields — the first four are mandatory; together with `tenantId`, `calledFrom`
-and `processDefinitionVersion` they are exactly a group's `selector`, so a selector
-posted back verbatim retries that one group — one version — only. The rest narrow
-the retried set:
+Body fields — the first four are mandatory; together with `tenantId` / `withoutTenant`,
+`calledFrom` / `rootLevelOnly` and `processDefinitionVersion` they are exactly a group's
+`selector`, so a selector posted back verbatim retries that one group — one version —
+only. A group without a tenant is reported with `"withoutTenant": true`, and a group in
+the root BPMN itself (no caller) with `"rootLevelOnly": true`: an omitted key does not
+filter, so the marker is what keeps such a group's retry inside it. The rest narrow the
+retried set:
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -1914,8 +1918,10 @@ the retried set:
 | `activityId` | **yes** | the failing task |
 | `incidentType` | **yes** | `failedJob` or `failedExternalTask` |
 | `retries` | **yes** | remaining attempts to **set** (absolute, ≥ 1 — not an increment) |
-| `tenantId` | no | one tenant only |
+| `tenantId` | no | one tenant only. Omitted: any tenant |
+| `withoutTenant` | no | `true`: only incidents without a tenant. The report emits it on a group without a tenant. Not together with `tenantId` (400) |
 | `calledFrom` | no | `{processDefinitionKey, callActivityId}` — the caller of the failing instance. Part of the group key, so the report always echoes it; omit it only to retry the activity across every caller under the root |
+| `rootLevelOnly` | no | `true`: only incidents in the root BPMN itself, not in a called instance. The report emits it on a root-level group. Not together with `calledFrom` (400) |
 | `processDefinitionVersion` | no | one definition version only. Part of the group key, so the report always echoes it; omit it only to retry every version |
 | `incidentTimestampAfter` / `incidentTimestampBefore` | no | half-open time window, as above |
 
