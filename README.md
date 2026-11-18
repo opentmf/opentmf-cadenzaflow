@@ -2233,9 +2233,9 @@ heap without bound under script-task load.
 ### 9.8 Building a local image
 
 ```bash
-mvn -P docker clean package                       # build + Trivy scan (HIGH/CRITICAL fails)
-mvn -Dmaven.test.skip -P docker,aws clean package # the AWS flavour
-mvn -Dmaven.test.skip -P docker,azure clean package
+./mvnw -P docker clean package                     # build + Trivy scan (HIGH/CRITICAL fails)
+./mvnw -Dmaven.test.skip -P docker,aws clean package # the AWS flavour
+./mvnw -Dmaven.test.skip -P docker,azure clean package
 ```
 
 Or straight from the release Dockerfile:
