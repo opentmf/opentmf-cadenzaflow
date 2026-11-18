@@ -9,7 +9,7 @@ spec artifact (org.cadenzaflow.bpm:cadenzaflow-engine-rest-openapi, version take
 from <cadenzaflow.version> in pom.xml), so the file is regenerated - not edited -
 whenever the engine version bumps:
 
-    python ci/merge-openapi.py          # requires: python3 + pyyaml, mvn on PATH
+    python ci/merge-openapi.py          # requires: python3 + pyyaml; Maven through ./mvnw
     python ci/merge-openapi.py --check  # CI: exit 1 when the committed file differs
 
 `--check` regenerates in memory and compares with the committed file (line endings
@@ -71,8 +71,10 @@ def upstream_spec(version: str) -> dict:
         f"cadenzaflow-engine-rest-openapi-{version}.jar")
     if not jar.exists():
         print(f"fetching {ARTIFACT}:{version} ...")
+        # The repository's Maven wrapper, pinned to 3.9.16, never the Maven on PATH.
+        mvnw = str(ROOT / ("mvnw.cmd" if sys.platform == "win32" else "mvnw"))
         subprocess.run(
-            ["mvn", "-q", "dependency:get", f"-Dartifact={ARTIFACT}:{version}"],
+            [mvnw, "-q", "dependency:get", f"-Dartifact={ARTIFACT}:{version}"],
             check=True, cwd=ROOT, shell=(sys.platform == "win32"))
     with zipfile.ZipFile(jar) as z, z.open("openapi.json") as f:
         return json.load(f)
