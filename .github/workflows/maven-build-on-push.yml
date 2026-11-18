@@ -53,16 +53,19 @@ jobs:
       # `verify` runs the full suite (surefire + failsafe/Testcontainers) and the
       # hard JaCoCo gate; the appended sonar goal pushes the analysis with coverage.
       # Organization and project key come from pom.xml, so they stay in one place.
+      # The runner image's own Maven is 3.10, and the enforcer accepts 3.9.x only, so the
+      # build runs the repository's Maven wrapper (./mvnw), pinned to 3.9.16 and checked
+      # against its sha256 (.mvn/wrapper/maven-wrapper.properties).
       - name: Build, test and analyze
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
         run: |
           if [ -n "${SONAR_TOKEN:-}" ]; then
-            mvn --batch-mode verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+            ./mvnw --batch-mode verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           else
             echo "::warning::SONAR_TOKEN is not set - building without SonarCloud analysis"
-            mvn --batch-mode verify
+            ./mvnw --batch-mode verify
           fi
 
       # Informational here (the release workflow is where a red gate aborts), but the
