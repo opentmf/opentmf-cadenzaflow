@@ -92,7 +92,7 @@
     <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
-    <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
+    <sonar-plugin.version>5.9.0.7382</sonar-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <!-- pins the version the default lifecycle binding already resolves -->
