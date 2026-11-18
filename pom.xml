@@ -414,7 +414,8 @@
                   <version>25</version>
                 </requireJavaVersion>
                 <requireMavenVersion>
-                  <version>3.9.0</version>
+                  <version>[3.9,3.10)</version>
+                  <message>Build with Maven 3.9.x (the repository's ./mvnw is pinned to 3.9.16). The detected Maven version is outside that range.</message>
                 </requireMavenVersion>
               </rules>
             </configuration>
