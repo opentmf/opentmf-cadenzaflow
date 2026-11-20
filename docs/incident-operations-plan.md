@@ -496,7 +496,7 @@ Steps:
 5. **Part B**: POST the group's `selector` + `retries 1` with the writer token → 200, `incidentCount 3`, one batch. The job executor is active in the IT profile (`job-execution` block in `config-cadenzaflow.yml`, no override in `application-it.yml`), so the batch runs on its own: poll `runtimeService.createIncidentQuery().count()` until 0 with a bounded wait (Awaitility if present, otherwise a small loop with a 30 s deadline). Assert: incident count 0; all three external tasks have `retries == 1`; `GET /engine-rest/history/batch/{id}` shows the batch completed. POST again → `incidentCount 0`, no batches. POST with the reader token → 403; `retries 0` → 400.
 
 ### 8.3 Gates
-`mvn clean verify` green (JaCoCo bundle ≥ 80 %, no missed class), ArchUnit green, PIT
+`./mvnw clean verify` green (JaCoCo bundle ≥ 80 %, no missed class), ArchUnit green, PIT
 survivors reviewed for the new package. Image scans are a release-time requirement, not
 per PR.
 

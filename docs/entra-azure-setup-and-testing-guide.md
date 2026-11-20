@@ -110,9 +110,9 @@ in [config-cadenzaflow.yml](../src/main/resources/config-cadenzaflow.yml).
     confidential client (proven by `SharedCallbackIT`). Entra does too, per its
     documentation; the first DEV deployment proves it.
   - A value that is not an absolute http(s) URL without query or fragment fails the boot.
-- Local dev launch: `mvn spring-boot:run -Dspring-boot.repackage.skip=false`
+- Local dev launch: `./mvnw spring-boot:run -Dspring-boot.repackage.skip=false`
   (the pom's global boot-plugin skip flag otherwise skips the run goal), plus the
   usual `SPRING_DATASOURCE_*` overrides for a local PostgreSQL.
 - Integration coverage without any tenant: `EntraIdentityIT` boots the full
   application against an embedded WireMock Graph
-  (`mvn test-compile failsafe:integration-test failsafe:verify -Dit.test=EntraIdentityIT`).
+  (`./mvnw test-compile failsafe:integration-test failsafe:verify -Dit.test=EntraIdentityIT`).
