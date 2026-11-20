@@ -92,7 +92,7 @@
     <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
-    <sonar-plugin.version>5.8.0.7211</sonar-plugin.version>
+    <sonar-plugin.version>5.9.0.7382</sonar-plugin.version>
     <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
     <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
     <!-- pins the version the default lifecycle binding already resolves -->
@@ -414,7 +414,8 @@
                   <version>25</version>
                 </requireJavaVersion>
                 <requireMavenVersion>
-                  <version>3.9.0</version>
+                  <version>[3.9,3.10)</version>
+                  <message>Build with Maven 3.9.x (the repository's ./mvnw is pinned to 3.9.16). The detected Maven version is outside that range.</message>
                 </requireMavenVersion>
               </rules>
             </configuration>
@@ -701,7 +702,7 @@
       <id>aws</id>
       <properties>
         <aws-msk-iam-auth.version>2.4.0</aws-msk-iam-auth.version>
-        <awssdk.version>2.59.1</awssdk.version>
+        <awssdk.version>2.59.3</awssdk.version>
         <aws-advanced-jdbc-wrapper.version>4.6.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>

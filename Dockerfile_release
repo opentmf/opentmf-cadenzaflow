@@ -1,4 +1,5 @@
 # Stage 1: Build the JAR using Maven (bytecode target 25 via maven.compiler.*)
+# Maven 3.9.16 here and in .mvn/wrapper/maven-wrapper.properties: move both together.
 FROM maven:3.9.16-eclipse-temurin-25 AS maven-build
 WORKDIR /build
 ARG MAVEN_PROFILES=repackage
