@@ -72,9 +72,11 @@ def upstream_spec(version: str) -> dict:
     if not jar.exists():
         print(f"fetching {ARTIFACT}:{version} ...")
         # The repository's Maven wrapper, pinned to 3.9.16, never the Maven on PATH.
-        mvnw = str(ROOT / ("mvnw.cmd" if sys.platform == "win32" else "mvnw"))
+        mvnw = ROOT / ("mvnw.cmd" if sys.platform == "win32" else "mvnw")
+        if not mvnw.is_file():
+            sys.exit(f"merge-openapi: {mvnw.name} is missing at {ROOT}; it fetches the engine's spec")
         subprocess.run(
-            [mvnw, "-q", "dependency:get", f"-Dartifact={ARTIFACT}:{version}"],
+            [str(mvnw), "-q", "dependency:get", f"-Dartifact={ARTIFACT}:{version}"],
             check=True, cwd=ROOT, shell=(sys.platform == "win32"))
     with zipfile.ZipFile(jar) as z, z.open("openapi.json") as f:
         return json.load(f)
