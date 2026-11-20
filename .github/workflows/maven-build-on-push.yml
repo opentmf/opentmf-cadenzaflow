@@ -62,10 +62,10 @@ jobs:
           SONAR_HOST_URL: https://sonarcloud.io
         run: |
           if [ -n "${SONAR_TOKEN:-}" ]; then
-            ./mvnw --batch-mode verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+            ./mvnw --batch-mode --no-transfer-progress verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           else
             echo "::warning::SONAR_TOKEN is not set - building without SonarCloud analysis"
-            ./mvnw --batch-mode verify
+            ./mvnw --batch-mode --no-transfer-progress verify
           fi
 
       # Informational here (the release workflow is where a red gate aborts), but the
