@@ -146,6 +146,22 @@ class AddressCredentialMaskingTests {
   }
 
   @Test
+  void leaveAnUnknownHostWithoutAnAtSignReadable() {
+    context
+        .getLogger("org.springframework.boot.SpringApplication")
+        .error("Application run failed", new IllegalStateException("could not open a connection",
+            new java.net.UnknownHostException("db.example.internal")));
+    assertThat(field(captured.toString(StandardCharsets.UTF_8), "stack_trace"))
+        .contains("java.net.UnknownHostException: db.example.internal");
+  }
+
+  @Test
+  void leaveAnInvalidPortWithoutAnAtSignReadable() {
+    assertThat(field(logged("JDBC URL invalid port number: 54x2"), "message"))
+        .isEqualTo("JDBC URL invalid port number: 54x2");
+  }
+
+  @Test
   void maskADatabaseAddresssPasswordParameter() {
     assertThat(field(logged("jdbc:postgresql://db.example.internal:5432/db?user=cell-user&password="
             + PASSWORD), "message"))
