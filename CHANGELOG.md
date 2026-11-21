@@ -23,6 +23,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Spring Boot 4.2.0** (CADENZAFLOW-TAKES-THE-FRAMEWORKS-NEW-MINOR-AND-IS-RELEASED-WITH-TRAIN-9-1).
+  From 4.1.2: Spring Framework 7.1.0, Spring Security 7.2.0, Micrometer 1.18.0 and Logback 1.6.6
+  come with it; the engine stays CadenzaFlow 1.2.5. Boot 4.2.0 no longer manages janino, so the pom
+  pins it at 3.1.12, the version 4.1.2 managed. The image's dependency list neither gains nor loses
+  an artifact in any flavour; only versions move. The `aws` flavour takes AWS SDK 2.59.7 (from 2.59.3).
+
 - **The build runs on Maven 3.9.x, through a pinned Maven wrapper** (OTMF-CADENZAFLOW-PUSH-BUILD-USES-A-PINNED-MAVEN-WRAPPER-1).
   The repository carries the Maven wrapper (`./mvnw`, `mvnw.cmd`, `.mvn/wrapper/maven-wrapper.properties`),
   pinned to Maven 3.9.16 and checked against its sha256. The push build calls `./mvnw` instead of the
