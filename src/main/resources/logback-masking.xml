@@ -102,6 +102,38 @@
              and `leaveDigitRunsInsideIdentifiersAlone` fails if it is widened.
              The guard only adds "or preceded by a COMPLETE percent-escape". -->
 
+        <!-- An ADDRESS'S USER INFORMATION (OTMF-THE-ENGINE-IMAGES-MASKING-COVERS-A-PASSWORD-INSIDE-AN-ADDRESS-1).
+             The three rules below are dnms-commons-masking's BYTE FOR BYTE (dnms-commons a3e1911,
+             1.0.5 snapshot -77), so a credential rule does not diverge; the commons file's
+             rule-class attribute is its own tooling's and is not carried here (Joran would warn
+             on it). Ahead of the key=value rule, as in commons.
+
+             1. COMMONS-A-PASSWORD-INSIDE-AN-ADDRESS-IS-MASKED-1: the part between a scheme's //
+                and the at-sign before the host, the user and the password, is masked whole:
+                https://****@localhost:8080/api, jdbc:postgresql://****@db:5432/app. The scheme,
+                the host, its port and the path stay; an at-sign in a path and a plain e-mail
+                address (no scheme's //) are left alone. -->
+        <valueMask>
+          <value>(?i)(?:(?&lt;![a-z0-9+.-])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))([a-z][a-z0-9+.-]{0,30}+://)[^\s/?#@"\\&lt;&gt;\[\]\x7B\x7D]++@</value>
+          <mask>$1****@</mask>
+        </valueMask>
+
+        <!-- 2 and 3. COMMONS-A-USER-AND-PASSWORD-BEFORE-A-HOST-WITHOUT-A-SCHEME-IS-MASKED-1: the
+             same user information where the PostgreSQL driver prints it without a scheme. It
+             splits an address at its last colon, so for jdbc:postgresql://svc:PW@host:5432/app the
+             JDK's UnknownHostException names svc:PW@host (a failed start writes it in the stack
+             trace), and without a port the driver warns "JDBC URL invalid port number: PW@host".
+             Each rule is anchored on that fixed text and masks up to the last at-sign of the one
+             token after it; the host stays. -->
+        <valueMask>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(UnknownHostException: )(?:[^\s"\\@]*+@)++</value>
+          <mask>$1****@</mask>
+        </valueMask>
+        <valueMask>
+          <value>(?:(?&lt;![A-Za-z0-9])|(?&lt;=%[0-9A-Fa-f]{2})|(?&lt;=%25[0-9A-Fa-f]{2}))(JDBC URL invalid port number: )(?:[^\s"\\@]*+@)++</value>
+          <mask>$1****@</mask>
+        </valueMask>
+
         <!-- key=value / key: value secrets inside message text
              ("password=hunter2", "client_secret: abc"). The separator accepts an
              encoded `=` (`%3D`/`%253D`) for the same request-line reason. -->
