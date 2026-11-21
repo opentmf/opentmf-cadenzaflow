@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   come with it; the engine stays CadenzaFlow 1.2.5. Boot 4.2.0 no longer manages janino, so the pom
   pins it at 3.1.12, the version 4.1.2 managed. The image's dependency list neither gains nor loses
   an artifact in any flavour; only versions move. The `aws` flavour takes AWS SDK 2.59.7 (from 2.59.3).
+  Redirects to the image's own host keep an absolute `Location`: Boot 4.2.0 made relative redirects
+  the default (`server.tomcat.servlet.use-relative-redirects`), and `application.yml` sets it to `false`.
 
 - **The build runs on Maven 3.9.x, through a pinned Maven wrapper** (OTMF-CADENZAFLOW-PUSH-BUILD-USES-A-PINNED-MAVEN-WRAPPER-1).
   The repository carries the Maven wrapper (`./mvnw`, `mvnw.cmd`, `.mvn/wrapper/maven-wrapper.properties`),
