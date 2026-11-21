@@ -10,8 +10,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -57,6 +60,26 @@ class AddressCredentialMaskingTests {
         .as("the appender wrote the line without an error")
         .noneMatch(status -> status.getLevel() == Status.ERROR);
     return captured.toString(StandardCharsets.UTF_8);
+  }
+
+  private static String field(String json, String name) {
+    Matcher matcher = Pattern.compile("\"" + name + "\":\"((?:[^\"\\\\]++|\\\\.)*+)\"").matcher(json);
+    assertThat(matcher.find()).as("the JSON line has a " + name + " field").isTrue();
+    return matcher.group(1);
+  }
+
+  /** A value the key=value rule masks in a message is masked the same in the stack trace. */
+  @Test
+  void maskASecretInsideAnExceptionsMessageInTheStackTraceToo() {
+    String secret = "Cell-Kv-not-real";
+    context
+        .getLogger("org.opentmf.cadenzaflow.Cell")
+        .error("login failed password=" + secret, new IllegalStateException("password=" + secret));
+    assertThat(context.getStatusManager().getCopyOfStatusList())
+        .noneMatch(status -> status.getLevel() == Status.ERROR);
+    String json = captured.toString(StandardCharsets.UTF_8);
+    assertThat(field(json, "message")).isEqualTo("login failed password=****");
+    assertThat(field(json, "stack_trace")).contains("password=****").doesNotContain(secret);
   }
 
   @ParameterizedTest
