@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **The one-row-per-chain incident list can be scoped by the chain's root process**
+  (CF-THE-ONE-ROW-PER-CHAIN-LIST-CAN-BE-SCOPED-BY-THE-CHAINS-ROOT-PROCESS-1).
+  `GET /engine-rest/extensions/incident?rootCauseOnly=true&rootProcessDefinitionKeyIn=<keys>` lists the
+  chains whose ROOT process instance (the top of the call tree) has one of the given definition keys,
+  wherever the failure was raised, so a failure in a called process stays under its root's key; `offset`,
+  `limit`, `X-Total-Count` and `Content-Range` count those chains. `processDefinitionKeyIn` keeps its
+  meaning (the originating incident's own process) and both may be given. Without `rootCauseOnly=true`
+  the new parameter is a 400.
+
 - **Two retry markers for a group without a tenant or caller**
   (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). `POST /engine-rest/extensions/incident/retry`
   accepts `withoutTenant: true` (only incidents without a tenant) and `rootLevelOnly: true`
