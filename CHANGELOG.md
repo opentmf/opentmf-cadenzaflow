@@ -76,7 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for a data source address holding them (`UnknownHostException: user:password@host`, and
   `JDBC URL invalid port number: password@host` without a port). It is now `https://****@host/...`
   and `****@host`; the scheme, the host, its port and the path stay, and an at-sign in a path or a
-  plain e-mail address is left alone. The three rules are the shared masking library's, byte for byte.
+  plain e-mail address is left alone. The three rules' values and masks are the shared masking
+  library's, unchanged; its rule-class attribute is not carried.
 
 - **A report group without a tenant or caller, posted back verbatim, retries that group only**
   (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). The report groups by tenant and caller, but a

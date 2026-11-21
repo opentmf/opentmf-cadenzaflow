@@ -103,10 +103,10 @@
              The guard only adds "or preceded by a COMPLETE percent-escape". -->
 
         <!-- An ADDRESS'S USER INFORMATION (OTMF-THE-ENGINE-IMAGES-MASKING-COVERS-A-PASSWORD-INSIDE-AN-ADDRESS-1).
-             The three rules below are dnms-commons-masking's BYTE FOR BYTE (dnms-commons a3e1911,
-             1.0.5 snapshot -77), so a credential rule does not diverge; the commons file's
-             rule-class attribute is its own tooling's and is not carried here (Joran would warn
-             on it). Ahead of the key=value rule, as in commons.
+             The three rules' values and masks are the shared masking library's, unchanged
+             (dnms-commons-masking at dnms-commons a3e1911, 1.0.5 snapshot -77), so a credential
+             rule does not diverge; its rule-class attribute is not carried (Joran would warn on
+             it). Ahead of the key=value rule, as in the library.
 
              1. COMMONS-A-PASSWORD-INSIDE-AN-ADDRESS-IS-MASKED-1: the part between a scheme's //
                 and the at-sign before the host, the user and the password, is masked whole:
