@@ -39,7 +39,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>{@code rootCauseOnly=true} lists ONE row per incident chain, the originating incident;
  * offset, limit, {@code X-Total-Count} and {@code Content-Range} then count chains, and every
- * other filter still applies (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).</p>
+ * other filter still applies (CF-INCIDENT-LIST-ONE-ROW-PER-CHAIN-1).
+ * {@code rootProcessDefinitionKeyIn} then scopes the chains by their ROOT process instance's
+ * definition key, wherever in the call tree the failure was raised; without
+ * {@code rootCauseOnly=true} it is a 400
+ * (CF-THE-ONE-ROW-PER-CHAIN-LIST-CAN-BE-SCOPED-BY-THE-CHAINS-ROOT-PROCESS-1).</p>
  *
  * @author Cezmi Aslan
  */
@@ -74,10 +78,17 @@ public class IncidentListResource {
       @QueryParam("jobDefinitionIdIn") String jobDefinitionIdIn,
       @QueryParam("rootCauseIncidentId") String rootCauseIncidentId,
       @QueryParam("rootCauseOnly") String rootCauseOnly,
+      @QueryParam("rootProcessDefinitionKeyIn") String rootProcessDefinitionKeyIn,
       @QueryParam("offset") String offset,
       @QueryParam("limit") String limit,
       @QueryParam("sort") List<String> sort,
       @QueryParam("fields") String fields) {
+    boolean chainsOnly = flag("rootCauseOnly", rootCauseOnly);
+    List<String> rootKeys = commaList(rootProcessDefinitionKeyIn);
+    if (!rootKeys.isEmpty() && !chainsOnly) {
+      throw new InvalidRequestException(Status.BAD_REQUEST,
+          "Query parameter 'rootProcessDefinitionKeyIn' applies only with rootCauseOnly=true");
+    }
     IncidentListFilter filter = new IncidentListFilter(
         incidentType,
         commaList(processDefinitionKeyIn),
@@ -92,7 +103,8 @@ public class IncidentListResource {
         commaList(tenantIdIn),
         commaList(jobDefinitionIdIn),
         rootCauseIncidentId,
-        flag("rootCauseOnly", rootCauseOnly));
+        chainsOnly,
+        rootKeys);
     Pageable pageable = paging.pageable(offset, limit, sort);
 
     Page<IncidentRow> page = service.page(

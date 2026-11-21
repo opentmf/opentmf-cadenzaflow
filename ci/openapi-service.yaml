@@ -227,6 +227,16 @@ paths:
           in: query
           schema: { type: string }
           description: Comma-separated definition keys.
+        - name: rootProcessDefinitionKeyIn
+          in: query
+          schema: { type: string }
+          description: >
+            Comma-separated definition keys of each chain's ROOT process instance (the top of its
+            call tree). Only with `rootCauseOnly=true`: a chain is listed when its root instance's
+            process has one of these keys, wherever in the tree its failure was raised; `offset`,
+            `limit`, `X-Total-Count` and `Content-Range` count those chains. Without `rootCauseOnly=true`
+            it is a 400. `processDefinitionKeyIn` keeps its meaning (the originating incident's own
+            process), and both may be given (both apply).
         - name: processDefinitionId
           in: query
           schema: { type: string }
