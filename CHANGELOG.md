@@ -70,6 +70,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A user and password inside an address are masked in the log**
+  (OTMF-THE-ENGINE-IMAGES-MASKING-COVERS-A-PASSWORD-INSIDE-AN-ADDRESS-1). `https://user:password@host/...`
+  was written in clear, in a message and in a stack trace, and so was the PostgreSQL driver's text
+  for a data source address holding them (`UnknownHostException: user:password@host`, and
+  `JDBC URL invalid port number: password@host` without a port). It is now `https://****@host/...`
+  and `****@host`; the scheme, the host, its port and the path stay, and an at-sign in a path or a
+  plain e-mail address is left alone. The three rules are the shared masking library's, byte for byte.
+
 - **A report group without a tenant or caller, posted back verbatim, retries that group only**
   (CF-INCIDENT-SELECTOR-NULL-IS-NOT-UNSCOPED-1). The report groups by tenant and caller, but a
   null `tenantId` or `calledFrom` in the retry dropped that filter, so a null-tenant group's
