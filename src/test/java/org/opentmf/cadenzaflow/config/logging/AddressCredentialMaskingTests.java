@@ -16,6 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -92,5 +93,72 @@ class AddressCredentialMaskingTests {
     String json = logged(message);
     assertThat(json).as("the line reached the JSON appender").contains("\"message\":\"calling ");
     assertThat(json).doesNotContain(PASSWORD);
+  }
+
+  /** The user information goes whole; the scheme, the host, its port and the path stay. */
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "http://cell-user:" + PASSWORD + "@localhost:8080/engine-rest | http://****@localhost:8080/engine-rest",
+        "https://cell-user:" + PASSWORD + "@db.example.internal/engine-rest | https://****@db.example.internal/engine-rest",
+        "jdbc:postgresql://cell-user:" + PASSWORD + "@db.example.internal:5432/db | jdbc:postgresql://****@db.example.internal:5432/db"
+      })
+  void maskTheUserInformationWholeAndKeepTheRest(String address, String masked) {
+    assertThat(field(logged("calling " + address + " failed"), "message"))
+        .isEqualTo("calling " + masked + " failed");
+  }
+
+  @Test
+  void maskTheUserInformationInsideAStackTrace() {
+    context
+        .getLogger("org.opentmf.cadenzaflow.Cell")
+        .error("start failed", new IllegalStateException(
+            "cannot reach https://cell-user:" + PASSWORD + "@db.example.internal/x"));
+    String json = captured.toString(StandardCharsets.UTF_8);
+    assertThat(field(json, "stack_trace"))
+        .contains("https://****@db.example.internal/x")
+        .doesNotContain(PASSWORD);
+  }
+
+  /**
+   * The PostgreSQL driver reads {@code user:password@host} of {@code jdbc:postgresql://user:password@host:5432/db}
+   * as the host name, and the JDK's exception names it without a scheme.
+   */
+  @Test
+  void maskTheUserInformationTheDriverReadsAsAHostName() {
+    context
+        .getLogger("org.springframework.boot.SpringApplication")
+        .error("Application run failed", new IllegalStateException("could not open a connection",
+            new java.net.UnknownHostException("cell-user:" + PASSWORD + "@127.0.0.1")));
+    String stackTrace = field(captured.toString(StandardCharsets.UTF_8), "stack_trace");
+    assertThat(stackTrace)
+        .contains("java.net.UnknownHostException: ****@127.0.0.1")
+        .doesNotContain(PASSWORD)
+        .doesNotContain("cell-user");
+  }
+
+  /** Without a port, the driver reads {@code password@host} as the port and warns with it. */
+  @Test
+  void maskThePasswordTheDriverReadsAsAPort() {
+    assertThat(field(logged("JDBC URL invalid port number: " + PASSWORD + "@127.0.0.1"), "message"))
+        .isEqualTo("JDBC URL invalid port number: ****@127.0.0.1");
+  }
+
+  @Test
+  void maskADatabaseAddresssPasswordParameter() {
+    assertThat(field(logged("jdbc:postgresql://db.example.internal:5432/db?user=cell-user&password="
+            + PASSWORD), "message"))
+        .isEqualTo("jdbc:postgresql://db.example.internal:5432/db?user=cell-user&password=****");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "fetching https://registry.example.org/@scope/pkg",
+        "task claimed by cell.user@example.org"
+      })
+  void leaveAnAtSignInAPathAndAPlainEmailAddressAlone(String message) {
+    assertThat(field(logged(message), "message")).isEqualTo(message);
   }
 }
