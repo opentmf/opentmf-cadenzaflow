@@ -60,7 +60,7 @@
     <!-- Spring Boot 4. Ahead of the CadenzaFlow SB4 starters' own baseline (their
          parent pins 4.0.7); the compatibility proof is this repo's full IT suite,
          which boots the engine, both identity plugins and the REST surface. -->
-    <spring-boot.version>4.1.2</spring-boot.version>
+    <spring-boot.version>4.2.0</spring-boot.version>
     <cadenzaflow.version>1.2.5</cadenzaflow.version>
     <!-- The -4 artifact is the spring-web-7-compiled line matching the SB4 starters -->
     <cadenzaflow-keycloak.version>1.1.2</cadenzaflow-keycloak.version>
@@ -71,8 +71,13 @@
          exactly as before; see OpenTmfCadenzaFlowApplicationIT for what is measured. -->
     <openid-rbac-security.version>3.3.0</openid-rbac-security.version>
     <graalvm.version>25.5.5.0.3</graalvm.version>
-    <!-- Not BOM-managed. 9.x is the Logback 1.5 / Boot 4 line. -->
+    <!-- Not BOM-managed. 9.x is the Boot 4 line (Logback 1.5, and 1.6 from Boot 4.2.0). -->
     <logstash-logback-encoder.version>9.0</logstash-logback-encoder.version>
+    <!-- Not BOM-managed since Boot 4.2.0, which dropped janino and commons-compiler from its
+         bill; pinned at 3.1.12, the version Boot 4.1.2 managed. No configuration shipped here
+         uses <if> or an evaluator, but an operator-mounted LOGGING_CONFIG may, and Logback
+         needs janino for both. commons-compiler comes with janino at the same version. -->
+    <janino.version>3.1.12</janino.version>
 
     <!-- No CVE overrides remain. The postgresql/netty/httpcore5 ones (until 1.2.0) and
          the Tomcat 11.0.25+ / Jackson 2.21.7+ / 3.1.7+ ones (until 1.5.0) went once the
@@ -246,6 +251,7 @@
     <dependency>
       <groupId>org.codehaus.janino</groupId>
       <artifactId>janino</artifactId>
+      <version>${janino.version}</version>
       <scope>runtime</scope>
     </dependency>
     <!-- JSON log encoder with a masking hook (logback-masking.xml). Boot's built-in
