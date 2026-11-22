@@ -1,6 +1,6 @@
 # Implementation plan — Entra ID (Azure AD) direct SSO + claims-based identity for opentmf-cadenzaflow
 
-**Status:** planned 2026-08-02 (Gökhan + Claude, dnotify-analysis session). Not
+**Status:** planned 2026-08-02. Not
 started. Baseline: **1.0.3** (released 2026-08-02, Keycloak-only). Target: next
 minor (**1.1.0**). **Priority raised same day: the VFDE security reply commits
 the engine UI to Entra-direct in production (no basic-auth interim) — this

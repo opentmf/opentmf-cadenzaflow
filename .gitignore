@@ -3,7 +3,7 @@ target/
 .idea/
 .vscode/
 
-# Claude Code settings are kept locally by each member, not in the repository.
+# A tool's project settings are kept locally by each member, not in the repository.
 .claude/settings.json
 .claude/settings.local.json
 graphify-out/
