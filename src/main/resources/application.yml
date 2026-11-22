@@ -74,6 +74,14 @@ server:
   max-http-request-header-size: 32KB
 
 management:
+  metrics:
+    observations:
+      # Every observation keeps its in-progress meter, <observation>.active (Prometheus
+      # <observation>_active_seconds), as on Spring Boot 4.1.2, which made one per observation.
+      # 4.2.0 added this key with false as its default. Here they are the security chain's
+      # (spring.security.filterchains, .http.secured.requests, .authorizations); see
+      # OpenTmfCadenzaFlowApplicationIT.eachSecurityObservationKeepsItsInProgressMeter.
+      include-active-long-task-timer: true
   endpoints:
     access:
       default: read_only
