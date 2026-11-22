@@ -1,6 +1,9 @@
 package org.opentmf.cadenzaflow;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import io.micrometer.core.instrument.LongTaskTimer;
+import io.micrometer.core.instrument.Meter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.http.HttpClient;
@@ -8,6 +11,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import org.cadenzaflow.bpm.engine.ProcessEngine;
 import org.cadenzaflow.bpm.engine.repository.Deployment;
 import org.cadenzaflow.bpm.engine.repository.ProcessDefinition;
@@ -134,6 +139,9 @@ class OpenTmfCadenzaFlowApplicationIT {
 
   @Autowired
   private ProcessEngine processEngine;
+
+  @Autowired
+  private MeterRegistry meterRegistry;
 
   @LocalServerPort
   private int port;
@@ -330,6 +338,33 @@ class OpenTmfCadenzaFlowApplicationIT {
           "the stored form should be readable JSON, was: " + stored.getValueSerialized());
     } finally {
       processEngine.getRepositoryService().deleteDeployment(deployment.getId(), true);
+    }
+  }
+
+  /**
+   * The in-progress meters, the long-task timers {@code <observation>.active}
+   * ({@code <observation>_active_seconds} on the scrape), stay as Spring Boot 4.1.2 made them:
+   * 4.2.0 makes none unless
+   * {@code management.metrics.observations.include-active-long-task-timer} is true. The names
+   * are the ones measured on 4.1.2 for an anonymous request through the security chain; the
+   * image has no HTTP server, client, database or scheduled-run observation. Named one by one,
+   * not compared for equality: a later observation may add a meter of its own.
+   */
+  @Test
+  void eachSecurityObservationKeepsItsInProgressMeter() throws Exception {
+    Assertions.assertEquals(401, get("/engine-rest/task", null).statusCode());
+    TreeSet<String> longTaskTimers = new TreeSet<>();
+    for (Meter meter : meterRegistry.getMeters()) {
+      if (meter instanceof LongTaskTimer) {
+        longTaskTimers.add(meter.getId().getName());
+      }
+    }
+    for (String name : Set.of(
+        "spring.security.filterchains.active",
+        "spring.security.http.secured.requests.active",
+        "spring.security.authorizations.active")) {
+      Assertions.assertTrue(longTaskTimers.contains(name),
+          "expected the in-progress meter " + name + ", found " + longTaskTimers);
     }
   }
 
