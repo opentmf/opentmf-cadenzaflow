@@ -6,3 +6,4 @@ target/
 # Claude Code settings are kept locally by each member, not in the repository.
 .claude/settings.json
 .claude/settings.local.json
+graphify-out/
