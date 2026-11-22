@@ -93,6 +93,27 @@ class IncidentChainQueryTests {
   }
 
   @Test
+  void scopeTheChainsByTheirRootProcessKey() {
+    IncidentChainQuery.Where where = query.where(new IncidentListFilter(
+        null, List.of(), null, null, null, null, null, null, null, null, List.of(), List.of(),
+        null, true, List.of("rootFlow", "parentFlow")));
+
+    assertThat(where.sql()).isEqualTo("where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n"
+        + "and    exists (select 1 from cadenzaflow.ACT_RU_EXECUTION PI"
+        + " join cadenzaflow.ACT_RU_EXECUTION ROOT on ROOT.ID_ = PI.ROOT_PROC_INST_ID_"
+        + " join cadenzaflow.ACT_RE_PROCDEF RD on RD.ID_ = ROOT.PROC_DEF_ID_"
+        + " where PI.ID_ = RES.PROC_INST_ID_ and RD.KEY_ in (:rootDefinitionKeys))\n");
+    assertThat(where.params())
+        .containsExactly(Map.entry("rootDefinitionKeys", List.of("rootFlow", "parentFlow")));
+  }
+
+  @Test
+  void leaveTheRootScopeOutWhenNoRootKeyIsGiven() {
+    assertThat(query.where(NO_FILTER).sql()).doesNotContain("ROOT_PROC_INST_ID_");
+    assertThat(NO_FILTER.rootProcessDefinitionKeyIn()).isEmpty();
+  }
+
+  @Test
   void orderByTheListsSortWithTheIdAsTieBreaker() {
     assertThat(IncidentChainQuery.orderBy(Sort.by(Sort.Order.desc("incidentTimestamp"),
         Sort.Order.asc("activityId"))))

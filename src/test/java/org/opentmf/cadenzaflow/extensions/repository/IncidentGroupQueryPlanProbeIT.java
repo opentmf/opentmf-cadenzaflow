@@ -20,8 +20,10 @@ import org.cadenzaflow.bpm.engine.ProcessEngineException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.opentmf.cadenzaflow.extensions.model.incident.group.IncidentGroupRetryRequest;
+import org.opentmf.cadenzaflow.extensions.model.incident.list.IncidentListFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
@@ -33,7 +35,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * The plan-review probe from docs/incident-operations-plan.md §4.2 (❓): loads a
  * DNMS-shaped synthetic dataset into the real engine schema and records the
- * {@code EXPLAIN (ANALYZE, BUFFERS)} plans of the grouped-report and retry selects,
+ * {@code EXPLAIN (ANALYZE, BUFFERS)} plans of the grouped-report and retry selects, and of the
+ * one-row-per-chain list's count and page scoped by the chain's root process
+ * (CF-THE-ONE-ROW-PER-CHAIN-LIST-CAN-BE-SCOPED-BY-THE-CHAINS-ROOT-PROCESS-1),
  * plus their actual results and wall times. Its OUTPUT is the deliverable — paste
  * {@code target/incident-group-query-plan.txt} into the PR description.
  *
@@ -115,6 +119,32 @@ class IncidentGroupQueryPlanProbeIT {
                 .addValue("defKey", "childFlow")
                 .addValue("activityId", "callWms")
                 .addValue("incidentType", "failedExternalTask"));
+
+        // The one-row-per-chain list scoped by the ROOT's key: every chain here originates in
+        // childFlow and is rooted in rootFlow, so the scope keeps all of them.
+        IncidentListFilter scoped = new IncidentListFilter(null, List.of(), null, null, null,
+            null, null, null, null, null, List.of(), List.of(), null, true, List.of("rootFlow"));
+        Sort newestFirst = Sort.by(Sort.Order.desc("incidentTimestamp"));
+        IncidentChainQuery chains = chainQueryOn(connection);
+        start = System.nanoTime();
+        long chainCount = chains.count(scoped);
+        long countMillis = (System.nanoTime() - start) / 1_000_000;
+        assertThat(chainCount).as("one per chain, all rooted in rootFlow").isEqualTo(INCIDENTS);
+        start = System.nanoTime();
+        assertThat(chains.page(scoped, newestFirst, 0, 50)).hasSize(50);
+        long pageMillis = (System.nanoTime() - start) / 1_000_000;
+        report.append("scoped chain list: count() took ").append(countMillis).append(" ms, ")
+            .append("page(0, 50) took ").append(pageMillis).append(" ms\n\n");
+
+        SqlRecorder chainRecorder = new SqlRecorder();
+        chainRecorder.chainQuery().count(scoped);
+        MapSqlParameterSource rootKeys =
+            new MapSqlParameterSource("rootDefinitionKeys", List.of("rootFlow"));
+        explain(connection, "scoped chain list, count", chainRecorder.sql, rootKeys);
+        chainRecorder.chainQuery().page(scoped, newestFirst, 0, 50);
+        explain(connection, "scoped chain list, page", chainRecorder.sql,
+            new MapSqlParameterSource(rootKeys.getValues()).addValue("offset", 0L)
+                .addValue("limit", 50));
       }
     }
 
@@ -208,6 +238,15 @@ class IncidentGroupQueryPlanProbeIT {
         sqlSupport);
   }
 
+  private static IncidentChainQuery chainQueryOn(Connection connection) {
+    EngineSqlSupport sqlSupport = mock(EngineSqlSupport.class);
+    when(sqlSupport.table(anyString()))
+        .thenAnswer(invocation -> invocation.getArgument(0, String.class));
+    return new IncidentChainQuery(
+        new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true)),
+        sqlSupport);
+  }
+
   /** The exact SQL the repository builds, captured through a recording template. */
   private static String captureGroupsSql() {
     SqlRecorder recorder = new SqlRecorder();
@@ -225,18 +264,29 @@ class IncidentGroupQueryPlanProbeIT {
     private String sql;
 
     private IncidentGroupRepository repository() {
-      NamedParameterJdbcTemplate template = mock(NamedParameterJdbcTemplate.class,
-          invocation -> {
-            if (invocation.getArguments().length > 0
-                && invocation.getArgument(0) instanceof String statement) {
-              sql = statement;
-            }
-            return List.of();
-          });
+      return new IncidentGroupRepository(template(), tables());
+    }
+
+    private IncidentChainQuery chainQuery() {
+      return new IncidentChainQuery(template(), tables());
+    }
+
+    private NamedParameterJdbcTemplate template() {
+      return mock(NamedParameterJdbcTemplate.class, invocation -> {
+        if (invocation.getArguments().length > 0
+            && invocation.getArgument(0) instanceof String statement) {
+          sql = statement;
+        }
+        // a count reads one number; every other call reads rows
+        return "queryForObject".equals(invocation.getMethod().getName()) ? 0L : List.of();
+      });
+    }
+
+    private static EngineSqlSupport tables() {
       EngineSqlSupport sqlSupport = mock(EngineSqlSupport.class);
       when(sqlSupport.table(anyString()))
           .thenAnswer(invocation -> invocation.getArgument(0, String.class));
-      return new IncidentGroupRepository(template, sqlSupport);
+      return sqlSupport;
     }
   }
 

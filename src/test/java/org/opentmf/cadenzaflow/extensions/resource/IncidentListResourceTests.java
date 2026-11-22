@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import jakarta.ws.rs.core.Response;
@@ -67,7 +68,7 @@ class IncidentListResourceTests {
 
   private Response list(String keyIn, String after, String before) {
     return resource.list(uriInfo, "failedExternalTask", keyIn, null, null, null,
-        "callWms", null, null, after, before, null, null, null, null,
+        "callWms", null, null, after, before, null, null, null, null, null,
         "0", "2", List.of("-incidentTimestamp"), "id,activityName");
   }
 
@@ -90,7 +91,7 @@ class IncidentListResourceTests {
     verify(paging).respond(page, "id,activityName", uriInfo.getRequestUri());
 
     resource.list(uriInfo, null, "a,, b,", null, null, null, null, null, null,
-        null, null, null, null, null, null, null, null, List.of(), null);
+        null, null, null, null, null, null, null, null, null, List.of(), null);
     verify(service, times(2)).page(filter.capture(), any(), any(), anyString());
     assertThat(filter.getValue().processDefinitionKeyIn())
         .as("empty comma segments are dropped, not forwarded")
@@ -102,7 +103,7 @@ class IncidentListResourceTests {
     ArgumentCaptor<IncidentListFilter> filter = ArgumentCaptor.forClass(IncidentListFilter.class);
     for (String value : new String[] {null, "false", "true"}) {
       resource.list(uriInfo, null, null, null, null, null, null, null, null,
-          null, null, null, null, null, value, null, null, List.of(), null);
+          null, null, null, null, null, value, null, null, null, List.of(), null);
     }
     verify(service, times(3)).page(filter.capture(), any(), any(), anyString());
     assertThat(filter.getAllValues()).extracting(IncidentListFilter::rootCauseOnly)
@@ -113,9 +114,35 @@ class IncidentListResourceTests {
   void refusesARootCauseOnlyThatIsNotABoolean() {
     List<String> unsorted = List.of();
     assertThatThrownBy(() -> resource.list(uriInfo, null, null, null, null, null, null, null,
-        null, null, null, null, null, null, "yes", null, null, unsorted, null))
+        null, null, null, null, null, null, "yes", null, null, null, unsorted, null))
         .isInstanceOf(InvalidRequestException.class)
         .hasMessageContaining("rootCauseOnly");
+  }
+
+  @Test
+  void readsTheRootProcessKeysAsACommaListUnderRootCauseOnly() {
+    resource.list(uriInfo, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, "true", "rootFlow, parentFlow,", null, null, List.of(), null);
+
+    ArgumentCaptor<IncidentListFilter> filter = ArgumentCaptor.forClass(IncidentListFilter.class);
+    verify(service).page(filter.capture(), any(), any(), anyString());
+    assertThat(filter.getValue().rootProcessDefinitionKeyIn())
+        .containsExactly("rootFlow", "parentFlow");
+    assertThat(filter.getValue().processDefinitionKeyIn())
+        .as("the originating incident's own key is a separate filter").isEmpty();
+  }
+
+  @Test
+  void refusesTheRootProcessKeysWithoutRootCauseOnly() {
+    List<String> unsorted = List.of();
+    for (String flag : new String[] {null, "false"}) {
+      assertThatThrownBy(() -> resource.list(uriInfo, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, flag, "rootFlow", null, null, unsorted, null))
+          .isInstanceOf(InvalidRequestException.class)
+          .hasMessageContaining("rootProcessDefinitionKeyIn")
+          .hasMessageContaining("rootCauseOnly=true");
+    }
+    verifyNoInteractions(service);
   }
 
   @Test

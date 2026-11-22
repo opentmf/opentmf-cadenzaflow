@@ -38,6 +38,7 @@ public class IncidentChainQuery {
 
   static final String INCIDENT = "ACT_RU_INCIDENT";
   static final String PROCESS_DEFINITION = "ACT_RE_PROCDEF";
+  static final String EXECUTION = "ACT_RU_EXECUTION";
   private static final String NEXT_CONDITION = "and    RES.";
   private static final String ID_COLUMN = "ID_";
   private static final String INCIDENT_TYPE = "INCIDENT_TYPE_";
@@ -108,6 +109,17 @@ public class IncidentChainQuery {
       text.append("and    exists (select 1 from ").append(sql.table(PROCESS_DEFINITION))
           .append(" PD where PD.ID_ = RES.PROC_DEF_ID_ and PD.KEY_ in (:definitionKeys))\n");
       params.put("definitionKeys", filter.processDefinitionKeyIn());
+    }
+    if (has(filter.rootProcessDefinitionKeyIn())) {
+      // The chain's ROOT instance, as the grouped report finds it: the failing instance's
+      // ROOT_PROC_INST_ID_, then that instance's definition.
+      text.append("and    exists (select 1 from ").append(sql.table(EXECUTION))
+          .append(" PI join ").append(sql.table(EXECUTION))
+          .append(" ROOT on ROOT.ID_ = PI.ROOT_PROC_INST_ID_ join ")
+          .append(sql.table(PROCESS_DEFINITION))
+          .append(" RD on RD.ID_ = ROOT.PROC_DEF_ID_ where PI.ID_ = RES.PROC_INST_ID_")
+          .append(" and RD.KEY_ in (:rootDefinitionKeys))\n");
+      params.put("rootDefinitionKeys", filter.rootProcessDefinitionKeyIn());
     }
     equalTo(text, params, PROCESS_DEFINITION_ID, "processDefinitionId", filter.processDefinitionId());
     equalTo(text, params, PROCESS_INSTANCE_ID, "processInstanceId", filter.processInstanceId());

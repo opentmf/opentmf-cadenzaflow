@@ -620,6 +620,77 @@ class IncidentOperationsIT {
     assertThat(get("/engine-rest/extensions/incident", null).statusCode()).isEqualTo(401);
   }
 
+  private static String callingFlow(String id, String calledElement) {
+    return """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                          targetNamespace="http://opentmf.org/incident-operations">
+          <bpmn:process id="%s" isExecutable="true">
+            <bpmn:startEvent id="start"/>
+            <bpmn:sequenceFlow id="in" sourceRef="start" targetRef="call"/>
+            <bpmn:callActivity id="call" calledElement="%s"/>
+            <bpmn:sequenceFlow id="out" sourceRef="call" targetRef="end"/>
+            <bpmn:endEvent id="end"/>
+          </bpmn:process>
+        </bpmn:definitions>
+        """.formatted(id, calledElement);
+  }
+
+  @Test
+  @Order(12)
+  void rootProcessDefinitionKeyInScopesChainsByTheirRootProcess() throws Exception {
+    // CF-THE-ONE-ROW-PER-CHAIN-LIST-CAN-BE-SCOPED-BY-THE-CHAINS-ROOT-PROCESS-1. A chain two
+    // call activities deep: rootFlow -> midFlow -> leafFlow, failing in leafFlow, so its
+    // originating incident is leafFlow's and rootFlow holds only a copy. On top of step 10's
+    // state: three parentFlow chains (v1, failing in childFlow).
+    processEngine.getRepositoryService().createDeployment()
+        .name("incident-operations-deep-chain")
+        .addString("rootFlow.bpmn20.xml", callingFlow("rootFlow", "midFlow"))
+        .addString("midFlow.bpmn20.xml", callingFlow("midFlow", "leafFlow"))
+        .addString("leafFlow.bpmn20.xml", CHILD_FLOW
+            .replace("id=\"childFlow\" name=\"Child flow\"", "id=\"leafFlow\" name=\"Leaf flow\"")
+            .replace("camunda:topic=\"wms\"", "camunda:topic=\"deep\""))
+        .deploy();
+    processEngine.getRuntimeService().startProcessInstanceByKey("rootFlow");
+    ExternalTaskService externalTaskService = processEngine.getExternalTaskService();
+    List<LockedExternalTask> tasks = externalTaskService.fetchAndLock(10, WORKER)
+        .topic("deep", 60_000L).execute();
+    assertThat(tasks).hasSize(1);
+    externalTaskService.handleFailure(tasks.get(0).getId(), WORKER, "deep failure", 0, 0);
+
+    String list = "/engine-rest/extensions/incident?rootCauseOnly=true";
+    assertThat(get(list, readerToken()).headers().firstValue("X-Total-Count"))
+        .as("every chain: three under parentFlow and the deep one").contains("4");
+
+    HttpResponse<String> deep = get(list + "&rootProcessDefinitionKeyIn=rootFlow&limit=1",
+        readerToken());
+    assertThat(deep.headers().firstValue("X-Total-Count"))
+        .as("listed under its root's key, once").contains("1");
+    assertThat(deep.headers().firstValue("Content-Range")).contains("items 1-1/1");
+    JsonNode rows = objectMapper.readTree(deep.body());
+    assertThat(rows).singleElement().satisfies(row -> {
+      assertThat(row.get("processDefinitionKey").asText()).isEqualTo("leafFlow");
+      assertThat(row.get("originating").asBoolean()).isTrue();
+    });
+
+    assertThat(get(list + "&rootProcessDefinitionKeyIn=parentFlow", readerToken())
+        .headers().firstValue("X-Total-Count")).contains("3");
+    assertThat(get(list + "&rootProcessDefinitionKeyIn=rootFlow,parentFlow&limit=2&offset=2",
+        readerToken()).headers().firstValue("Content-Range")).contains("items 3-4/4");
+
+    // processDefinitionKeyIn keeps its meaning (the originating incident's own process), and
+    // both may be given: both apply.
+    assertThat(get(list + "&processDefinitionKeyIn=rootFlow", readerToken())
+        .headers().firstValue("X-Total-Count")).as("rootFlow holds only a copy").contains("0");
+    assertThat(get(list + "&rootProcessDefinitionKeyIn=rootFlow&processDefinitionKeyIn=leafFlow",
+        readerToken()).headers().firstValue("X-Total-Count")).contains("1");
+    assertThat(get(list + "&rootProcessDefinitionKeyIn=rootFlow&processDefinitionKeyIn=childFlow",
+        readerToken()).headers().firstValue("X-Total-Count")).contains("0");
+
+    assertThat(get("/engine-rest/extensions/incident?rootProcessDefinitionKeyIn=rootFlow",
+        readerToken()).statusCode()).as("only with rootCauseOnly=true").isEqualTo(400);
+  }
+
   private static String retryBody(int retries) {
     return """
         {

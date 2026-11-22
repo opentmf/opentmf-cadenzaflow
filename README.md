@@ -1869,6 +1869,7 @@ Query parameters of the list — paging and shaping:
 |---|---|
 | `incidentType` | `failedJob` or `failedExternalTask` |
 | `processDefinitionKeyIn` | comma-separated definition keys |
+| `rootProcessDefinitionKeyIn` | only with `rootCauseOnly=true`: comma-separated definition keys of each chain's ROOT process instance (the top of its call tree), so a chain whose failure was raised in a called process is listed under its root's key; `offset`/`limit`/`X-Total-Count`/`Content-Range` count those chains. Without `rootCauseOnly=true`, a 400. `processDefinitionKeyIn` still reads the originating incident's own process; both may be given |
 | `processDefinitionId` | one exact definition (pins a version) |
 | `processInstanceId`, `executionId` | one instance / execution |
 | `activityId`, `failedActivityId` | the failing task |
