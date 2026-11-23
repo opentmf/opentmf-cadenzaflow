@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The `aws` flavour takes aws-advanced-jdbc-wrapper 4.7.0** (from 4.6.0), and the integration tests
+  take testcontainers-keycloak 4.4.1 (from 4.4.0). The wrapper is a runtime dependency of the `aws`
+  image only; 4.7.0 adds opt-in plugins, keeps `efm2` as its default monitor, and detects the
+  database dialect by fingerprint instead of ordered probing. testcontainers-keycloak is test-only;
+  the tests keep their pinned Keycloak image.
+
 - **Spring Boot 4.2.0** (CADENZAFLOW-TAKES-THE-FRAMEWORKS-NEW-MINOR-AND-IS-RELEASED-WITH-TRAIN-9-1).
   From 4.1.2: Spring Framework 7.1.0, Spring Security 7.2.0, Micrometer 1.18.0 and Logback 1.6.6
   come with it; the engine stays CadenzaFlow 1.2.5. Boot 4.2.0 no longer manages janino, so the pom
