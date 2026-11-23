@@ -11,11 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.assertj.core.api.SoftAssertions;
 import org.cadenzaflow.bpm.engine.ProcessEngineException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -26,8 +26,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
-import org.springframework.jdbc.core.namedparam.ParsedSql;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.opentmf.cadenzaflow.ItContainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -68,15 +66,23 @@ class IncidentGroupQueryPlanProbeIT {
   private static final int ROOTS = Integer.getInteger("probe.roots", 800_000);
   private static final int INCIDENTS = Integer.getInteger("probe.incidents", 300_000);
 
+  private static final Path OUT = Path.of("target", "incident-group-query-plan.txt");
+
   private final StringBuilder report = new StringBuilder();
 
   @Test
   void recordTheQueryPlansOnADnmsShapedDataset() throws Exception {
+    // Every check is collected, so one wrong figure does not hide the others; each time and
+    // plan is written to the report as it is taken, so a later failure keeps the earlier ones.
+    SoftAssertions softly = new SoftAssertions();
     try (PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18.0-alpine")
         .withStartupTimeout(ItContainers.STARTUP_TIMEOUT)) {
       postgres.start();
       try (Connection connection = DriverManager.getConnection(
           postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {
+        note("Dataset: " + ROOTS + " root instances, " + INCIDENTS
+            + " originating incidents (+ copies), PostgreSQL " + postgres.getDockerImageName()
+            + "\n");
         createEngineSchema(connection);
         loadSyntheticData(connection);
 
@@ -86,11 +92,12 @@ class IncidentGroupQueryPlanProbeIT {
         long start = System.nanoTime();
         List<IncidentGroupRow> rows = repository.groups("rootFlow", null, null, null, null, null);
         long groupsMillis = (System.nanoTime() - start) / 1_000_000;
-        assertThat(rows).hasSize(2);
-        assertThat(rows.stream().mapToLong(IncidentGroupRow::incidentCount).sum())
+        note("groups() took " + groupsMillis + " ms\n");
+        softly.assertThat(rows).hasSize(2);
+        softly.assertThat(rows.stream().mapToLong(IncidentGroupRow::incidentCount).sum())
             .as("propagated copies must not be counted")
             .isEqualTo(INCIDENTS);
-        assertThat(rows).allSatisfy(row -> {
+        softly.assertThat(rows).allSatisfy(row -> {
           assertThat(row.processDefinitionKey()).isEqualTo("childFlow");
           assertThat(row.activityId()).isEqualTo("callWms");
           assertThat(row.calledFromProcessDefinitionKey()).isEqualTo("rootFlow");
@@ -103,13 +110,8 @@ class IncidentGroupQueryPlanProbeIT {
         start = System.nanoTime();
         List<String> configurations = repository.retryConfigurations(selector);
         long retryMillis = (System.nanoTime() - start) / 1_000_000;
-        assertThat(configurations).hasSize(INCIDENTS);
-
-        report.append("Dataset: ").append(ROOTS).append(" root instances, ")
-            .append(INCIDENTS).append(" originating incidents (+ copies), ")
-            .append("PostgreSQL ").append(postgres.getDockerImageName()).append('\n')
-            .append("groups() took ").append(groupsMillis).append(" ms, ")
-            .append("retryConfigurations() took ").append(retryMillis).append(" ms\n\n");
+        note("retryConfigurations() took " + retryMillis + " ms\n\n");
+        softly.assertThat(configurations).hasSize(INCIDENTS);
 
         explain(connection, "grouped report (§4.2)",
             captureGroupsSql(), new MapSqlParameterSource("rootKey", "rootFlow"));
@@ -129,12 +131,14 @@ class IncidentGroupQueryPlanProbeIT {
         start = System.nanoTime();
         long chainCount = chains.count(scoped);
         long countMillis = (System.nanoTime() - start) / 1_000_000;
-        assertThat(chainCount).as("one per chain, all rooted in rootFlow").isEqualTo(INCIDENTS);
+        note("scoped chain list: count() took " + countMillis + " ms\n");
+        softly.assertThat(chainCount).as("one per chain, all rooted in rootFlow")
+            .isEqualTo(INCIDENTS);
         start = System.nanoTime();
-        assertThat(chains.page(scoped, newestFirst, 0, 50)).hasSize(50);
+        int pageSize = chains.page(scoped, newestFirst, 0, 50).size();
         long pageMillis = (System.nanoTime() - start) / 1_000_000;
-        report.append("scoped chain list: count() took ").append(countMillis).append(" ms, ")
-            .append("page(0, 50) took ").append(pageMillis).append(" ms\n\n");
+        note("scoped chain list: page(0, 50) took " + pageMillis + " ms\n\n");
+        softly.assertThat(pageSize).as("the first page of chains").isEqualTo(50);
 
         SqlRecorder chainRecorder = new SqlRecorder();
         chainRecorder.chainQuery().count(scoped);
@@ -146,12 +150,24 @@ class IncidentGroupQueryPlanProbeIT {
             new MapSqlParameterSource(rootKeys.getValues()).addValue("offset", 0L)
                 .addValue("limit", 50));
       }
+    } finally {
+      softly.errorsCollected().forEach(error ->
+          report.append("CHECK FAILED: ").append(error.getMessage()).append('\n'));
+      writeReport();
+      log.info("Query plans recorded to {}:\n{}", OUT.toAbsolutePath(), report);
     }
+    softly.assertAll();
+  }
 
-    Path out = Path.of("target", "incident-group-query-plan.txt");
-    Files.createDirectories(out.getParent());
-    Files.writeString(out, report.toString(), StandardCharsets.UTF_8);
-    log.info("Query plans recorded to {}:\n{}", out.toAbsolutePath(), report);
+  /** Appends to the report and writes the whole report at once, so it survives a later error. */
+  private void note(String text) throws Exception {
+    report.append(text);
+    writeReport();
+  }
+
+  private void writeReport() throws Exception {
+    Files.createDirectories(OUT.getParent());
+    Files.writeString(OUT, report.toString(), StandardCharsets.UTF_8);
   }
 
   private static void createEngineSchema(Connection connection) throws Exception {
@@ -290,29 +306,28 @@ class IncidentGroupQueryPlanProbeIT {
     }
   }
 
+  /**
+   * EXPLAINs the statement through the same template the repositories use, so a collection
+   * parameter such as {@code :rootDefinitionKeys} is expanded and bound one element per
+   * placeholder, exactly as in the real query. An empty collection would render {@code in ()},
+   * which is not SQL; the repositories leave such a clause out, so here it is refused by name.
+   */
   private void explain(Connection connection, String title, String namedSql,
       MapSqlParameterSource params) throws Exception {
-    ParsedSql parsed = NamedParameterUtils.parseSqlStatement(namedSql);
-    String jdbcSql = NamedParameterUtils.substituteNamedParameters(parsed, params);
-    Object[] values = NamedParameterUtils.buildValueArray(parsed, params, null);
-
-    try (PreparedStatement statement =
-        connection.prepareStatement("explain (analyze, buffers) " + jdbcSql)) {
-      for (int i = 0; i < values.length; i++) {
-        statement.setObject(i + 1, values[i]);
+    params.getValues().forEach((name, value) -> {
+      if (value instanceof Collection<?> collection && collection.isEmpty()) {
+        throw new IllegalArgumentException(
+            "explain(" + title + "): parameter :" + name + " is an empty collection");
       }
-      try (ResultSet resultSet = statement.executeQuery()) {
-        StringBuilder plan = new StringBuilder();
-        while (resultSet.next()) {
-          plan.append(resultSet.getString(1)).append('\n');
-        }
-        report.append("=== ").append(title).append(" ===\n")
-            .append(namedSql).append('\n')
-            .append(params.getValues().entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .collect(Collectors.joining(", ", "-- parameters: ", "\n\n")))
-            .append(plan).append('\n');
-      }
-    }
+    });
+    List<String> lines = new NamedParameterJdbcTemplate(
+        new SingleConnectionDataSource(connection, true))
+        .query("explain (analyze, buffers) " + namedSql, params,
+            (resultSet, rowNumber) -> resultSet.getString(1));
+    note("=== " + title + " ===\n" + namedSql + '\n'
+        + params.getValues().entrySet().stream()
+            .map(e -> e.getKey() + "=" + e.getValue())
+            .collect(Collectors.joining(", ", "-- parameters: ", "\n\n"))
+        + String.join("\n", lines) + "\n\n");
   }
 }
