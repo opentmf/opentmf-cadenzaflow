@@ -100,7 +100,7 @@
     <wiremock.version>3.13.2</wiremock.version>
     <pitest-maven.version>1.30.2</pitest-maven.version>
     <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
-    <testcontainers-keycloak.version>4.4.0</testcontainers-keycloak.version>
+    <testcontainers-keycloak.version>4.4.1</testcontainers-keycloak.version>
 
     <!-- Maven plugins -->
     <sonar-plugin.version>5.9.0.7382</sonar-plugin.version>
@@ -716,7 +716,7 @@
       <properties>
         <aws-msk-iam-auth.version>2.4.0</aws-msk-iam-auth.version>
         <awssdk.version>2.59.7</awssdk.version>
-        <aws-advanced-jdbc-wrapper.version>4.6.0</aws-advanced-jdbc-wrapper.version>
+        <aws-advanced-jdbc-wrapper.version>4.7.0</aws-advanced-jdbc-wrapper.version>
       </properties>
       <dependencyManagement>
         <dependencies>
