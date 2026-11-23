@@ -91,8 +91,10 @@ class AddressCredentialMaskingTests {
       })
   void maskThePasswordInsideAnAddress(String message) {
     String json = logged(message);
-    assertThat(json).as("the line reached the JSON appender").contains("\"message\":\"calling ");
-    assertThat(json).doesNotContain(PASSWORD);
+    assertThat(json)
+        .as("the line reached the JSON appender, without the password")
+        .contains("\"message\":\"calling ")
+        .doesNotContain(PASSWORD);
   }
 
   /** The user information goes whole; the scheme, the host, its port and the path stay. */

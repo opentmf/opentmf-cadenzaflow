@@ -98,11 +98,13 @@ class IncidentChainQueryTests {
         null, List.of(), null, null, null, null, null, null, null, null, List.of(), List.of(),
         null, true, List.of("rootFlow", "parentFlow")));
 
-    assertThat(where.sql()).isEqualTo("where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_\n"
-        + "and    exists (select 1 from cadenzaflow.ACT_RU_EXECUTION PI"
-        + " join cadenzaflow.ACT_RU_EXECUTION ROOT on ROOT.ID_ = PI.ROOT_PROC_INST_ID_"
-        + " join cadenzaflow.ACT_RE_PROCDEF RD on RD.ID_ = ROOT.PROC_DEF_ID_"
-        + " where PI.ID_ = RES.PROC_INST_ID_ and RD.KEY_ in (:rootDefinitionKeys))\n");
+    assertThat(where.sql()).isEqualTo("""
+        where  RES.ID_ = RES.ROOT_CAUSE_INCIDENT_ID_
+        and    exists (select 1 from cadenzaflow.ACT_RU_EXECUTION PI \
+        join cadenzaflow.ACT_RU_EXECUTION ROOT on ROOT.ID_ = PI.ROOT_PROC_INST_ID_ \
+        join cadenzaflow.ACT_RE_PROCDEF RD on RD.ID_ = ROOT.PROC_DEF_ID_ \
+        where PI.ID_ = RES.PROC_INST_ID_ and RD.KEY_ in (:rootDefinitionKeys))
+        """);
     assertThat(where.params())
         .containsExactly(Map.entry("rootDefinitionKeys", List.of("rootFlow", "parentFlow")));
   }
