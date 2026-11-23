@@ -11,9 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.assertj.core.api.SoftAssertions;
@@ -27,8 +26,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.NamedParameterUtils;
-import org.springframework.jdbc.core.namedparam.ParsedSql;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.opentmf.cadenzaflow.ItContainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -309,28 +306,28 @@ class IncidentGroupQueryPlanProbeIT {
     }
   }
 
+  /**
+   * EXPLAINs the statement through the same template the repositories use, so a collection
+   * parameter such as {@code :rootDefinitionKeys} is expanded and bound one element per
+   * placeholder, exactly as in the real query. An empty collection would render {@code in ()},
+   * which is not SQL; the repositories leave such a clause out, so here it is refused by name.
+   */
   private void explain(Connection connection, String title, String namedSql,
       MapSqlParameterSource params) throws Exception {
-    ParsedSql parsed = NamedParameterUtils.parseSqlStatement(namedSql);
-    String jdbcSql = NamedParameterUtils.substituteNamedParameters(parsed, params);
-    Object[] values = NamedParameterUtils.buildValueArray(parsed, params, null);
-
-    try (PreparedStatement statement =
-        connection.prepareStatement("explain (analyze, buffers) " + jdbcSql)) {
-      for (int i = 0; i < values.length; i++) {
-        statement.setObject(i + 1, values[i]);
+    params.getValues().forEach((name, value) -> {
+      if (value instanceof Collection<?> collection && collection.isEmpty()) {
+        throw new IllegalArgumentException(
+            "explain(" + title + "): parameter :" + name + " is an empty collection");
       }
-      try (ResultSet resultSet = statement.executeQuery()) {
-        StringBuilder plan = new StringBuilder();
-        while (resultSet.next()) {
-          plan.append(resultSet.getString(1)).append('\n');
-        }
-        note("=== " + title + " ===\n" + namedSql + '\n'
-            + params.getValues().entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .collect(Collectors.joining(", ", "-- parameters: ", "\n\n"))
-            + plan + '\n');
-      }
-    }
+    });
+    List<String> lines = new NamedParameterJdbcTemplate(
+        new SingleConnectionDataSource(connection, true))
+        .query("explain (analyze, buffers) " + namedSql, params,
+            (resultSet, rowNumber) -> resultSet.getString(1));
+    note("=== " + title + " ===\n" + namedSql + '\n'
+        + params.getValues().entrySet().stream()
+            .map(e -> e.getKey() + "=" + e.getValue())
+            .collect(Collectors.joining(", ", "-- parameters: ", "\n\n"))
+        + String.join("\n", lines) + "\n\n");
   }
 }
