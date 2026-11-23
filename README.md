@@ -1665,6 +1665,11 @@ attestation is the copy that is signed, and the one to trust.
 
 ## 9. Operating the service
 
+The image starts the JVM with `-Duser.language=en -Duser.country=US`: the engine library lower-cases
+table names in the default locale, so under a Turkish default it reads an existing schema as
+missing and fails to start. A stage's `JAVA_TOOL_OPTIONS` does not undo it. The integration build
+sets the same option; `-Dengine.locale.guard=` runs it without.
+
 ### 9.1 Health and metrics
 
 Probes are `:16000/actuator/health/liveness` and `/readiness`. Prometheus scrapes

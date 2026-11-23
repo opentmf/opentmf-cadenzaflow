@@ -63,5 +63,8 @@ ARG APP_SOURCE=""
 LABEL org.opencontainers.image.revision="${APP_COMMIT}" \
       org.opencontainers.image.source="${APP_SOURCE}"
 
-ENTRYPOINT ["sh","-lc","exec java ${DEBUG_OPTS} ${JVM_OPTS} org.springframework.boot.loader.launch.JarLauncher"]
+# The engine library lower-cases table names in the default locale; under a Turkish default it
+# reads an existing schema as missing and fails to start. The locale is fixed here, before the
+# variables, so neither a replaced JVM_OPTS nor a stage's JAVA_TOOL_OPTIONS (read first) drops it.
+ENTRYPOINT ["sh","-lc","exec java -Duser.language=en -Duser.country=US ${DEBUG_OPTS} ${JVM_OPTS} org.springframework.boot.loader.launch.JarLauncher"]
 CMD []

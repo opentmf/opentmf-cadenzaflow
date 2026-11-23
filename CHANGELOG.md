@@ -92,6 +92,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The engine starts on an existing schema under a Turkish default locale**
+  (CF-THE-ENGINE-STARTS-ON-AN-EXISTING-SCHEMA-UNDER-A-TURKISH-LOCALE-1). The engine library
+  lower-cases table names in the JVM's default locale; under `tr` the capital I of a name such as
+  `ACT_RU_EXECUTION` becomes a dotless i, the existing schema is read as missing, and the start fails
+  with "relation already exists". Both images now start the JVM with `-Duser.language=en -Duser.country=US`
+  ahead of `JVM_OPTS`, and the integration tests run with the same option
+  (`-Dengine.locale.guard=` turns it off). The user-token policy also compares the service-account
+  prefix in the root locale, so a service-account token is refused a user's webapp session under
+  any default locale.
+
 - **A user and password inside an address are masked in the log**
   (OTMF-THE-ENGINE-IMAGES-MASKING-COVERS-A-PASSWORD-INSIDE-AN-ADDRESS-1). `https://user:password@host/...`
   was written in clear, in a message and in a stack trace, and so was the PostgreSQL driver's text

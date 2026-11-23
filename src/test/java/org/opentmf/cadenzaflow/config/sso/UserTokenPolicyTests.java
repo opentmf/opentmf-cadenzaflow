@@ -1,13 +1,17 @@
 package org.opentmf.cadenzaflow.config.sso;
 
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 import org.opentmf.security.config.ResolvedIssuer;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -58,6 +62,30 @@ class UserTokenPolicyTests {
     Jwt jwt = jwt(KEYCLOAK, Map.of("email", "flow@example.test",
         "preferred_username", "service-account-dnms-flow"));
     assertRefused(policy.refusal(jwt, "flow@example.test"), "service-account");
+  }
+
+  /**
+   * The service-account prefix is compared without the JVM's default locale: under a Turkish
+   * default a capital I lower-cases to a dotless one, so "SERVICE-ACCOUNT-" would no longer
+   * start with "service-account-". The cell sets that default itself and restores it.
+   */
+  @Test
+  @ResourceLock(Resources.LOCALE)
+  void aServiceAccountNameWithACapitalIIsRefusedUnderATurkishDefaultLocale() {
+    Locale saved = Locale.getDefault();
+    Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+    try {
+      Jwt jwt = jwt(KEYCLOAK, Map.of("email", "flow@example.test",
+          "preferred_username", "SERVICE-ACCOUNT-DNMS-FLOW"));
+      Optional<String> refusal = policy.refusal(jwt, "flow@example.test");
+      assertSoftly(softly -> {
+        softly.assertThat(refusal).as("a refusal").isPresent();
+        softly.assertThat(refusal.orElse("")).as("the refusal's reason")
+            .contains("service-account");
+      });
+    } finally {
+      Locale.setDefault(saved);
+    }
   }
 
   @Test

@@ -2,6 +2,7 @@ package org.opentmf.cadenzaflow.config.sso;
 
 import jakarta.annotation.Nullable;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.opentmf.security.config.CommonConfig;
 import org.opentmf.security.config.ResolvedIssuer;
@@ -101,6 +102,6 @@ public class UserTokenPolicy {
   }
 
   private static boolean isServiceAccount(String value) {
-    return value != null && value.toLowerCase().startsWith(SERVICE_ACCOUNT_PREFIX);
+    return value != null && value.toLowerCase(Locale.ROOT).startsWith(SERVICE_ACCOUNT_PREFIX);
   }
 }

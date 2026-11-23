@@ -38,6 +38,12 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Empty unless jacoco's prepare-agent sets it, so failsafe's @{argLine} resolves either way. -->
+    <argLine></argLine>
+    <!-- The integration tests' JVMs take the image's fixed locale (see the Dockerfiles), so a
+         machine with a Turkish default is green. -Dengine.locale.guard= (empty) runs them
+         under the environment's own locale, which shows the engine library's defect. -->
+    <engine.locale.guard>-Duser.language=en -Duser.country=US</engine.locale.guard>
     <java.version>25</java.version>
     <!-- `release` supersedes source+target: it also pins the API signatures the
          compiler resolves against, so a Java 25 build cannot accidentally link
@@ -474,6 +480,7 @@
           <forkCount>1</forkCount>
           <reuseForks>false</reuseForks>
           <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
+          <argLine>@{argLine} ${engine.locale.guard}</argLine>
           <!-- When repackaging is on (repackage/docker profiles), the main artifact is the
                fat jar and its classes sit under BOOT-INF/classes, which breaks the
                @SpringBootConfiguration upward search. Point failsafe at the classes dir. -->
