@@ -65,6 +65,11 @@ class IncidentGroupQueryPlanProbeIT {
 
   private static final int ROOTS = Integer.getInteger("probe.roots", 800_000);
   private static final int INCIDENTS = Integer.getInteger("probe.incidents", 300_000);
+  // Narrow scopes beside the main shape: few chains rooted in their own definition among the
+  // INCIDENTS chains of rootFlow. "old" are older than every other incident, the worst case for
+  // a newest-first page; "spread" are interleaved evenly through the timeline.
+  private static final int NARROW_OLD = Integer.getInteger("probe.narrow.old", 200);
+  private static final int NARROW_SPREAD = Integer.getInteger("probe.narrow.spread", 3_000);
 
   private static final Path OUT = Path.of("target", "incident-group-query-plan.txt");
 
@@ -149,6 +154,9 @@ class IncidentGroupQueryPlanProbeIT {
         explain(connection, "scoped chain list, page", chainRecorder.sql,
             new MapSqlParameterSource(rootKeys.getValues()).addValue("offset", 0L)
                 .addValue("limit", 50));
+
+        recordNarrowScope(connection, chains, softly, "narrowOldFlow", NARROW_OLD);
+        recordNarrowScope(connection, chains, softly, "narrowSpreadFlow", NARROW_SPREAD);
       }
     } finally {
       softly.errorsCollected().forEach(error ->
@@ -157,6 +165,40 @@ class IncidentGroupQueryPlanProbeIT {
       log.info("Query plans recorded to {}:\n{}", OUT.toAbsolutePath(), report);
     }
     softly.assertAll();
+  }
+
+  /**
+   * The one-row-per-chain list scoped by a root key that only {@code expected} chains carry,
+   * among the {@code INCIDENTS} chains of rootFlow: the page the Ops list asks for (newest
+   * first, the first 50), its count, and both plans.
+   */
+  private void recordNarrowScope(Connection connection, IncidentChainQuery chains,
+      SoftAssertions softly, String rootKey, int expected) throws Exception {
+    IncidentListFilter scoped = new IncidentListFilter(null, List.of(), null, null, null,
+        null, null, null, null, null, List.of(), List.of(), null, true, List.of(rootKey));
+    Sort newestFirst = Sort.by(Sort.Order.desc("incidentTimestamp"));
+    long start = System.nanoTime();
+    long chainCount = chains.count(scoped);
+    long countMillis = (System.nanoTime() - start) / 1_000_000;
+    note("narrow scope " + rootKey + " (" + expected + " chains): count() took "
+        + countMillis + " ms\n");
+    softly.assertThat(chainCount).as("chains rooted in " + rootKey).isEqualTo(expected);
+    start = System.nanoTime();
+    int pageSize = chains.page(scoped, newestFirst, 0, 50).size();
+    long pageMillis = (System.nanoTime() - start) / 1_000_000;
+    note("narrow scope " + rootKey + ": page(0, 50) took " + pageMillis + " ms\n\n");
+    softly.assertThat(pageSize).as("the first page of " + rootKey)
+        .isEqualTo(Math.min(50, expected));
+
+    SqlRecorder recorder = new SqlRecorder();
+    MapSqlParameterSource rootKeys =
+        new MapSqlParameterSource("rootDefinitionKeys", List.of(rootKey));
+    recorder.chainQuery().count(scoped);
+    explain(connection, "narrow scope " + rootKey + ", count", recorder.sql, rootKeys);
+    recorder.chainQuery().page(scoped, newestFirst, 0, 50);
+    explain(connection, "narrow scope " + rootKey + ", page", recorder.sql,
+        new MapSqlParameterSource(rootKeys.getValues()).addValue("offset", 0L)
+            .addValue("limit", 50));
   }
 
   /** Appends to the report and writes the whole report at once, so it survives a later error. */
@@ -240,8 +282,58 @@ class IncidentGroupQueryPlanProbeIT {
                  'inc-'||g, 'inc-'||g, null
           from generate_series(1, %d) g
           """.formatted(INCIDENTS));
+      // "old": every chain older than the oldest rootFlow incident; "spread": one chain in
+      // every 100 seconds of the rootFlow timeline, so about 1 % of the newest-first walk.
+      loadNarrowScope(statement, "narrowOldFlow", "nold", NARROW_OLD,
+          "now() - ((%d + g) || ' seconds')::interval".formatted(INCIDENTS + 1));
+      loadNarrowScope(statement, "narrowSpreadFlow", "nspr", NARROW_SPREAD,
+          "now() - ((g * 100) || '.5 seconds')::interval");
       statement.execute("analyze");
     }
+  }
+
+  /**
+   * {@code count} chains rooted in their own root definition {@code rootKey}: a root instance
+   * calling childFlow at {@code reserve}, the child's originating incident at {@code callWms}
+   * and its propagated copy on the root, stamped by {@code timestamp} (an SQL expression in g).
+   */
+  private static void loadNarrowScope(Statement statement, String rootKey, String prefix,
+      int count, String timestamp) throws Exception {
+    String rootDef = rootKey + ":1:d1";
+    statement.execute("""
+        insert into ACT_RE_PROCDEF
+            (ID_, REV_, KEY_, NAME_, VERSION_, DEPLOYMENT_ID_, SUSPENSION_STATE_)
+        values ('%1$s', 1, '%2$s', '%2$s', 1, 'dep-1', 1);
+        insert into ACT_RU_EXECUTION
+            (ID_, REV_, ROOT_PROC_INST_ID_, PROC_INST_ID_, PROC_DEF_ID_, ACT_ID_,
+             IS_ACTIVE_, IS_CONCURRENT_, IS_SCOPE_, IS_EVENT_SCOPE_, SUSPENSION_STATE_)
+        select '%3$s-root-'||g, 1, '%3$s-root-'||g, '%3$s-root-'||g, '%1$s', 'reserve',
+               true, false, true, false, 1
+        from generate_series(1, %4$d) g;
+        insert into ACT_RU_EXECUTION
+            (ID_, REV_, ROOT_PROC_INST_ID_, PROC_INST_ID_, PROC_DEF_ID_, SUPER_EXEC_,
+             ACT_ID_, IS_ACTIVE_, IS_CONCURRENT_, IS_SCOPE_, IS_EVENT_SCOPE_,
+             SUSPENSION_STATE_)
+        select '%3$s-child-'||g, 1, '%3$s-root-'||g, '%3$s-child-'||g, 'childFlow:8:d1',
+               '%3$s-root-'||g, 'callWms', true, false, true, false, 1
+        from generate_series(1, %4$d) g;
+        insert into ACT_RU_INCIDENT
+            (ID_, REV_, INCIDENT_TIMESTAMP_, INCIDENT_MSG_, INCIDENT_TYPE_,
+             EXECUTION_ID_, ACTIVITY_ID_, PROC_INST_ID_, PROC_DEF_ID_,
+             CAUSE_INCIDENT_ID_, ROOT_CAUSE_INCIDENT_ID_, CONFIGURATION_)
+        select '%3$s-inc-'||g, 1, %5$s, 'WMS returned 503', 'failedExternalTask',
+               '%3$s-child-'||g, 'callWms', '%3$s-child-'||g, 'childFlow:8:d1',
+               '%3$s-inc-'||g, '%3$s-inc-'||g, '%3$s-etask-'||g
+        from generate_series(1, %4$d) g;
+        insert into ACT_RU_INCIDENT
+            (ID_, REV_, INCIDENT_TIMESTAMP_, INCIDENT_MSG_, INCIDENT_TYPE_,
+             EXECUTION_ID_, ACTIVITY_ID_, PROC_INST_ID_, PROC_DEF_ID_,
+             CAUSE_INCIDENT_ID_, ROOT_CAUSE_INCIDENT_ID_, CONFIGURATION_)
+        select '%3$s-cpy-'||g, 1, %5$s, 'WMS returned 503', 'failedExternalTask',
+               '%3$s-root-'||g, 'reserve', '%3$s-root-'||g, '%1$s',
+               '%3$s-inc-'||g, '%3$s-inc-'||g, null
+        from generate_series(1, %4$d) g;
+        """.formatted(rootDef, rootKey, prefix, count, timestamp));
   }
 
   private static IncidentGroupRepository repositoryOn(Connection connection) {
