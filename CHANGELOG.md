@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.5.5] - unreleased
+## [1.6.0] - 2026-11-24
+
+1.5.2 to 1.5.4 shipped as images only; this is the first Central release since 1.5.1. A jar
+consumer coming from 1.5.1 reads the 1.5.2, 1.5.3 and 1.5.4 sections below as well.
 
 ### Added
 
@@ -40,6 +43,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   image only; 4.7.0 adds opt-in plugins, keeps `efm2` as its default monitor, and detects the
   database dialect by fingerprint instead of ordered probing. testcontainers-keycloak is test-only;
   the tests keep their pinned Keycloak image.
+
+- **tmf630-toolkit 3.6.0** (from 3.5.2). The engine uses only its paging and sort parsing
+  (`tmf630-toolkit-paging-sorting-core`), which behave as before. The release's JPA fix for
+  case-insensitive filters under a Turkish default locale does not reach the engine, which has no
+  JPA filters, and the image runs with an English default locale. The one jar in the image changes
+  its version.
+
+- **GraalJS 25.6.5.1** (GraalVM polyglot, from 25.5.5.0.3), the engine that runs JavaScript script
+  tasks and listeners. Every GraalVM module of the image moves to that one version together.
 
 - **Spring Boot 4.2.0** (CADENZAFLOW-TAKES-THE-FRAMEWORKS-NEW-MINOR-AND-IS-RELEASED-WITH-TRAIN-9-1).
   From 4.1.2: Spring Framework 7.1.0, Spring Security 7.2.0, Micrometer 1.18.0 and Logback 1.6.6

@@ -31,7 +31,7 @@ the W1 profile, which the container run does not replace.
 
 | What | How to read it | Needed |
 |---|---|---|
-| Engine version of both flavours | the image tag of the `camunda` and `camunda-jobs` pods | ≥ 1.5.4 (1.5.5 when cut) |
+| Engine version of both flavours | the image tag of the `camunda` and `camunda-jobs` pods | ≥ 1.5.4 (1.6.0 when cut) |
 | Database role | `SPRING_DATASOURCE_USERNAME` of both deployments (dnms-deploy `services/camunda*/…/values.yaml`; `cadenzaflow` in every environment there) | the same for both |
 | No Hikari `schema` | `SPRING_DATASOURCE_HIKARI_SCHEMA` absent in both pods' env | absent |
 | Pod → address map | `kubectl get pods -o wide` for both deployments, at the start AND after any restart | to tell serving from jobs |
